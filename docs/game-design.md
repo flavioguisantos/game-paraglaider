@@ -96,6 +96,8 @@ Ao tocar o terreno, o participante pousa e sai da rodada. Visualmente, o parapen
 ## Referencia visual do parapente
 Jogador e bots usam somente o asset 3D `image/nova-vortex.obj`, baixado do configurador publico da NOVA VORTEX para avaliacao local de teste. Ele nao deve ser tratado como asset licenciado para distribuicao ou publicacao sem autorizacao da NOVA. O OBJ atual nao referencia material externo, entao o prototipo aplica material proprio via Three.js. Cada participante usa a mesma escala e configuracao visual, mudando apenas a cor principal da vela. Se o OBJ nao carregar, a vela procedural continua como fallback.
 
+Em dispositivos offline ou com falha de rede apos a pagina abrir, o jogo nao deve tentar baixar repetidamente o OBJ. Nessa situacao, todos os parapentes permanecem jogaveis com a vela procedural e o console registra no maximo um aviso por URL de asset.
+
 As linhas de suspensao sao procedurais e usam estacoes espelhadas a partir do centro da vela, alinhadas ao span e offset do OBJ atual. Todas as linhas conectam diretamente a vela aos pontos de harness do piloto. Quando o OBJ da NOVA termina de carregar, o prototipo mapeia os vertices transformados da vela e reposiciona cada ancoragem para a area inferior real mais proxima da malha, deixando as linhas conectadas ao parapente e com comprimentos diferentes entre centro e pontas.
 
 A pasta `image/` deve manter apenas assets carregados pelo sistema em runtime.

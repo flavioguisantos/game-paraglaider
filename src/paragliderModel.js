@@ -36,6 +36,9 @@ const OBJ_TO_GAME_AXIS_MATRIX = new THREE.Matrix4().makeBasis(
   new THREE.Vector3(1, 0, 0)
 );
 
+const objCanopyCache = new Map();
+const unavailableObjUrls = new Set();
+
 export function createParagliderModel(options = {}) {
   const config = {
     scale: 1,
@@ -108,10 +111,15 @@ function createProceduralCanopy(colors) {
 }
 
 function loadObjCanopy({ url, canopyGroup, suspensionLines, fallback, colors }) {
-  const loader = new OBJLoader();
-  loader.load(
-    url,
-    (object) => {
+  if (isBrowserOffline()) {
+    markObjUnavailable(url, 'offline');
+    canopyGroup.userData.usesObj = false;
+    return;
+  }
+
+  getObjCanopyTemplate(url)
+    .then((template) => {
+      const object = template.clone(true);
       const material = new THREE.MeshStandardMaterial({
         color: colors.canopy,
         roughness: 0.68,
@@ -123,37 +131,73 @@ function loadObjCanopy({ url, canopyGroup, suspensionLines, fallback, colors }) 
       object.traverse((child) => {
         if (!child.isMesh) return;
         child.material = material;
-        child.geometry.applyMatrix4(OBJ_TO_GAME_AXIS_MATRIX);
-        child.geometry.computeVertexNormals();
       });
-
-      const bounds = new THREE.Box3().setFromObject(object);
-      const size = new THREE.Vector3();
-      const center = new THREE.Vector3();
-      bounds.getSize(size);
-      bounds.getCenter(center);
-
-      object.traverse((child) => {
-        if (!child.isMesh) return;
-        child.geometry.translate(-center.x, -center.y, -center.z);
-      });
-
-      object.scale.setScalar(ASSET_CANOPY_CONFIG.targetSpan / size.x);
-      object.rotation.x = ASSET_CANOPY_CONFIG.pitchUpRadians;
-      object.position.set(0, ASSET_CANOPY_CONFIG.verticalOffset, ASSET_CANOPY_CONFIG.depthOffset);
 
       canopyGroup.remove(fallback);
       canopyGroup.add(object);
       connectSuspensionLinesToCanopySurface(suspensionLines, object, canopyGroup);
       canopyGroup.userData.assetUrl = url;
       canopyGroup.userData.usesObj = true;
-    },
-    undefined,
-    (error) => {
-      console.warn(`Nao foi possivel carregar a vela OBJ: ${url}`, error);
+    })
+    .catch((error) => {
+      markObjUnavailable(url, error);
       canopyGroup.userData.usesObj = false;
-    }
-  );
+    });
+}
+
+function getObjCanopyTemplate(url) {
+  if (!objCanopyCache.has(url)) {
+    const loader = new OBJLoader();
+    objCanopyCache.set(
+      url,
+      loader.loadAsync(url).then((object) => prepareObjCanopyTemplate(object))
+    );
+  }
+
+  return objCanopyCache.get(url);
+}
+
+function prepareObjCanopyTemplate(object) {
+  object.name = 'ObjCanopyTemplate';
+  object.traverse((child) => {
+    if (!child.isMesh) return;
+    child.geometry = child.geometry.clone();
+    child.geometry.applyMatrix4(OBJ_TO_GAME_AXIS_MATRIX);
+    child.geometry.computeVertexNormals();
+  });
+
+  const bounds = new THREE.Box3().setFromObject(object);
+  const size = new THREE.Vector3();
+  const center = new THREE.Vector3();
+  bounds.getSize(size);
+  bounds.getCenter(center);
+
+  object.traverse((child) => {
+    if (!child.isMesh) return;
+    child.geometry.translate(-center.x, -center.y, -center.z);
+  });
+
+  object.scale.setScalar(ASSET_CANOPY_CONFIG.targetSpan / size.x);
+  object.rotation.x = ASSET_CANOPY_CONFIG.pitchUpRadians;
+  object.position.set(0, ASSET_CANOPY_CONFIG.verticalOffset, ASSET_CANOPY_CONFIG.depthOffset);
+
+  return object;
+}
+
+function isBrowserOffline() {
+  return typeof navigator !== 'undefined' && navigator.onLine === false;
+}
+
+function markObjUnavailable(url, reason) {
+  if (unavailableObjUrls.has(url)) return;
+  unavailableObjUrls.add(url);
+
+  if (reason === 'offline') {
+    console.info(`Vela OBJ nao carregada porque o navegador esta offline; usando vela procedural: ${url}`);
+    return;
+  }
+
+  console.warn(`Nao foi possivel carregar a vela OBJ; usando vela procedural: ${url}`, reason);
 }
 
 function connectSuspensionLinesToCanopySurface(suspensionLines, canopyObject, canopyGroup) {
