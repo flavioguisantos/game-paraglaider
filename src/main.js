@@ -15,11 +15,12 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x8fc7e8);
 scene.fog = new THREE.Fog(0x8fc7e8, 3000, 28000);
 
-const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 90000);
+const viewport = getViewportSize();
+const camera = new THREE.PerspectiveCamera(getCameraFov(viewport), viewport.width / viewport.height, 0.1, 90000);
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(getRendererPixelRatio());
-renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setSize(viewport.width, viewport.height);
 setAppHeight();
 
 const ambientLight = new THREE.HemisphereLight(0xdfefff, 0x40563a, 1.85);
@@ -52,11 +53,13 @@ camera.position.set(0, 1760, 2250);
 camera.lookAt(0, 1320, 0);
 
 function handleResize() {
+  const viewport = getViewportSize();
   setAppHeight();
-  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.aspect = viewport.width / viewport.height;
+  camera.fov = getCameraFov(viewport);
   camera.updateProjectionMatrix();
   renderer.setPixelRatio(getRendererPixelRatio());
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setSize(viewport.width, viewport.height);
 }
 
 window.addEventListener('resize', handleResize);
@@ -128,12 +131,32 @@ renderer.setAnimationLoop(() => {
 });
 
 function getRendererPixelRatio() {
-  const isCompactScreen = window.matchMedia('(max-width: 760px)').matches;
+  const { width } = getViewportSize();
+  const isCompactScreen = width <= 760;
   const maxPixelRatio = isCompactScreen ? 1.35 : 2;
   return Math.min(window.devicePixelRatio || 1, maxPixelRatio);
 }
 
 function setAppHeight() {
-  const height = window.visualViewport?.height ?? window.innerHeight;
+  const { height } = getViewportSize();
   document.documentElement.style.setProperty('--app-height', `${height}px`);
+}
+
+function getViewportSize() {
+  return {
+    width: Math.round(window.visualViewport?.width ?? window.innerWidth),
+    height: Math.round(window.visualViewport?.height ?? window.innerHeight)
+  };
+}
+
+function getCameraFov({ width, height }) {
+  const baseVerticalFov = 60;
+  const desktopAspect = 16 / 9;
+  const aspect = width / height;
+  if (aspect >= desktopAspect) return baseVerticalFov;
+
+  const baseVerticalFovRadians = THREE.MathUtils.degToRad(baseVerticalFov);
+  const desktopHorizontalFov = 2 * Math.atan(Math.tan(baseVerticalFovRadians / 2) * desktopAspect);
+  const adjustedVerticalFov = 2 * Math.atan(Math.tan(desktopHorizontalFov / 2) / aspect);
+  return THREE.MathUtils.clamp(THREE.MathUtils.radToDeg(adjustedVerticalFov), baseVerticalFov, 82);
 }
