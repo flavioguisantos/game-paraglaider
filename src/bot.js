@@ -1,17 +1,20 @@
 import * as THREE from 'three';
-import { applyFlightPhysics } from './physics.js';
+import { applyFlightPhysics, updateAltitudeMetrics } from './physics.js';
 import { createParagliderModel, setParagliderLandedPose } from './paragliderModel.js';
 
 const BOT_CONFIG = {
   baseSpeedKmh: 40,
-  turnRate: 0.85,
-  visualBank: 0.42,
+  maxTurnRate: 0.58,
+  turnResponse: 1.8,
+  visualBank: 0.3,
   startAltitude: 26
 };
 
 const BOT_STARTS = [
   { name: 'Bot Azul', color: 0x3f7cff, x: -180, z: 180, heading: -0.5 },
-  { name: 'Bot Verde', color: 0x53d17a, x: 220, z: 120, heading: 0.4 }
+  { name: 'Bot Verde', color: 0x53d17a, x: 220, z: 120, heading: 0.4 },
+  { name: 'Bot Vermelho', color: 0xff5a5f, x: -340, z: -120, heading: -0.25 },
+  { name: 'Bot Amarelo', color: 0xffd166, x: 360, z: -180, heading: 0.28 }
 ];
 
 export function createBots({ terrain }) {
@@ -26,9 +29,13 @@ export class Bot {
     this.position = this.group.position;
     this.velocity = new THREE.Vector3();
     this.heading = heading;
+    this.turnRate = 0;
     this.speed = BOT_CONFIG.baseSpeedKmh;
     this.targetSpeed = BOT_CONFIG.baseSpeedKmh;
     this.verticalSpeed = 0;
+    this.groundHeight = 0;
+    this.groundClearance = 0;
+    this.altitudeAboveSeaLevel = 0;
     this.distanceTravelled = 0;
     this.landed = false;
     this.entangled = false;
@@ -37,6 +44,7 @@ export class Bot {
     this.landingPoseApplied = false;
 
     this.position.set(x, terrain.getHeightAt(x, z) + BOT_CONFIG.startAltitude, z);
+    updateAltitudeMetrics(this, terrain);
     this.group.rotation.y = this.heading;
   }
 
@@ -46,9 +54,14 @@ export class Bot {
     const nearestThermal = flightContext.thermals.getNearestThermal(this.position);
     const desiredHeading = getHeadingTo(this.position, nearestThermal.position);
     const turnDelta = normalizeAngle(desiredHeading - this.heading);
-    const turnInput = THREE.MathUtils.clamp(turnDelta * 1.8, -1, 1);
+    const targetTurnRate = THREE.MathUtils.clamp(turnDelta * 0.9, -BOT_CONFIG.maxTurnRate, BOT_CONFIG.maxTurnRate);
 
-    this.heading += turnInput * BOT_CONFIG.turnRate * delta;
+    this.turnRate = THREE.MathUtils.lerp(
+      this.turnRate,
+      targetTurnRate,
+      1 - Math.exp(-delta * BOT_CONFIG.turnResponse)
+    );
+    this.heading += this.turnRate * delta;
     this.speed = THREE.MathUtils.lerp(this.speed, this.targetSpeed, 1 - Math.exp(-delta * 2.5));
 
     applyFlightPhysics(this, delta, flightContext);
@@ -61,8 +74,8 @@ export class Bot {
     this.group.rotation.y = this.heading;
     this.group.rotation.z = THREE.MathUtils.lerp(
       this.group.rotation.z,
-      turnInput * BOT_CONFIG.visualBank,
-      1 - Math.exp(-delta * 6)
+      (this.turnRate / BOT_CONFIG.maxTurnRate) * BOT_CONFIG.visualBank,
+      1 - Math.exp(-delta * 3)
     );
   }
 

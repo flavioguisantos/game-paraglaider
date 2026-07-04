@@ -32,8 +32,8 @@ export function createHud(root) {
     <div class="hud-phase">Fase 7: polimento</div>
     <div class="hud-grid">
       <span>Tempo</span><strong data-hud="time">03:00</strong>
-      <span>Altitude</span><strong data-hud="altitude">0 m</strong>
-      <span>Solo</span><strong data-hud="groundClearance">0 m</strong>
+      <span>Altura</span><strong data-hud="groundClearance">0 m</strong>
+      <span>Nivel mar</span><strong data-hud="altitude">0 m</strong>
       <span>Vario</span><strong data-hud="vario">0.0 m/s</strong>
       <span>Velocidade</span><strong data-hud="speed">0 km/h</strong>
       <span>Distancia</span><strong data-hud="distance">0 m</strong>
@@ -60,12 +60,11 @@ export function createHud(root) {
 
 export function updateHud(elements, { player, bots = [], terrain, round }) {
   const remainingSeconds = Math.max(0, round.durationSeconds - round.elapsedSeconds);
-  const groundHeight = terrain.getHeightAt(player.position.x, player.position.z);
-  const groundClearance = Math.max(0, player.position.y - groundHeight);
+  const playerAltitude = getAltitudeMetrics(player, terrain);
 
   elements.time.textContent = formatTime(remainingSeconds);
-  elements.altitude.textContent = `${Math.round(player.position.y)} m`;
-  elements.groundClearance.textContent = `${Math.round(groundClearance)} m`;
+  elements.altitude.textContent = `${Math.round(playerAltitude.seaLevel)} m`;
+  elements.groundClearance.textContent = `${Math.round(playerAltitude.groundClearance)} m`;
   elements.vario.textContent = `${formatSigned(player.verticalSpeed, 1)} m/s`;
   elements.speed.textContent = `${Math.round(player.speed)} km/h`;
   elements.distance.textContent = formatDistance(player.distanceTravelled);
@@ -74,7 +73,7 @@ export function updateHud(elements, { player, bots = [], terrain, round }) {
   elements.ranking.innerHTML = getRankingRows([
     { name: 'Voce', entity: player },
     ...bots.map((bot) => ({ name: bot.name, entity: bot }))
-  ]).join('');
+  ], terrain).join('');
 }
 
 function formatTime(seconds) {
@@ -95,14 +94,14 @@ function getStatusText(round, player) {
   return 'Voando';
 }
 
-function getRankingRows(entries) {
+function getRankingRows(entries, terrain) {
   return [...entries]
-    .sort(compareRankingEntries)
+    .sort((a, b) => compareRankingEntries(a, b, terrain))
     .map(({ name, entity }) => {
       const state = entity.landed ? 'pousou' : 'voando';
       const status = entity.entangled ? 'enroscado' : state;
-      const altitude = Math.round(entity.position.y);
-      return `<li><span>${name}</span><strong>${altitude} m / ${formatDistance(entity.distanceTravelled)}</strong><em>${status}</em></li>`;
+      const altitude = getAltitudeMetrics(entity, terrain);
+      return `<li><span>${name}</span><strong>${Math.round(altitude.groundClearance)} m solo / ${Math.round(altitude.seaLevel)} m mar / ${formatDistance(entity.distanceTravelled)}</strong><em>${status}</em></li>`;
     });
 }
 
@@ -111,13 +110,28 @@ function formatDistance(meters) {
   return `${Math.round(meters)} m`;
 }
 
-function compareRankingEntries(a, b) {
+function compareRankingEntries(a, b, terrain) {
   if (a.entity.landed !== b.entity.landed) {
     return a.entity.landed ? 1 : -1;
   }
 
-  const altitudeDelta = b.entity.position.y - a.entity.position.y;
+  const altitudeDelta = getAltitudeMetrics(b.entity, terrain).groundClearance
+    - getAltitudeMetrics(a.entity, terrain).groundClearance;
   if (Math.abs(altitudeDelta) > 0.5) return altitudeDelta;
 
   return b.entity.distanceTravelled - a.entity.distanceTravelled;
+}
+
+function getAltitudeMetrics(entity, terrain) {
+  const seaLevel = Number.isFinite(entity.altitudeAboveSeaLevel)
+    ? entity.altitudeAboveSeaLevel
+    : entity.position.y;
+  const groundHeight = Number.isFinite(entity.groundHeight)
+    ? entity.groundHeight
+    : terrain.getHeightAt(entity.position.x, entity.position.z);
+  const groundClearance = Number.isFinite(entity.groundClearance)
+    ? entity.groundClearance
+    : Math.max(0, seaLevel - groundHeight);
+
+  return { seaLevel, groundHeight, groundClearance };
 }

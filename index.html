@@ -34,6 +34,12 @@
         font-size: 14px;
         line-height: 1.35;
         pointer-events: none;
+        opacity: 0;
+        transition: opacity 180ms ease;
+      }
+
+      body.is-flying .hud {
+        opacity: 1;
       }
 
       .hud-title {
@@ -99,6 +105,81 @@
         font-style: normal;
       }
 
+      .start-panel {
+        position: fixed;
+        right: 24px;
+        bottom: 24px;
+        width: min(320px, calc(100vw - 48px));
+        padding: 16px;
+        color: #f7fbff;
+        background: rgba(16, 31, 42, 0.78);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 8px;
+        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.22);
+      }
+
+      body.is-flying .start-panel {
+        display: none;
+      }
+
+      .start-title {
+        margin: 0 0 12px;
+        font-size: 18px;
+        font-weight: 700;
+      }
+
+      .color-options {
+        display: grid;
+        grid-template-columns: repeat(6, 36px);
+        gap: 8px;
+        margin-bottom: 14px;
+      }
+
+      .color-option {
+        position: relative;
+        width: 36px;
+        height: 36px;
+      }
+
+      .color-option input {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .color-option span {
+        display: block;
+        width: 100%;
+        height: 100%;
+        border: 2px solid rgba(255, 255, 255, 0.38);
+        border-radius: 50%;
+        box-sizing: border-box;
+        cursor: pointer;
+      }
+
+      .color-option input:checked + span {
+        border-color: #ffffff;
+        box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.22);
+      }
+
+      .start-button {
+        width: 100%;
+        min-height: 42px;
+        color: #10202a;
+        background: #ffd166;
+        border: 0;
+        border-radius: 6px;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .start-button:focus-visible,
+      .color-option input:focus-visible + span {
+        outline: 2px solid #ffffff;
+        outline-offset: 3px;
+      }
+
       @media (max-width: 640px) {
         .hud {
           top: 10px;
@@ -121,6 +202,12 @@
         .hud-ranking ol {
           gap: 3px;
         }
+
+        .start-panel {
+          right: 12px;
+          bottom: 12px;
+          width: calc(100vw - 56px);
+        }
       }
     </style>
     <script type="importmap">
@@ -135,6 +222,60 @@
   <body>
     <canvas id="game"></canvas>
     <div id="hud" class="hud"></div>
+    <div id="start-panel" class="start-panel">
+      <h1 class="start-title">Jogo Parapente 3D</h1>
+      <div class="color-options" aria-label="Cor do parapente">
+        <label class="color-option">
+          <input type="radio" name="canopy-color" value="0xa8dff2" checked>
+          <span style="background: #a8dff2"></span>
+        </label>
+        <label class="color-option">
+          <input type="radio" name="canopy-color" value="0xff5a5f">
+          <span style="background: #ff5a5f"></span>
+        </label>
+        <label class="color-option">
+          <input type="radio" name="canopy-color" value="0x53d17a">
+          <span style="background: #53d17a"></span>
+        </label>
+        <label class="color-option">
+          <input type="radio" name="canopy-color" value="0xffd166">
+          <span style="background: #ffd166"></span>
+        </label>
+        <label class="color-option">
+          <input type="radio" name="canopy-color" value="0xb48cff">
+          <span style="background: #b48cff"></span>
+        </label>
+        <label class="color-option">
+          <input type="radio" name="canopy-color" value="0xff8c42">
+          <span style="background: #ff8c42"></span>
+        </label>
+        <label class="color-option">
+          <input type="radio" name="canopy-color" value="0x2ec4b6">
+          <span style="background: #2ec4b6"></span>
+        </label>
+        <label class="color-option">
+          <input type="radio" name="canopy-color" value="0xf72585">
+          <span style="background: #f72585"></span>
+        </label>
+        <label class="color-option">
+          <input type="radio" name="canopy-color" value="0x4361ee">
+          <span style="background: #4361ee"></span>
+        </label>
+        <label class="color-option">
+          <input type="radio" name="canopy-color" value="0xffffff">
+          <span style="background: #ffffff"></span>
+        </label>
+        <label class="color-option">
+          <input type="radio" name="canopy-color" value="0x111827">
+          <span style="background: #111827"></span>
+        </label>
+        <label class="color-option">
+          <input type="radio" name="canopy-color" value="0x9acd32">
+          <span style="background: #9acd32"></span>
+        </label>
+      </div>
+      <button id="start-flight" class="start-button" type="button">Iniciar voo</button>
+    </div>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

@@ -8,7 +8,20 @@ const THERMAL_CONFIG = {
   minStrengthMultiplier: 0.85,
   maxStrengthMultiplier: 1.15,
   hotStrengthMultiplierMin: 1.35,
-  hotStrengthMultiplierMax: 1.65
+  hotStrengthMultiplierMax: 1.65,
+  minAheadThermals: 7,
+  maxThermals: 15,
+  spawnAheadMin: 550,
+  spawnAheadMax: 2100,
+  spawnLateralSpread: 720,
+  aheadCheckDistance: 2400,
+  behindPruneDistance: 900,
+  minThermalSpacing: 260,
+  dynamicRadiusMin: 90,
+  dynamicRadiusMax: 145,
+  dynamicStrengthMin: 3.1,
+  dynamicStrengthMax: 4.3,
+  dynamicHotChance: 0.18
 };
 
 const THERMAL_SEEDS = [
@@ -30,14 +43,25 @@ class ThermalField {
     this.group = new THREE.Group();
     this.group.name = 'Thermals';
     const hotThermalIndex = Math.floor(Math.random() * THERMAL_SEEDS.length);
-    this.thermals = THERMAL_SEEDS.map((seed, index) => createThermal(seed, index, terrain, hotThermalIndex));
+    this.nextThermalId = 1;
+    this.thermals = THERMAL_SEEDS.map((seed, index) => createThermal(
+      seed,
+      this.nextThermalId++,
+      terrain,
+      index === hotThermalIndex
+    ));
 
     for (const thermal of this.thermals) {
       this.group.add(thermal.visual);
     }
   }
 
-  update(delta, wind) {
+  update(delta, wind, referenceEntity = null) {
+    if (referenceEntity) {
+      this.ensureAheadThermals(referenceEntity);
+      this.pruneDistantThermals(referenceEntity);
+    }
+
     const halfSize = this.terrain.size / 2;
     const worldUnitsPerMeter = this.terrain.worldUnitsPerMeter ?? 1;
 
@@ -61,6 +85,92 @@ class ThermalField {
 
       animateParticles(thermal, delta);
     }
+  }
+
+  ensureAheadThermals(referenceEntity) {
+    const forward = referenceEntity.getForwardVector();
+    const aheadCount = this.countAheadThermals(referenceEntity.position, forward);
+    const missingThermals = Math.max(0, THERMAL_CONFIG.minAheadThermals - aheadCount);
+
+    for (let index = 0; index < missingThermals && this.thermals.length < THERMAL_CONFIG.maxThermals; index += 1) {
+      this.spawnThermalAhead(referenceEntity.position, forward);
+    }
+  }
+
+  countAheadThermals(position, forward) {
+    let count = 0;
+
+    for (const thermal of this.thermals) {
+      const dx = thermal.position.x - position.x;
+      const dz = thermal.position.z - position.z;
+      const aheadDistance = dx * forward.x + dz * forward.z;
+      if (aheadDistance <= 0 || aheadDistance > THERMAL_CONFIG.aheadCheckDistance) continue;
+
+      const lateralDistance = Math.abs(dx * -forward.z + dz * forward.x);
+      if (lateralDistance <= THERMAL_CONFIG.spawnLateralSpread) count += 1;
+    }
+
+    return count;
+  }
+
+  spawnThermalAhead(position, forward) {
+    const right = new THREE.Vector3(-forward.z, 0, forward.x);
+    const aheadDistance = THREE.MathUtils.randFloat(THERMAL_CONFIG.spawnAheadMin, THERMAL_CONFIG.spawnAheadMax);
+    const lateralDistance = THREE.MathUtils.randFloatSpread(THERMAL_CONFIG.spawnLateralSpread * 2);
+    const spawnPosition = new THREE.Vector3()
+      .copy(position)
+      .addScaledVector(forward, aheadDistance)
+      .addScaledVector(right, lateralDistance);
+
+    if (!this.hasEnoughSpacing(spawnPosition)) return;
+
+    const seed = {
+      x: spawnPosition.x,
+      z: spawnPosition.z,
+      radius: THREE.MathUtils.randFloat(THERMAL_CONFIG.dynamicRadiusMin, THERMAL_CONFIG.dynamicRadiusMax),
+      strength: THREE.MathUtils.randFloat(THERMAL_CONFIG.dynamicStrengthMin, THERMAL_CONFIG.dynamicStrengthMax)
+    };
+    const isHotThermal = Math.random() < THERMAL_CONFIG.dynamicHotChance;
+    const thermal = createThermal(seed, this.nextThermalId++, this.terrain, isHotThermal);
+
+    this.thermals.push(thermal);
+    this.group.add(thermal.visual);
+  }
+
+  hasEnoughSpacing(position) {
+    for (const thermal of this.thermals) {
+      const distance = Math.hypot(position.x - thermal.position.x, position.z - thermal.position.z);
+      if (distance < THERMAL_CONFIG.minThermalSpacing) return false;
+    }
+
+    return true;
+  }
+
+  pruneDistantThermals(referenceEntity) {
+    if (this.thermals.length <= THERMAL_CONFIG.minAheadThermals) return;
+
+    const forward = referenceEntity.getForwardVector();
+
+    for (let index = this.thermals.length - 1; index >= 0; index -= 1) {
+      if (this.thermals.length <= THERMAL_CONFIG.minAheadThermals) return;
+
+      const thermal = this.thermals[index];
+      const dx = thermal.position.x - referenceEntity.position.x;
+      const dz = thermal.position.z - referenceEntity.position.z;
+      const aheadDistance = dx * forward.x + dz * forward.z;
+
+      if (aheadDistance < -THERMAL_CONFIG.behindPruneDistance) {
+        this.removeThermal(index);
+      }
+    }
+  }
+
+  removeThermal(index) {
+    const [thermal] = this.thermals.splice(index, 1);
+    if (!thermal) return;
+
+    this.group.remove(thermal.visual);
+    disposeObject3D(thermal.visual);
   }
 
   getLiftAt(position) {
@@ -93,11 +203,11 @@ class ThermalField {
   }
 }
 
-function createThermal(seed, index, terrain, hotThermalIndex) {
+function createThermal(seed, id, terrain, isHotThermal) {
   const position = new THREE.Vector3(seed.x, 0, seed.z);
   const visual = new THREE.Group();
-  visual.name = `Thermal_${index + 1}`;
-  const strengthMultiplier = index === hotThermalIndex
+  visual.name = `Thermal_${id}`;
+  const strengthMultiplier = isHotThermal
     ? THREE.MathUtils.randFloat(THERMAL_CONFIG.hotStrengthMultiplierMin, THERMAL_CONFIG.hotStrengthMultiplierMax)
     : THREE.MathUtils.randFloat(THERMAL_CONFIG.minStrengthMultiplier, THERMAL_CONFIG.maxStrengthMultiplier);
   const strength = seed.strength * strengthMultiplier;
@@ -156,7 +266,7 @@ function createThermal(seed, index, terrain, hotThermalIndex) {
     strength,
     baseStrength: seed.strength,
     strengthMultiplier,
-    isHotThermal: index === hotThermalIndex,
+    isHotThermal,
     visual,
     particles
   };
@@ -173,4 +283,25 @@ function animateParticles(thermal, delta) {
       Math.sin(particle.userData.baseAngle) * particle.userData.radius
     );
   }
+}
+
+function disposeObject3D(object) {
+  const disposedMaterials = new Set();
+
+  object.traverse((child) => {
+    if (child.geometry) child.geometry.dispose();
+    if (!child.material) return;
+
+    if (Array.isArray(child.material)) {
+      for (const material of child.material) {
+        if (!disposedMaterials.has(material)) {
+          material.dispose();
+          disposedMaterials.add(material);
+        }
+      }
+    } else if (!disposedMaterials.has(child.material)) {
+      child.material.dispose();
+      disposedMaterials.add(child.material);
+    }
+  });
 }

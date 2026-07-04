@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { applyFlightPhysics } from './physics.js';
+import { applyFlightPhysics, updateAltitudeMetrics } from './physics.js';
 import { createParagliderModel, setParagliderLandedPose } from './paragliderModel.js';
 
 const PLAYER_CONFIG = {
@@ -7,21 +7,20 @@ const PLAYER_CONFIG = {
   launchZ: 0,
   startAltitude: 24,
   baseSpeedKmh: 40,
-  minSpeedKmh: 28,
-  maxSpeedKmh: 55,
-  accelerationKmh: 18,
-  turnRate: 1.68,
-  visualBank: 0.5,
+  speedControlRange: 0.2,
+  maxTurnRate: 0.72,
+  turnResponse: 2.1,
+  visualBank: 0.34,
   visualPitch: 0.14
 };
 
 export class Player {
-  constructor({ terrain }) {
+  constructor({ terrain, canopyColor = 0xa8dff2 }) {
     this.terrain = terrain;
     this.group = createParagliderModel({
       canopyAssetUrl: '/image/nova-vortex.obj',
       colors: {
-        canopy: 0xa8dff2,
+        canopy: canopyColor,
         stripe: 0x3157bd,
         trim: 0x17242f,
         helmet: 0xf2c94c
@@ -30,9 +29,13 @@ export class Player {
     this.position = this.group.position;
     this.velocity = new THREE.Vector3();
     this.heading = 0;
+    this.turnRate = 0;
     this.speed = PLAYER_CONFIG.baseSpeedKmh;
     this.targetSpeed = PLAYER_CONFIG.baseSpeedKmh;
     this.verticalSpeed = 0;
+    this.groundHeight = 0;
+    this.groundClearance = 0;
+    this.altitudeAboveSeaLevel = 0;
     this.distanceTravelled = 0;
     this.landed = false;
     this.entangled = false;
@@ -43,6 +46,7 @@ export class Player {
 
     const startY = terrain.getHeightAt(PLAYER_CONFIG.launchX, PLAYER_CONFIG.launchZ) + PLAYER_CONFIG.startAltitude;
     this.position.set(PLAYER_CONFIG.launchX, startY, PLAYER_CONFIG.launchZ);
+    updateAltitudeMetrics(this, terrain);
   }
 
   update(delta, flightContext) {
@@ -51,13 +55,15 @@ export class Player {
     const turnInput = Number(this.input.left) - Number(this.input.right);
     const speedInput = Number(this.input.forward) - Number(this.input.backward);
 
-    this.targetSpeed = THREE.MathUtils.clamp(
-      this.targetSpeed + speedInput * PLAYER_CONFIG.accelerationKmh * delta,
-      PLAYER_CONFIG.minSpeedKmh,
-      PLAYER_CONFIG.maxSpeedKmh
-    );
+    this.targetSpeed = getTargetSpeedKmh(speedInput);
     this.speed = THREE.MathUtils.lerp(this.speed, this.targetSpeed, 1 - Math.exp(-delta * 4));
-    this.heading += turnInput * PLAYER_CONFIG.turnRate * delta;
+    const targetTurnRate = turnInput * PLAYER_CONFIG.maxTurnRate;
+    this.turnRate = THREE.MathUtils.lerp(
+      this.turnRate,
+      targetTurnRate,
+      1 - Math.exp(-delta * PLAYER_CONFIG.turnResponse)
+    );
+    this.heading += this.turnRate * delta;
 
     applyFlightPhysics(this, delta, flightContext);
 
@@ -69,8 +75,8 @@ export class Player {
     this.group.rotation.y = this.heading;
     this.group.rotation.z = THREE.MathUtils.lerp(
       this.group.rotation.z,
-      turnInput * PLAYER_CONFIG.visualBank,
-      1 - Math.exp(-delta * 8)
+      (this.turnRate / PLAYER_CONFIG.maxTurnRate) * PLAYER_CONFIG.visualBank,
+      1 - Math.exp(-delta * 3.6)
     );
     this.group.rotation.x = THREE.MathUtils.lerp(
       this.group.rotation.x,
@@ -91,6 +97,22 @@ export class Player {
     setParagliderLandedPose(this.group, { groundHeight });
     this.landingPoseApplied = true;
   }
+}
+
+function getMinSpeedKmh() {
+  return PLAYER_CONFIG.baseSpeedKmh * (1 - PLAYER_CONFIG.speedControlRange);
+}
+
+function getMaxSpeedKmh() {
+  return PLAYER_CONFIG.baseSpeedKmh * (1 + PLAYER_CONFIG.speedControlRange);
+}
+
+function getTargetSpeedKmh(speedInput) {
+  return THREE.MathUtils.clamp(
+    PLAYER_CONFIG.baseSpeedKmh * (1 + speedInput * PLAYER_CONFIG.speedControlRange),
+    getMinSpeedKmh(),
+    getMaxSpeedKmh()
+  );
 }
 
 function createInputState() {

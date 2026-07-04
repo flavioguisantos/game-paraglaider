@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { createVarioAudio } from './audio.js';
+import { createAdventureMusic, createVarioAudio } from './audio.js';
 import { createBots } from './bot.js';
 import { initializeThirdPersonCamera, updateThirdPersonCamera } from './camera.js';
 import { createWindVector, detectParagliderCollisions, updateEntangledParagliders } from './physics.js';
@@ -9,6 +9,8 @@ import { createTerrain } from './terrain.js';
 import { createThermalField } from './thermal.js';
 
 const canvas = document.querySelector('#game');
+const startButton = document.querySelector('#start-flight');
+const colorInputs = [...document.querySelectorAll('input[name="canopy-color"]')];
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x8fc7e8);
 scene.fog = new THREE.Fog(0x8fc7e8, 3000, 28000);
@@ -29,23 +31,24 @@ scene.add(sunLight);
 const terrain = createTerrain();
 scene.add(terrain.mesh);
 
-const player = new Player({ terrain });
-scene.add(player.group);
-initializeThirdPersonCamera(camera, player);
-const bots = createBots({ terrain });
-const flyers = [player, ...bots];
-
-for (const bot of bots) {
-  scene.add(bot.group);
-}
-
 const wind = createWindVector();
 const thermals = createThermalField({ scene, terrain });
 const hud = createHud(document.querySelector('#hud'));
-const round = createRoundState();
 const varioAudio = createVarioAudio();
+const adventureMusic = createAdventureMusic();
 
 const clock = new THREE.Clock();
+const standbyPosition = new THREE.Vector3(0, 0, 0);
+const appState = {
+  started: false,
+  player: null,
+  bots: [],
+  flyers: [],
+  round: null
+};
+
+camera.position.set(0, 1760, 2250);
+camera.lookAt(0, 1320, 0);
 
 function handleResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -54,15 +57,52 @@ function handleResize() {
 }
 
 window.addEventListener('resize', handleResize);
+startButton.addEventListener('click', startFlight);
+
+function startFlight() {
+  if (appState.started) return;
+
+  const selectedColor = Number.parseInt(
+    colorInputs.find((input) => input.checked)?.value ?? '0xa8dff2',
+    16
+  );
+
+  appState.player = new Player({ terrain, canopyColor: selectedColor });
+  scene.add(appState.player.group);
+  initializeThirdPersonCamera(camera, appState.player);
+
+  appState.bots = createBots({ terrain });
+  for (const bot of appState.bots) {
+    scene.add(bot.group);
+  }
+
+  appState.flyers = [appState.player, ...appState.bots];
+  appState.round = createRoundState();
+  appState.started = true;
+  document.body.classList.add('is-flying');
+  adventureMusic.start();
+  clock.start();
+}
 
 renderer.setAnimationLoop(() => {
   const delta = Math.min(clock.getDelta(), 0.05);
-  terrain.update(player.position);
-  thermals.update(delta, wind);
+  const referencePosition = appState.player?.position ?? standbyPosition;
+  terrain.update(referencePosition);
+
+  if (!appState.started) {
+    thermals.update(delta, wind);
+    renderer.render(scene, camera);
+    return;
+  }
+
+  const { player, bots, flyers, round } = appState;
+  thermals.update(delta, wind, player);
 
   if (!round.ended) {
     player.update(delta, { terrain, thermals, wind });
+  }
 
+  if (!round.ended || round.endReason === 'landed') {
     for (const bot of bots) {
       bot.update(delta, { terrain, thermals, wind });
     }
@@ -73,6 +113,7 @@ renderer.setAnimationLoop(() => {
   updateEntangledParagliders(flyers, delta, { terrain, wind });
 
   updateRoundState(round, delta, player);
+  if (round.ended) adventureMusic.stop();
   varioAudio.update(delta, player.verticalSpeed, player.landed || round.ended);
   updateHud(hud, { player, bots, terrain, round });
   updateThirdPersonCamera(camera, player, delta);

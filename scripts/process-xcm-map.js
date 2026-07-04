@@ -72,11 +72,11 @@ function main() {
       layers: vectorSummary.layers,
       tiles: vectorSummary.tiles,
       available: vectorSummary.available
-    },
-    waypoints: fs.existsSync(path.join(extractedDir, 'waypoints.cup')) ? 'source/waypoints.cup' : null
+    }
   };
 
   fs.writeFileSync(path.join(outputRoot, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+  cleanupIntermediateArtifacts(rawPath);
   console.log(JSON.stringify({
     outputRoot,
     terrainTiles: columns * rows,
@@ -85,6 +85,11 @@ function main() {
     rows,
     manifest: path.join(outputRoot, 'manifest.json')
   }, null, 2));
+}
+
+function cleanupIntermediateArtifacts(rawPath) {
+  fs.rmSync(rawPath, { force: true });
+  fs.rmSync(extractedDir, { recursive: true, force: true });
 }
 
 function assertFile(filePath) {

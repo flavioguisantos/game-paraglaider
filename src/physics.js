@@ -6,7 +6,7 @@ const FLIGHT_PHYSICS = {
   landingClearance: 0.75,
   collisionRadius: 18,
   collisionHeight: 12,
-  entangledSinkRate: -6,
+  entangledSinkRate: -1,
   entangledOrbitRadius: 5.5,
   entangledSpinRate: 3.8,
   entangledWindInfluence: 0.08
@@ -52,6 +52,15 @@ export function applyFlightPhysics(entity, delta, { terrain, thermals, wind }) {
     entity.verticalSpeed = 0;
     entity.landed = true;
   }
+
+  updateAltitudeMetrics(entity, terrain);
+}
+
+export function updateAltitudeMetrics(entity, terrain) {
+  const groundHeight = terrain.getHeightAt(entity.position.x, entity.position.z);
+  entity.groundHeight = groundHeight;
+  entity.altitudeAboveSeaLevel = entity.position.y;
+  entity.groundClearance = Math.max(0, entity.position.y - groundHeight);
 }
 
 export function detectParagliderCollisions(entities) {
@@ -126,6 +135,7 @@ export function updateEntangledParagliders(entities, delta, { terrain, wind }) {
         hasLanded ? groundHeight + FLIGHT_PHYSICS.landingClearance : tempPairCenter.y,
         z
       );
+      updateAltitudeMetrics(entity, terrain);
 
       entity.group.rotation.y = angle;
       entity.group.rotation.x = Math.sin(entity.entanglementSpin * 1.7) * 0.65;
