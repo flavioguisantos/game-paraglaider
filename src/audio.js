@@ -39,9 +39,19 @@ export function createAdventureMusic() {
 
 export function unlockGameAudio() {
   const context = getSharedAudioContext();
-  if (!context) return null;
-  context.resume();
+  if (!context) {
+    recordAudioDebug('unlockFailed', { reason: 'AudioContext indisponivel' });
+    return null;
+  }
+
+  const resumeResult = context.resume();
+  if (resumeResult?.then) {
+    resumeResult
+      .then(() => recordAudioDebug('resumeResolved', { state: context.state }))
+      .catch((error) => recordAudioDebug('resumeRejected', { message: getErrorMessage(error) }));
+  }
   primeAudioOutput(context);
+  recordAudioDebug('unlockRequested', { state: context.state });
   return context;
 }
 
@@ -72,11 +82,21 @@ class VarioAudio {
     }
 
     this.enabled = true;
+    recordAudioDebug('varioUnlocked', { state: this.context.state });
   }
 
   update(delta, verticalSpeed, landed) {
     if (!this.enabled || !this.context || landed || verticalSpeed <= VARIO_AUDIO_CONFIG.liftThreshold) {
       this.timeUntilNextBeep = 0;
+      if (verticalSpeed > VARIO_AUDIO_CONFIG.liftThreshold) {
+        recordAudioDebugThrottled('varioBlocked', {
+          enabled: this.enabled,
+          hasContext: Boolean(this.context),
+          state: this.context?.state ?? null,
+          landed,
+          verticalSpeed: Number(verticalSpeed.toFixed(2))
+        });
+      }
       return;
     }
 
@@ -88,6 +108,11 @@ class VarioAudio {
     const frequency = lerp(VARIO_AUDIO_CONFIG.minFrequency, VARIO_AUDIO_CONFIG.maxFrequency, liftFactor);
 
     this.playBeep(frequency, liftFactor);
+    recordAudioDebugThrottled('varioBeep', {
+      state: this.context.state,
+      verticalSpeed: Number(verticalSpeed.toFixed(2)),
+      frequency: Math.round(frequency)
+    }, 300);
     this.timeUntilNextBeep = interval;
   }
 
@@ -153,7 +178,10 @@ class AdventureMusic {
     if (this.enabled) return;
 
     this.context = this.context || unlockGameAudio();
-    if (!this.context) return;
+    if (!this.context) {
+      recordAudioDebug('musicStartFailed', { reason: 'AudioContext indisponivel' });
+      return;
+    }
     this.masterGain = this.masterGain || this.context.createGain();
     this.delay = this.delay || this.context.createDelay();
     this.delayGain = this.delayGain || this.context.createGain();
@@ -174,6 +202,7 @@ class AdventureMusic {
     this.step = 0;
     this.timerId = window.setInterval(() => this.schedule(), MUSIC_CONFIG.lookAheadSeconds * 1000);
     this.schedule();
+    recordAudioDebug('musicStarted', { state: this.context.state, currentTime: Number(this.context.currentTime.toFixed(3)) });
   }
 
   stop() {
@@ -184,6 +213,7 @@ class AdventureMusic {
       window.clearInterval(this.timerId);
       this.timerId = null;
     }
+    recordAudioDebug('musicStopped', { state: this.context?.state ?? null });
   }
 
   schedule() {
@@ -288,7 +318,17 @@ function noteToFrequency(note) {
 function getSharedAudioContext() {
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
   if (!AudioContextClass) return null;
-  sharedAudioContext = sharedAudioContext || new AudioContextClass();
+  if (!sharedAudioContext) {
+    sharedAudioContext = new AudioContextClass();
+    recordAudioDebug('contextCreated', {
+      state: sharedAudioContext.state,
+      sampleRate: sharedAudioContext.sampleRate,
+      userAgent: navigator.userAgent
+    });
+    sharedAudioContext.addEventListener?.('statechange', () => {
+      recordAudioDebug('statechange', { state: sharedAudioContext.state });
+    });
+  }
   return sharedAudioContext;
 }
 
@@ -307,4 +347,80 @@ function primeAudioOutput(context) {
   oscillator.start(now);
   oscillator.stop(now + 0.05);
   audioPrimed = true;
+  recordAudioDebug('primed', { state: context.state });
+}
+
+function recordAudioDebug(type, details = {}) {
+  if (typeof window === 'undefined') return;
+
+  const debug = window.__audioDebug ?? {
+    events: [],
+    counts: {}
+  };
+  debug.counts[type] = (debug.counts[type] ?? 0) + 1;
+  debug.last = {
+    type,
+    ...details,
+    time: Math.round(performance.now())
+  };
+  debug.events.push(debug.last);
+  debug.events = debug.events.slice(-24);
+  window.__audioDebug = debug;
+  updateAudioDebugOverlay(debug);
+}
+
+function recordAudioDebugThrottled(type, details = {}, intervalMs = 1000) {
+  if (typeof window === 'undefined') return;
+  const now = performance.now();
+  const key = `__audioDebugLast_${type}`;
+  if (window[key] && now - window[key] < intervalMs) return;
+  window[key] = now;
+  recordAudioDebug(type, details);
+}
+
+function updateAudioDebugOverlay(debug) {
+  if (typeof document === 'undefined') return;
+  if (!new URLSearchParams(window.location.search).has('audioDebug')) return;
+
+  let overlay = document.querySelector('[data-audio-debug]');
+  if (!overlay) {
+    overlay = document.createElement('pre');
+    overlay.dataset.audioDebug = 'true';
+    overlay.style.cssText = [
+      'position:fixed',
+      'left:8px',
+      'right:8px',
+      'bottom:8px',
+      'z-index:30',
+      'max-height:38vh',
+      'overflow:auto',
+      'margin:0',
+      'padding:8px',
+      'color:#f7fbff',
+      'background:rgba(0,0,0,0.76)',
+      'font:11px/1.3 monospace',
+      'white-space:pre-wrap',
+      'pointer-events:none',
+      '-webkit-user-select:none',
+      'user-select:none'
+    ].join(';');
+    document.body.appendChild(overlay);
+  }
+
+  overlay.textContent = JSON.stringify({
+    support: {
+      AudioContext: Boolean(window.AudioContext),
+      webkitAudioContext: Boolean(window.webkitAudioContext)
+    },
+    context: sharedAudioContext ? {
+      state: sharedAudioContext.state,
+      sampleRate: sharedAudioContext.sampleRate,
+      currentTime: Number(sharedAudioContext.currentTime.toFixed(3))
+    } : null,
+    ...debug
+  }, null, 2);
+}
+
+function getErrorMessage(error) {
+  return error?.message ?? String(error);
 }
