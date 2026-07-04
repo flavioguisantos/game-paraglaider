@@ -187,8 +187,10 @@ class LocalXcmTerrain {
       };
       this.chunks.set(key, chunk);
       this.reliefGroup.add(chunk.mesh);
+      recordTerrainDebug('chunkLoaded', { key, chunks: this.chunks.size });
       this.loadVectorChunk(chunk);
     } catch (error) {
+      recordTerrainDebug('chunkFailed', { key, message: getErrorMessage(error) });
       console.warn(`Nao foi possivel carregar chunk XCM ${key}`, error);
     } finally {
       this.loadingChunks.delete(key);
@@ -477,7 +479,7 @@ async function loadImageData(url) {
     const response = await fetch(url);
     if (!response.ok) throw new Error(`Image HTTP ${response.status}`);
     const buffer = await response.arrayBuffer();
-    return decodePngRgbData(new Uint8Array(buffer));
+    return await decodePngRgbData(new Uint8Array(buffer), url);
   } catch (error) {
     throw new Error(`Nao foi possivel decodificar PNG de relevo como dados RGB: ${url}`, {
       cause: error
@@ -485,7 +487,7 @@ async function loadImageData(url) {
   }
 }
 
-function decodePngRgbData(bytes) {
+async function decodePngRgbData(bytes, url) {
   const signature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
   for (let index = 0; index < signature.length; index += 1) {
     if (bytes[index] !== signature[index]) throw new Error('Assinatura PNG invalida');
@@ -542,7 +544,7 @@ function decodePngRgbData(bytes) {
   const channels = colorType === 6 ? 4 : 3;
   const bytesPerPixel = channels;
   const stride = width * channels;
-  const inflated = unzlibSync(compressed);
+  const inflated = await inflatePngZlib(compressed, url);
   const data = new Uint8ClampedArray(width * height * 4);
   const previous = new Uint8Array(stride);
   const current = new Uint8Array(stride);
@@ -568,6 +570,22 @@ function decodePngRgbData(bytes) {
   }
 
   return { data, width, height };
+}
+
+async function inflatePngZlib(compressed, url) {
+  if (typeof DecompressionStream === 'function') {
+    try {
+      const stream = new Blob([compressed]).stream().pipeThrough(new DecompressionStream('deflate'));
+      const buffer = await new Response(stream).arrayBuffer();
+      recordTerrainDebug('inflate', { url, method: 'DecompressionStream' });
+      return new Uint8Array(buffer);
+    } catch (error) {
+      recordTerrainDebug('inflateNativeFailed', { url, message: getErrorMessage(error) });
+    }
+  }
+
+  recordTerrainDebug('inflate', { url, method: 'fflate' });
+  return unzlibSync(compressed);
 }
 
 function unfilterPngScanline(scanline, previous, filter, bytesPerPixel) {
@@ -609,6 +627,59 @@ function readUint32(bytes, offset) {
 
 function readChunkType(bytes, offset) {
   return String.fromCharCode(bytes[offset], bytes[offset + 1], bytes[offset + 2], bytes[offset + 3]);
+}
+
+function recordTerrainDebug(type, details = {}) {
+  if (typeof window === 'undefined') return;
+
+  const debug = window.__terrainDebug ?? {
+    chunkLoaded: 0,
+    chunkFailed: 0,
+    events: []
+  };
+  debug[type] = (debug[type] ?? 0) + 1;
+  debug.events.push({
+    type,
+    ...details,
+    time: Math.round(performance.now())
+  });
+  debug.events = debug.events.slice(-20);
+  window.__terrainDebug = debug;
+  updateTerrainDebugOverlay(debug);
+}
+
+function getErrorMessage(error) {
+  return error?.message ?? String(error);
+}
+
+function updateTerrainDebugOverlay(debug) {
+  if (typeof document === 'undefined') return;
+  if (!new URLSearchParams(window.location.search).has('terrainDebug')) return;
+
+  let overlay = document.querySelector('[data-terrain-debug]');
+  if (!overlay) {
+    overlay = document.createElement('pre');
+    overlay.dataset.terrainDebug = 'true';
+    overlay.style.cssText = [
+      'position:fixed',
+      'left:8px',
+      'right:8px',
+      'bottom:8px',
+      'z-index:20',
+      'max-height:32vh',
+      'overflow:auto',
+      'margin:0',
+      'padding:8px',
+      'color:#f7fbff',
+      'background:rgba(0,0,0,0.72)',
+      'font:11px/1.3 monospace',
+      'white-space:pre-wrap',
+      'pointer-events:none'
+    ].join(';');
+    document.body.appendChild(overlay);
+  }
+
+  overlay.textContent = JSON.stringify(debug, null, 2);
 }
 
 function sampleTileElevation(imageData, u, v, fallbackElevation = 0) {
