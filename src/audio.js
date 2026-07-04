@@ -37,10 +37,22 @@ export function createAdventureMusic() {
   return new AdventureMusic();
 }
 
+export function unlockGameAudio() {
+  const context = getSharedAudioContext();
+  if (!context) return null;
+  context.resume();
+  primeAudioOutput(context);
+  return context;
+}
+
+let sharedAudioContext = null;
+let audioPrimed = false;
+
 class VarioAudio {
   constructor() {
     this.context = null;
     this.masterGain = null;
+    this.masterConnected = false;
     this.enabled = false;
     this.timeUntilNextBeep = 0;
 
@@ -50,15 +62,15 @@ class VarioAudio {
   }
 
   unlock() {
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContextClass) return;
-
-    this.context = this.context || new AudioContextClass();
+    this.context = this.context || unlockGameAudio();
+    if (!this.context) return;
     this.masterGain = this.masterGain || this.context.createGain();
     this.masterGain.gain.value = VARIO_AUDIO_CONFIG.volume;
-    this.masterGain.connect(this.context.destination);
+    if (!this.masterConnected) {
+      this.masterGain.connect(this.context.destination);
+      this.masterConnected = true;
+    }
 
-    this.context.resume();
     this.enabled = true;
   }
 
@@ -130,6 +142,7 @@ class AdventureMusic {
     this.masterGain = null;
     this.delay = null;
     this.delayGain = null;
+    this.masterConnected = false;
     this.enabled = false;
     this.nextNoteTime = 0;
     this.step = 0;
@@ -137,10 +150,10 @@ class AdventureMusic {
   }
 
   start() {
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContextClass || this.enabled) return;
+    if (this.enabled) return;
 
-    this.context = this.context || new AudioContextClass();
+    this.context = this.context || unlockGameAudio();
+    if (!this.context) return;
     this.masterGain = this.masterGain || this.context.createGain();
     this.delay = this.delay || this.context.createDelay();
     this.delayGain = this.delayGain || this.context.createGain();
@@ -148,12 +161,14 @@ class AdventureMusic {
     this.masterGain.gain.value = MUSIC_CONFIG.volume;
     this.delay.delayTime.value = 0.22;
     this.delayGain.gain.value = 0.14;
-    this.masterGain.connect(this.context.destination);
-    this.masterGain.connect(this.delay);
-    this.delay.connect(this.delayGain);
-    this.delayGain.connect(this.context.destination);
+    if (!this.masterConnected) {
+      this.masterGain.connect(this.context.destination);
+      this.masterGain.connect(this.delay);
+      this.delay.connect(this.delayGain);
+      this.delayGain.connect(this.context.destination);
+      this.masterConnected = true;
+    }
 
-    this.context.resume();
     this.enabled = true;
     this.nextNoteTime = this.context.currentTime + 0.05;
     this.step = 0;
@@ -268,4 +283,28 @@ function clamp(value, min, max) {
 
 function noteToFrequency(note) {
   return 440 * (2 ** ((note - 69) / 12));
+}
+
+function getSharedAudioContext() {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return null;
+  sharedAudioContext = sharedAudioContext || new AudioContextClass();
+  return sharedAudioContext;
+}
+
+function primeAudioOutput(context) {
+  if (audioPrimed) return;
+
+  const now = context.currentTime;
+  const oscillator = context.createOscillator();
+  const gain = context.createGain();
+  oscillator.frequency.setValueAtTime(220, now);
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.04);
+  oscillator.connect(gain);
+  gain.connect(context.destination);
+  oscillator.start(now);
+  oscillator.stop(now + 0.05);
+  audioPrimed = true;
 }

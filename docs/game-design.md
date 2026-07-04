@@ -14,6 +14,7 @@ Antes da rodada, o jogador escolhe a cor principal do parapente em uma paleta am
 - `A` ou seta para esquerda: virar para esquerda.
 - `D` ou seta para direita: virar para direita.
 - Em telas touch, botoes sobrepostos no canto inferior replicam os mesmos comandos de acelerar, frear e virar para esquerda/direita.
+- A interface touch deve bloquear selecao de texto e callout nativo enquanto o jogador segura os botoes de comando.
 
 Os controles podem mudar durante a iteracao se a sensacao de voo pedir outro modelo.
 
@@ -56,7 +57,7 @@ Regras iniciais:
 - Termicas nao precisam ter limite vertical no MVP.
 
 ## Variometro
-O variometro aparece no HUD em m/s e tambem emite bips quando o jogador esta subindo em uma termica. O som so toca depois do primeiro gesto do usuario, por restricao normal dos navegadores, e fica mais agudo, frequente, intenso e sustentado conforme a taxa de subida aumenta.
+O variometro aparece no HUD em m/s e tambem emite bips quando o jogador esta subindo em uma termica. O som e destravado no primeiro gesto do usuario, incluindo o toque em iniciar voo no mobile, por restricao normal dos navegadores, e fica mais agudo, frequente, intenso e sustentado conforme a taxa de subida aumenta.
 
 ## HUD mobile
 Em telas estreitas, os dados de voo sao priorizados em formato compacto: tempo, altura sobre o solo, variometro e velocidade aparecem como metricas principais; altitude em relacao ao nivel do mar, distancia e status ficam como metricas secundarias. O ranking fica oculto durante o voo no mobile e reaparece quando a rodada termina para nao competir com a cena 3D e os controles touch.

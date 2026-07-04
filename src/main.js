@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { createAdventureMusic, createVarioAudio } from './audio.js';
+import { createAdventureMusic, createVarioAudio, unlockGameAudio } from './audio.js';
 import { createBots } from './bot.js';
 import { initializeThirdPersonCamera, updateStandbyCamera, updateThirdPersonCamera } from './camera.js';
 import { createWindVector, detectParagliderCollisions, updateEntangledParagliders } from './physics.js';
@@ -68,6 +68,9 @@ startButton.addEventListener('click', startFlight);
 
 function startFlight() {
   if (appState.started) return;
+
+  varioAudio.unlock();
+  unlockGameAudio();
 
   const selectedColor = Number.parseInt(
     colorInputs.find((input) => input.checked)?.value ?? '0xa8dff2',
