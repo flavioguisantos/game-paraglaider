@@ -5,7 +5,7 @@ import { initializeThirdPersonCamera, updateStandbyCamera, updateThirdPersonCame
 import { createWindVector, detectParagliderCollisions, updateEntangledParagliders } from './physics.js';
 import { createHud, createRoundState, updateHud, updateRoundState } from './hud.js';
 import { Player } from './player.js';
-import { createTerrain } from './terrain.js?v=terrain-rgb-binary-3';
+import { createTerrain } from './terrain.js?v=terrain-rgb-binary-4';
 import { createThermalField } from './thermal.js';
 
 const canvas = document.querySelector('#game');

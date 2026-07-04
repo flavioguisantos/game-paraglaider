@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { unzlibSync } from 'fflate';
+import { decompressSync } from 'fflate';
 
 const DEFAULT_OPTIONS = {
   manifestUrl: '/mapas/processed/BRA_SUDESTE_HighRes/manifest.json',
@@ -59,6 +59,7 @@ class LocalXcmTerrain {
     this.chunkWorldDepth = 0;
     this.chunks = new Map();
     this.loadingChunks = new Set();
+    this.failedChunks = new Set();
     this.availableVectorTiles = new Set();
     this.vectorMaterials = new Map();
     this.labelTextureCache = new Map();
@@ -118,7 +119,7 @@ class LocalXcmTerrain {
         if (!this.isValidTile(x, y)) continue;
         const key = getChunkKey(x, y);
         keepKeys.add(key);
-        if (!this.chunks.has(key) && !this.loadingChunks.has(key)) {
+        if (!this.chunks.has(key) && !this.loadingChunks.has(key) && !this.failedChunks.has(key)) {
           this.loadChunk(x, y);
         }
       }
@@ -190,7 +191,12 @@ class LocalXcmTerrain {
       recordTerrainDebug('chunkLoaded', { key, chunks: this.chunks.size });
       this.loadVectorChunk(chunk);
     } catch (error) {
-      recordTerrainDebug('chunkFailed', { key, message: getErrorMessage(error) });
+      this.failedChunks.add(key);
+      recordTerrainDebug('chunkFailed', {
+        key,
+        message: getErrorMessage(error),
+        cause: getErrorCauseMessage(error)
+      });
       console.warn(`Nao foi possivel carregar chunk XCM ${key}`, error);
     } finally {
       this.loadingChunks.delete(key);
@@ -544,7 +550,8 @@ async function decodePngRgbData(bytes, url) {
   const channels = colorType === 6 ? 4 : 3;
   const bytesPerPixel = channels;
   const stride = width * channels;
-  const inflated = await inflatePngZlib(compressed, url);
+  const expectedInflatedLength = height * (1 + width * channels);
+  const inflated = await inflatePngZlib(compressed, expectedInflatedLength, url);
   const data = new Uint8ClampedArray(width * height * 4);
   const previous = new Uint8Array(stride);
   const current = new Uint8Array(stride);
@@ -572,20 +579,28 @@ async function decodePngRgbData(bytes, url) {
   return { data, width, height };
 }
 
-async function inflatePngZlib(compressed, url) {
+async function inflatePngZlib(compressed, expectedLength, url) {
   if (typeof DecompressionStream === 'function') {
     try {
       const stream = new Blob([compressed]).stream().pipeThrough(new DecompressionStream('deflate'));
       const buffer = await new Response(stream).arrayBuffer();
-      recordTerrainDebug('inflate', { url, method: 'DecompressionStream' });
-      return new Uint8Array(buffer);
+      const inflated = new Uint8Array(buffer);
+      if (inflated.length !== expectedLength) {
+        throw new Error(`tamanho inflado invalido: ${inflated.length} != ${expectedLength}`);
+      }
+      recordTerrainDebug('inflate', { url, method: 'DecompressionStream', bytes: inflated.length });
+      return inflated;
     } catch (error) {
       recordTerrainDebug('inflateNativeFailed', { url, message: getErrorMessage(error) });
     }
   }
 
-  recordTerrainDebug('inflate', { url, method: 'fflate' });
-  return unzlibSync(compressed);
+  const inflated = decompressSync(compressed);
+  if (inflated.length !== expectedLength) {
+    throw new Error(`tamanho inflado invalido por fflate: ${inflated.length} != ${expectedLength}`);
+  }
+  recordTerrainDebug('inflate', { url, method: 'fflate', bytes: inflated.length });
+  return inflated;
 }
 
 function unfilterPngScanline(scanline, previous, filter, bytesPerPixel) {
@@ -650,6 +665,10 @@ function recordTerrainDebug(type, details = {}) {
 
 function getErrorMessage(error) {
   return error?.message ?? String(error);
+}
+
+function getErrorCauseMessage(error) {
+  return error?.cause?.message ?? error?.cause?.toString?.() ?? null;
 }
 
 function updateTerrainDebugOverlay(debug) {
