@@ -83,6 +83,7 @@ Regras iniciais:
 - Usar heightmap gerado por ruido.
 - Para teste offline/local, o arquivo `mapas/BRA_SUDESTE_HighRes.xcm` pode ser processado por `npm run process:xcm`. A saida em `mapas/processed/BRA_SUDESTE_HighRes/` contem tiles de relevo locais para carregamento progressivo em chunks, cobrindo todo o Sudeste do Brasil em vez de apenas Pedra Grande.
 - O jogo usa o manifesto local processado como fonte ativa de terreno. A camada base e o relevo XCM em mesh propria, com camadas vetoriais locais renderizadas por cima para estradas, ferrovias, rios, areas de agua, areas urbanas e pontos de cidades/vilas.
+- Os tiles `terrain-rgb` codificam altitude diretamente nos canais RGB; a leitura no navegador deve preservar os bytes originais para evitar alturas incorretas, paredes artificiais no relevo e decolagem em altitude errada.
 - A pasta `mapas/` deve manter apenas o XCM original usado como entrada de conversao e a saida consumida pelo jogo: `manifest.json`, `terrain-rgb/` e `vectors/`. Extracoes, RAW intermediario e pastas de inspecao sao regeneraveis e nao devem permanecer.
 - A origem do mundo (`x=0`, `z=0`) e o ponto inicial do jogador ficam sobre a Pedra Grande em Atibaia.
 - A escala horizontal do terreno e calculada a partir do world file do XCM e da latitude central. Na regiao de Atibaia, cada pixel do relevo representa cerca de 85 m em longitude por 92 m em latitude, mantendo o deslocamento proporcional ao mapa real.

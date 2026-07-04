@@ -176,8 +176,7 @@ class LocalXcmTerrain {
     this.loadingChunks.add(key);
 
     try {
-      const image = await loadImage(this.getTileUrl(tileX, tileY));
-      const imageData = getImageData(image);
+      const imageData = await loadImageData(this.getTileUrl(tileX, tileY));
       const chunk = {
         tileX,
         tileY,
@@ -472,7 +471,29 @@ function getChunkKey(tileX, tileY) {
   return `${tileX}:${tileY}`;
 }
 
-function loadImage(url) {
+async function loadImageData(url) {
+  if (typeof createImageBitmap === 'function') {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`Image HTTP ${response.status}`);
+      const blob = await response.blob();
+      const image = await createImageBitmap(blob, {
+        colorSpaceConversion: 'none',
+        premultiplyAlpha: 'none'
+      });
+      const imageData = getImageData(image);
+      image.close?.();
+      return imageData;
+    } catch (error) {
+      console.warn(`Leitura sem conversao de cor indisponivel para ${url}; usando fallback de imagem.`, error);
+    }
+  }
+
+  const image = await loadImageElement(url);
+  return getImageData(image);
+}
+
+function loadImageElement(url) {
   return new Promise((resolve, reject) => {
     const image = new Image();
     image.onload = () => resolve(image);
@@ -485,7 +506,10 @@ function getImageData(image) {
   const canvas = document.createElement('canvas');
   canvas.width = image.naturalWidth || image.width;
   canvas.height = image.naturalHeight || image.height;
-  const context = canvas.getContext('2d', { willReadFrequently: true });
+  const context = canvas.getContext('2d', {
+    willReadFrequently: true,
+    colorSpace: 'srgb'
+  });
   context.drawImage(image, 0, 0);
   return {
     data: context.getImageData(0, 0, canvas.width, canvas.height).data,
