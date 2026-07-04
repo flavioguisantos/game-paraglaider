@@ -14,12 +14,15 @@
         overflow: hidden;
         background: #8fc7e8;
         font-family: Arial, Helvetica, sans-serif;
+        overscroll-behavior: none;
+        -webkit-tap-highlight-color: transparent;
       }
 
       #game {
         display: block;
         width: 100vw;
-        height: 100vh;
+        height: var(--app-height, 100vh);
+        touch-action: none;
       }
 
       .hud {
@@ -57,6 +60,10 @@
         grid-template-columns: auto auto;
         gap: 4px 14px;
         margin-top: 10px;
+      }
+
+      .flight-metric {
+        display: contents;
       }
 
       .hud-grid span {
@@ -104,6 +111,55 @@
         color: rgba(247, 251, 255, 0.65);
         font-size: 11px;
         font-style: normal;
+      }
+
+      .touch-controls {
+        position: fixed;
+        inset: auto max(14px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+        display: none;
+        justify-content: space-between;
+        align-items: end;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 180ms ease;
+      }
+
+      body.is-flying .touch-controls {
+        opacity: 1;
+      }
+
+      .touch-cluster {
+        display: grid;
+        gap: 10px;
+        pointer-events: auto;
+      }
+
+      .touch-cluster--turn {
+        grid-template-columns: repeat(2, 58px);
+      }
+
+      .touch-cluster--speed {
+        grid-template-rows: repeat(2, 58px);
+      }
+
+      .touch-control {
+        width: 58px;
+        height: 58px;
+        color: #f7fbff;
+        background: rgba(16, 31, 42, 0.62);
+        border: 1px solid rgba(255, 255, 255, 0.26);
+        border-radius: 50%;
+        box-shadow: 0 10px 26px rgba(0, 0, 0, 0.22);
+        font: 700 26px/1 Arial, Helvetica, sans-serif;
+        touch-action: none;
+        user-select: none;
+      }
+
+      .touch-control:active,
+      .touch-control.is-active {
+        color: #10202a;
+        background: #ffd166;
+        border-color: rgba(255, 255, 255, 0.68);
       }
 
       .start-panel {
@@ -182,22 +238,69 @@
       }
 
       @media (max-width: 640px) {
+        html,
+        body {
+          height: var(--app-height, 100vh);
+        }
+
         .hud {
-          top: 10px;
-          left: 10px;
-          max-width: calc(100vw - 44px);
+          top: max(8px, env(safe-area-inset-top));
+          left: 8px;
+          right: 8px;
+          max-width: none;
           min-width: 0;
-          padding: 10px;
-          font-size: 12px;
+          padding: 8px;
+          font-size: 11px;
+        }
+
+        .hud-title,
+        .hud-phase {
+          display: none;
         }
 
         .hud-grid {
-          gap: 3px 10px;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 6px;
+          margin-top: 0;
+        }
+
+        .hud-grid span,
+        .hud-grid strong {
+          justify-self: stretch;
+        }
+
+        .hud-grid span {
+          color: rgba(247, 251, 255, 0.68);
+          font-size: 10px;
+          text-transform: uppercase;
+        }
+
+        .hud-grid strong {
+          font-size: 14px;
+          white-space: nowrap;
+        }
+
+        .hud-grid .flight-metric {
+          display: grid;
+          gap: 2px;
+          min-width: 0;
+          padding: 6px;
+          background: rgba(255, 255, 255, 0.08);
+          border-radius: 6px;
+        }
+
+        .hud-grid .flight-metric--secondary strong {
+          font-size: 12px;
         }
 
         .hud-ranking {
+          display: none;
           margin-top: 8px;
           padding-top: 8px;
+        }
+
+        body.round-ended .hud-ranking {
+          display: block;
         }
 
         .hud-ranking ol {
@@ -208,6 +311,31 @@
           right: 12px;
           bottom: 12px;
           width: calc(100vw - 56px);
+        }
+
+        .touch-controls {
+          display: flex;
+        }
+      }
+
+      @media (max-width: 860px) and (orientation: landscape) {
+        .hud {
+          right: auto;
+          width: min(390px, 48vw);
+        }
+
+        .touch-control {
+          width: 52px;
+          height: 52px;
+          font-size: 24px;
+        }
+
+        .touch-cluster--turn {
+          grid-template-columns: repeat(2, 52px);
+        }
+
+        .touch-cluster--speed {
+          grid-template-rows: repeat(2, 52px);
         }
       }
     </style>
@@ -223,6 +351,16 @@
   <body>
     <canvas id="game"></canvas>
     <div id="hud" class="hud"></div>
+    <div id="touch-controls" class="touch-controls" aria-label="Controles de voo por toque">
+      <div class="touch-cluster touch-cluster--turn">
+        <button class="touch-control" type="button" data-control="left" aria-label="Virar para esquerda">‹</button>
+        <button class="touch-control" type="button" data-control="right" aria-label="Virar para direita">›</button>
+      </div>
+      <div class="touch-cluster touch-cluster--speed">
+        <button class="touch-control" type="button" data-control="forward" aria-label="Acelerar">⌃</button>
+        <button class="touch-control" type="button" data-control="backward" aria-label="Frear">⌄</button>
+      </div>
+    </div>
     <div id="start-panel" class="start-panel">
       <h1 class="start-title">Jogo Parapente 3D</h1>
       <div class="color-options" aria-label="Cor do parapente">

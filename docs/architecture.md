@@ -41,7 +41,7 @@ Configura o deploy no Render como Static Site, usando `npm install && npm run bu
 Gera o build estatico em `dist/`, copiando `index.html`, `src/`, `image/`, `mapas/processed/` e os arquivos necessarios do Three.js para `vendor/three/`.
 
 ### `src/main.js`
-Inicializa cena, renderer, relogio, terreno, termicas, HUD e loop principal. Controla o estado pre-voo com botao de inicio e escolha de cor do parapente; ao iniciar, cria jogador, bots, rodada, camera em terceira pessoa e musica. Coordena atualizacoes por frame.
+Inicializa cena, renderer, relogio, terreno, termicas, HUD e loop principal. Controla o estado pre-voo com botao de inicio e escolha de cor do parapente; ao iniciar, cria jogador, bots, rodada, camera em terceira pessoa e musica. Ajusta altura real do viewport e limite de pixel ratio para telas compactas. Coordena atualizacoes por frame.
 
 ### `src/terrain.js`
 Gera e gerencia o terreno local em chunks a partir do manifesto processado de `mapas/BRA_SUDESTE_HighRes.xcm`. O modulo carrega `manifest.json`, converte a posicao local do piloto para tile/pixel do mapa, calcula a escala horizontal em metros a partir do world file e da latitude central, carrega os chunks `terrain-rgb/{x}/{y}.png` ao redor do piloto e descarrega chunks distantes. A cena do terreno separa `XcmReliefLayer`, com a malha de relevo, de `XcmVectorOverlayLayer`, com estradas, ferrovias, rios, areas de agua, areas urbanas e pontos de cidades/vilas vindos de `vectors/{x}/{y}.json`. `getHeightAt()` consulta a altura do chunk carregado em metros e retorna altura de fallback enquanto o tile ainda nao carregou, quando a posicao e invalida ou quando esta fora dos tiles disponiveis. O relevo online OSM/Mapzen usado no teste anterior fica desativado para nao conflitar com o mapa XCM local.
@@ -56,7 +56,7 @@ Calcula movimento simplificado, sink, sustentacao de termicas, efeito do vento e
 Cria, atualiza e renderiza zonas de termica. Mantem um conjunto inicial perto da largada e gera novas termicas no corredor a frente do jogador conforme ele avanca, removendo colunas que ficam muito para tras para controlar o custo da cena. Deve separar dados de gameplay da representacao visual.
 
 ### `src/player.js`
-Representa o parapente do jogador, controles, estado de voo, posicao, direcao, altitude, cor principal da vela e pouso. A direcao muda por uma taxa de curva suavizada, evitando giro instantaneo quando o jogador pressiona ou solta o comando. A posicao inicial do jogador fica em `x=0`, `z=0`, que corresponde a Pedra Grande em Atibaia pela configuracao central do terreno.
+Representa o parapente do jogador, controles, estado de voo, posicao, direcao, altitude, cor principal da vela e pouso. A direcao muda por uma taxa de curva suavizada, evitando giro instantaneo quando o jogador pressiona ou solta o comando. O estado de input aceita teclado e botoes touch sobrepostos, usando os mesmos comandos de acelerar, frear e virar. A posicao inicial do jogador fica em `x=0`, `z=0`, que corresponde a Pedra Grande em Atibaia pela configuracao central do terreno.
 
 ### `src/bot.js`
 Representa bots simples que escolhem a termica mais proxima e voam em sua direcao usando taxa de curva suavizada. O conjunto inicial inclui quatro parapentes coloridos para manter trafego visual durante a rodada.
@@ -71,7 +71,7 @@ Controla feedback sonoro local com Web Audio API. O variometro sonoro destrava a
 Controla camera em terceira pessoa com suavizacao. Apos pouso do jogador, os mesmos comandos de direcao passam a orbitar e aproximar/afastar a camera ao redor do local de pouso.
 
 ### `src/hud.js`
-Atualiza elementos 2D de interface: altura sobre o solo, altitude em relacao ao nivel do mar, variometro, tempo, estado de rodada e ranking.
+Atualiza elementos 2D de interface: altura sobre o solo, altitude em relacao ao nivel do mar, variometro, velocidade, distancia, tempo, estado de rodada e ranking. A marcacao do HUD separa metricas principais e secundarias para permitir layout compacto em telas de celular.
 
 ## Loop principal
 1. Ler input do jogador.

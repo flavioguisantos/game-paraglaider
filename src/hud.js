@@ -31,13 +31,13 @@ export function createHud(root) {
     <div class="hud-title">Jogo Parapente 3D</div>
     <div class="hud-phase">Fase 7: polimento</div>
     <div class="hud-grid">
-      <span>Tempo</span><strong data-hud="time">03:00</strong>
-      <span>Altura</span><strong data-hud="groundClearance">0 m</strong>
-      <span>Nivel mar</span><strong data-hud="altitude">0 m</strong>
-      <span>Vario</span><strong data-hud="vario">0.0 m/s</strong>
-      <span>Velocidade</span><strong data-hud="speed">0 km/h</strong>
-      <span>Distancia</span><strong data-hud="distance">0 m</strong>
-      <span>Status</span><strong data-hud="status">Voando</strong>
+      <div class="flight-metric"><span>Tempo</span><strong data-hud="time">03:00</strong></div>
+      <div class="flight-metric"><span>Solo</span><strong data-hud="groundClearance">0 m</strong></div>
+      <div class="flight-metric"><span>Vario</span><strong data-hud="vario">0.0 m/s</strong></div>
+      <div class="flight-metric"><span>Vel.</span><strong data-hud="speed">0 km/h</strong></div>
+      <div class="flight-metric flight-metric--secondary"><span>Nivel mar</span><strong data-hud="altitude">0 m</strong></div>
+      <div class="flight-metric flight-metric--secondary"><span>Dist.</span><strong data-hud="distance">0 m</strong></div>
+      <div class="flight-metric flight-metric--secondary"><span>Status</span><strong data-hud="status">Voando</strong></div>
     </div>
     <div class="hud-ranking">
       <div class="hud-ranking-title" data-hud="rankingTitle">Ranking</div>

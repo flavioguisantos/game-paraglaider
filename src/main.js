@@ -18,8 +18,9 @@ scene.fog = new THREE.Fog(0x8fc7e8, 3000, 28000);
 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 90000);
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(getRendererPixelRatio());
 renderer.setSize(window.innerWidth, window.innerHeight);
+setAppHeight();
 
 const ambientLight = new THREE.HemisphereLight(0xdfefff, 0x40563a, 1.85);
 scene.add(ambientLight);
@@ -51,12 +52,15 @@ camera.position.set(0, 1760, 2250);
 camera.lookAt(0, 1320, 0);
 
 function handleResize() {
+  setAppHeight();
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
+  renderer.setPixelRatio(getRendererPixelRatio());
   renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
 window.addEventListener('resize', handleResize);
+window.visualViewport?.addEventListener('resize', handleResize);
 startButton.addEventListener('click', startFlight);
 
 function startFlight() {
@@ -80,6 +84,7 @@ function startFlight() {
   appState.round = createRoundState();
   appState.started = true;
   document.body.classList.add('is-flying');
+  document.body.classList.remove('round-ended');
   adventureMusic.start();
   clock.start();
 }
@@ -113,6 +118,7 @@ renderer.setAnimationLoop(() => {
   updateEntangledParagliders(flyers, delta, { terrain, wind });
 
   updateRoundState(round, delta, player);
+  document.body.classList.toggle('round-ended', round.ended);
   if (round.ended) adventureMusic.stop();
   varioAudio.update(delta, player.verticalSpeed, player.landed || round.ended);
   updateHud(hud, { player, bots, terrain, round });
@@ -120,3 +126,14 @@ renderer.setAnimationLoop(() => {
 
   renderer.render(scene, camera);
 });
+
+function getRendererPixelRatio() {
+  const isCompactScreen = window.matchMedia('(max-width: 760px)').matches;
+  const maxPixelRatio = isCompactScreen ? 1.35 : 2;
+  return Math.min(window.devicePixelRatio || 1, maxPixelRatio);
+}
+
+function setAppHeight() {
+  const height = window.visualViewport?.height ?? window.innerHeight;
+  document.documentElement.style.setProperty('--app-height', `${height}px`);
+}

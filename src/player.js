@@ -148,5 +148,42 @@ function createInputState() {
     state[key] = false;
   });
 
+  bindTouchControls(state);
+
   return state;
+}
+
+function bindTouchControls(state) {
+  const buttons = [...document.querySelectorAll('[data-control]')];
+  const validControls = new Set(Object.keys(state));
+
+  for (const button of buttons) {
+    const control = button.dataset.control;
+    if (!validControls.has(control)) continue;
+
+    const setPressed = (pressed) => {
+      state[control] = pressed;
+      button.classList.toggle('is-active', pressed);
+    };
+
+    button.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      button.setPointerCapture?.(event.pointerId);
+      setPressed(true);
+    });
+
+    button.addEventListener('pointerup', (event) => {
+      event.preventDefault();
+      setPressed(false);
+    });
+
+    button.addEventListener('pointercancel', () => setPressed(false));
+    button.addEventListener('lostpointercapture', () => setPressed(false));
+    button.addEventListener('contextmenu', (event) => event.preventDefault());
+  }
+
+  window.addEventListener('blur', () => {
+    for (const control of validControls) state[control] = false;
+    for (const button of buttons) button.classList.remove('is-active');
+  });
 }
