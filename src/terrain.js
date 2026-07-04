@@ -479,28 +479,10 @@ async function loadImageData(url) {
     const buffer = await response.arrayBuffer();
     return decodePngRgbData(new Uint8Array(buffer));
   } catch (error) {
-    console.warn(`Nao foi possivel decodificar PNG de relevo como dados RGB: ${url}`, error);
+    throw new Error(`Nao foi possivel decodificar PNG de relevo como dados RGB: ${url}`, {
+      cause: error
+    });
   }
-
-  if (typeof createImageBitmap === 'function') {
-    try {
-      const response = await fetch(url);
-      if (!response.ok) throw new Error(`Image HTTP ${response.status}`);
-      const blob = await response.blob();
-      const image = await createImageBitmap(blob, {
-        colorSpaceConversion: 'none',
-        premultiplyAlpha: 'none'
-      });
-      const imageData = getImageData(image);
-      image.close?.();
-      return imageData;
-    } catch (error) {
-      console.warn(`Leitura sem conversao de cor indisponivel para ${url}; usando fallback de imagem.`, error);
-    }
-  }
-
-  const image = await loadImageElement(url);
-  return getImageData(image);
 }
 
 function decodePngRgbData(bytes) {
@@ -627,31 +609,6 @@ function readUint32(bytes, offset) {
 
 function readChunkType(bytes, offset) {
   return String.fromCharCode(bytes[offset], bytes[offset + 1], bytes[offset + 2], bytes[offset + 3]);
-}
-
-function loadImageElement(url) {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = reject;
-    image.src = url;
-  });
-}
-
-function getImageData(image) {
-  const canvas = document.createElement('canvas');
-  canvas.width = image.naturalWidth || image.width;
-  canvas.height = image.naturalHeight || image.height;
-  const context = canvas.getContext('2d', {
-    willReadFrequently: true,
-    colorSpace: 'srgb'
-  });
-  context.drawImage(image, 0, 0);
-  return {
-    data: context.getImageData(0, 0, canvas.width, canvas.height).data,
-    width: canvas.width,
-    height: canvas.height
-  };
 }
 
 function sampleTileElevation(imageData, u, v, fallbackElevation = 0) {
