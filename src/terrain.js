@@ -18,6 +18,7 @@ const DEFAULT_OPTIONS = {
   labelScale: 10
 };
 
+const TERRAIN_ASSET_VERSION = 'terrain-rgb-binary-5';
 const tempTile = { x: 0, y: 0 };
 const VECTOR_LAYER_STYLES = {
   city_area: { color: 0xdede00, opacity: 0.38, yOffset: 0.72 },
@@ -218,16 +219,16 @@ class LocalXcmTerrain {
   }
 
   getTileUrl(tileX, tileY) {
-    return `${this.manifestBaseUrl}${this.manifest.terrain.urlTemplate
+    return withVersionQuery(`${this.manifestBaseUrl}${this.manifest.terrain.urlTemplate
       .replace('{x}', tileX)
-      .replace('{y}', tileY)}`;
+      .replace('{y}', tileY)}`);
   }
 
   getVectorTileUrl(tileX, tileY) {
     if (!this.manifest.vectors?.urlTemplate) return null;
-    return `${this.manifestBaseUrl}${this.manifest.vectors.urlTemplate
+    return withVersionQuery(`${this.manifestBaseUrl}${this.manifest.vectors.urlTemplate
       .replace('{x}', tileX)
-      .replace('{y}', tileY)}`;
+      .replace('{y}', tileY)}`);
   }
 
   async loadVectorChunk(chunk) {
@@ -482,10 +483,17 @@ function getChunkKey(tileX, tileY) {
 
 async function loadImageData(url) {
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      cache: 'reload',
+      headers: { Accept: 'image/png,*/*;q=0.8' }
+    });
     if (!response.ok) throw new Error(`Image HTTP ${response.status}`);
+    const contentType = response.headers.get('content-type') ?? 'desconhecido';
     const buffer = await response.arrayBuffer();
-    return await decodePngRgbData(new Uint8Array(buffer), url);
+    return await decodePngRgbData(new Uint8Array(buffer), url, {
+      status: response.status,
+      contentType
+    });
   } catch (error) {
     throw new Error(`Nao foi possivel decodificar PNG de relevo como dados RGB: ${url}`, {
       cause: error
@@ -493,10 +501,18 @@ async function loadImageData(url) {
   }
 }
 
-async function decodePngRgbData(bytes, url) {
+async function decodePngRgbData(bytes, url, responseInfo = {}) {
   const signature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
   for (let index = 0; index < signature.length; index += 1) {
-    if (bytes[index] !== signature[index]) throw new Error('Assinatura PNG invalida');
+    if (bytes[index] !== signature[index]) {
+      const foundSignature = [...bytes.slice(0, 12)]
+        .map((byte) => byte.toString(16).padStart(2, '0'))
+        .join(' ');
+      throw new Error(
+        `Assinatura PNG invalida: ${foundSignature || 'vazio'}; `
+        + `status=${responseInfo.status ?? 'n/a'}; content-type=${responseInfo.contentType ?? 'n/a'}`
+      );
+    }
   }
 
   let offset = 8;
@@ -642,6 +658,11 @@ function readUint32(bytes, offset) {
 
 function readChunkType(bytes, offset) {
   return String.fromCharCode(bytes[offset], bytes[offset + 1], bytes[offset + 2], bytes[offset + 3]);
+}
+
+function withVersionQuery(url) {
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}v=${TERRAIN_ASSET_VERSION}`;
 }
 
 function recordTerrainDebug(type, details = {}) {
