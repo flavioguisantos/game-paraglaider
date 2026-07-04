@@ -68,7 +68,7 @@ Cria o modelo visual compartilhado de parapente, incluindo vela, linhas de suspe
 Controla feedback sonoro local com Web Audio API. O variometro sonoro destrava apos o primeiro gesto do usuario e emite bips apenas quando o jogador esta com velocidade vertical positiva suficiente, aumentando frequencia, ritmo, intensidade e sustentacao conforme a subida fica mais forte. Tambem gera uma trilha procedural de aventura mais animada durante a rodada.
 
 ### `src/camera.js`
-Controla camera em terceira pessoa com suavizacao. Apos pouso do jogador, os mesmos comandos de direcao passam a orbitar e aproximar/afastar a camera ao redor do local de pouso.
+Controla camera em terceira pessoa com suavizacao. Mantem a camera acima do terreno consultando `terrain.getHeightAt()` para evitar que o relevo oclua mapa e termicas, especialmente em telas estreitas e regioes montanhosas. Tambem posiciona a camera de pre-voo sobre o terreno real carregado. Apos pouso do jogador, os mesmos comandos de direcao passam a orbitar e aproximar/afastar a camera ao redor do local de pouso.
 
 ### `src/hud.js`
 Atualiza elementos 2D de interface: altura sobre o solo, altitude em relacao ao nivel do mar, variometro, velocidade, distancia, tempo, estado de rodada e ranking. A marcacao do HUD separa metricas principais e secundarias para permitir layout compacto em telas de celular.

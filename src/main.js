@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { createAdventureMusic, createVarioAudio } from './audio.js';
 import { createBots } from './bot.js';
-import { initializeThirdPersonCamera, updateThirdPersonCamera } from './camera.js';
+import { initializeThirdPersonCamera, updateStandbyCamera, updateThirdPersonCamera } from './camera.js';
 import { createWindVector, detectParagliderCollisions, updateEntangledParagliders } from './physics.js';
 import { createHud, createRoundState, updateHud, updateRoundState } from './hud.js';
 import { Player } from './player.js';
@@ -76,7 +76,7 @@ function startFlight() {
 
   appState.player = new Player({ terrain, canopyColor: selectedColor });
   scene.add(appState.player.group);
-  initializeThirdPersonCamera(camera, appState.player);
+  initializeThirdPersonCamera(camera, appState.player, { terrain });
 
   appState.bots = createBots({ terrain });
   for (const bot of appState.bots) {
@@ -99,6 +99,7 @@ renderer.setAnimationLoop(() => {
 
   if (!appState.started) {
     thermals.update(delta, wind);
+    updateStandbyCamera(camera, terrain, delta);
     renderer.render(scene, camera);
     return;
   }
@@ -125,7 +126,7 @@ renderer.setAnimationLoop(() => {
   if (round.ended) adventureMusic.stop();
   varioAudio.update(delta, player.verticalSpeed, player.landed || round.ended);
   updateHud(hud, { player, bots, terrain, round });
-  updateThirdPersonCamera(camera, player, delta);
+  updateThirdPersonCamera(camera, player, delta, { terrain });
 
   renderer.render(scene, camera);
 });

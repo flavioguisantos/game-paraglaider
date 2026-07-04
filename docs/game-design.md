@@ -38,6 +38,7 @@ Quando o jogador pousa, o parapente deixa de voar, mas os comandos continuam ati
 - A curva ainda deve ser fechada o suficiente para permitir permanecer dentro de uma termica media.
 - A camera deve ajudar a leitura de direcao e altitude.
 - Em telas estreitas, a camera deve preservar um campo horizontal de visao suficiente para manter mapa e termicas legiveis em relacao ao desktop, sem alterar as regras de voo.
+- A camera deve manter folga minima acima do terreno, inclusive no pre-voo e apos pouso, para evitar enquadramentos dentro da malha do relevo em montanhas altas.
 
 ## Termicas
 Termicas sao colunas verticais invisiveis para a fisica, mas visiveis para o jogador por particulas, pontos subindo ou cilindros transparentes.
