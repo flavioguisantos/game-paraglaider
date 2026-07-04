@@ -7,7 +7,8 @@ Prototipo 3D local de jogo de parapente no navegador, estilo `.io`, sem multipla
 Validar a sensacao de voo em 3D com terreno procedural, termicas, vento, HUD, bots simples e ranking.
 
 ## Stack
-- JavaScript, Three.js, Node.js, Express.
+- JavaScript, Three.js.
+- Node.js apenas para scripts locais de build/conversao.
 - Fisica manual simplificada.
 - Terreno procedural com ruido Simplex/Perlin.
 

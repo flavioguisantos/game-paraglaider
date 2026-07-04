@@ -1,7 +1,7 @@
 # Arquitetura Inicial
 
 ## Visao geral
-O projeto sera uma aplicacao web estatica servida por Express. A logica do jogo roda no cliente, em JavaScript, usando Three.js para cena, camera, renderer, geometrias, materiais e animacao.
+O projeto e uma aplicacao web estatica. A logica do jogo roda no cliente, em JavaScript, usando Three.js para cena, camera, renderer, geometrias, materiais e animacao. O build copia os arquivos necessarios para `dist/`, que pode ser publicado como Static Site no Render.
 
 ## Estrutura prevista
 ```text
@@ -26,13 +26,19 @@ jogo-parapente/
 │   └── hud.js
 ├── index.html
 ├── package.json
-└── server.js
+├── render.yaml
+└── scripts/
+    ├── build-static.js
+    └── process-xcm-map.js
 ```
 
 ## Responsabilidades dos modulos
 
-### `server.js`
-Serve a aplicacao local e expoe um proxy simples em `/tiles/:source/:z/:x/:y.png` para buscar tiles OpenStreetMap e Mapzen/AWS. O proxy evita bloqueio de CORS ao decodificar pixels do tile Terrarium no navegador.
+### `render.yaml`
+Configura o deploy no Render como Static Site, usando `npm install && npm run build` e publicando `dist/`.
+
+### `scripts/build-static.js`
+Gera o build estatico em `dist/`, copiando `index.html`, `src/`, `image/`, `mapas/processed/` e os arquivos necessarios do Three.js para `vendor/three/`.
 
 ### `src/main.js`
 Inicializa cena, renderer, relogio, terreno, termicas, HUD e loop principal. Controla o estado pre-voo com botao de inicio e escolha de cor do parapente; ao iniciar, cria jogador, bots, rodada, camera em terceira pessoa e musica. Coordena atualizacoes por frame.

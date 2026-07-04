@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: jogo-parapente
+    runtime: static
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist

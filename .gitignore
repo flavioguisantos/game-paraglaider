@@ -1,5 +1,5 @@
 node_modules/
 .chrome-check
-mapas/processed/
 mapas/*_extracted/
 mapas/_xcm_inspect/
+dist/

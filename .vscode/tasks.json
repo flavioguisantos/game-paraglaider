@@ -1,0 +1,47 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build: static",
+      "type": "shell",
+      "command": "npm run build",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "preview: dist",
+      "type": "shell",
+      "command": "npx --yes serve dist -l 4173",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "dependsOn": "build: static",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "serve",
+        "pattern": {
+          "regexp": ".",
+          "file": 1,
+          "location": 2,
+          "message": 3
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".+",
+          "endsPattern": "Accepting connections|Local:"
+        }
+      }
+    },
+    {
+      "label": "preview: stop",
+      "type": "shell",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$connections = Get-NetTCPConnection -LocalPort 4173 -State Listen -ErrorAction SilentlyContinue; foreach ($connection in $connections) { Stop-Process -Id $connection.OwningProcess -Force -ErrorAction SilentlyContinue }\"",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    }
+  ]
+}

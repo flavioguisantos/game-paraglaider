@@ -20,6 +20,9 @@ Use este arquivo para escolher somente o contexto necessario para a tarefa atual
 ### Ordem de implementacao ou proximo passo tecnico
 - `docs/implementation-plan.md`
 
+### Deploy, hospedagem ou Render
+- `docs/deploy-render.md`
+
 ### Instrucao para futuras IAs ou padroes de colaboracao
 - `docs/ai-guidelines.md`
 
@@ -27,4 +30,3 @@ Use este arquivo para escolher somente o contexto necessario para a tarefa atual
 - Nao abrir todos os arquivos de `docs/` automaticamente.
 - Nao copiar trechos longos dos documentos para respostas ou novos arquivos.
 - Nao duplicar informacao entre documentos; prefira referenciar o arquivo fonte.
-

@@ -20,12 +20,12 @@ Validar a mecânica central (voo + térmicas + competição por altitude/distân
 ## 4. O que FICA FORA do protótipo (fase 2)
 - Multiplayer real (WebSockets/Socket.io)
 - Modelos 3D detalhados, texturas finais, sombras/iluminação avançada
-- Deploy no Render (entra só depois da mecânica validada)
+- Backend permanente (entra só se houver multiplayer real, contas ou APIs)
 
 ## 5. Stack técnica sugerida
 - **Three.js** para renderização 3D no navegador (leve, documentação madura, boa para protótipos rápidos)
 - **cannon-es** ou física simplificada feita à mão (recomendo física à mão no início — mais controle sobre a "sensação" de voo do que um motor de física genérico)
-- Node + Express só para servir os arquivos estáticos localmente (facilita depois subir no Render)
+- Node apenas para scripts locais de build/conversao; o jogo final do MVP e publicado como site estatico
 - Terreno via `SimplexNoise` (geração procedural de heightmap)
 
 ## 6. Estrutura de pastas sugerida
@@ -57,10 +57,10 @@ paraglider-3d-prototype/
 ## 8. Passo a passo para executar no Claude Code (VS Code)
 Copie e cole este prompt inicial no Claude Code dentro do VS Code:
 
-> "Crie um protótipo de jogo 3D em JavaScript usando Three.js, rodando localmente com um servidor Node simples (express) servindo arquivos estáticos. O jogo é sobre pilotar um parapente sobre um terreno 3D gerado proceduralmente (heightmap com ruído Perlin/Simplex). O jogador controla direção e inclinação com as setas/WASD, ganha altitude dentro de zonas de térmica (cilindros invisíveis representados visualmente por partículas subindo, que se movem lentamente com o vento) e perde altitude constantemente fora delas (sink). A câmera é em terceira pessoa, seguindo atrás e acima do parapente com suavização. Adicione 2 bots que voam em direção à térmica mais próxima. Mostre um HUD 2D sobreposto ao canvas com altímetro, variômetro e timer de 3 minutos. Se o jogador ou bot colidir com o terreno, ele 'pousa' e sai da rodada. Ao final, mostre ranking por altitude/distância. Use geometria simples (cones/cápsulas) para representar o parapente inicialmente, sem modelos externos. Siga esta estrutura de pastas: [colar a estrutura da seção 6]. Comece pelo package.json e servidor Express, depois index.html e main.js com cena/câmera/renderer básicos do Three.js, depois terrain.js, depois physics.js e thermal.js, e por último player.js, bot.js e hud.js."
+> "Crie um protótipo de jogo 3D em JavaScript usando Three.js, preparado para build estatico e deploy como Static Site. O jogo é sobre pilotar um parapente sobre um terreno 3D gerado proceduralmente (heightmap com ruído Perlin/Simplex). O jogador controla direção e inclinação com as setas/WASD, ganha altitude dentro de zonas de térmica (cilindros invisíveis representados visualmente por partículas subindo, que se movem lentamente com o vento) e perde altitude constantemente fora delas (sink). A câmera é em terceira pessoa, seguindo atrás e acima do parapente com suavização. Adicione bots que voam em direção à térmica mais próxima. Mostre um HUD 2D sobreposto ao canvas com altímetro, variômetro e timer de 3 minutos. Se o jogador ou bot colidir com o terreno, ele 'pousa' e sai da rodada. Ao final, mostre ranking por altitude/distância. Use geometria simples (cones/cápsulas) para representar o parapente inicialmente, sem modelos externos. Siga esta estrutura de pastas: [colar a estrutura da seção 6]. Comece pelo package.json, index.html e main.js com cena/câmera/renderer básicos do Three.js, depois terrain.js, depois physics.js e thermal.js, e por último player.js, bot.js e hud.js."
 
 Trabalhe iterativamente depois disso:
-1. Rode `npm install && npm start` e valide se a cena 3D básica (terreno + câmera) aparece
+1. Rode `npm install && npm run build` e valide o build estatico
 2. Ajuste a câmera e os controles até o voo parecer fluido (esse é o ponto mais crítico em 3D)
 3. Ajuste força de térmica e sink até ficar "gostoso" de jogar
 4. Só depois adicione os bots e o ranking final
@@ -72,7 +72,7 @@ Em 3D, preste atenção especial à câmera — é o maior risco de o jogo "não
 ## 10. Próxima fase (só depois do MVP validado)
 - Trocar bots por jogadores reais via WebSockets (Socket.io) — sincronizar posição/rotação a cada tick
 - Otimizar terreno (LOD, chunking) para suportar mais jogadores/área maior
-- Subir servidor Node no Render como Web Service
+- Manter deploy como Static Site no Render enquanto nao houver multiplayer/backend real
 - Adicionar salas de partida (matchmaking simples por código de sala)
 - Modelos 3D low-poly reais e texturas, substituindo as formas geométricas provisórias
 - Sistema básico de conta/skin como próximo passo de monetização

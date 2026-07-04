@@ -23,7 +23,6 @@ A sensacao de voar em 3D e boa o suficiente para jogar novamente por pelo menos 
 ## Fora do MVP
 - Multiplayer real.
 - WebSockets ou Socket.io.
-- Deploy em Render.
 - Contas, salas, matchmaking, skins ou monetizacao.
 - Modelos 3D finais, texturas finais e iluminacao avancada.
 - Terreno com LOD, chunking ou otimizacoes complexas.
@@ -31,7 +30,8 @@ A sensacao de voar em 3D e boa o suficiente para jogar novamente por pelo menos 
 ## Stack inicial
 - JavaScript no navegador.
 - Three.js para renderizacao 3D.
-- Node.js + Express para servidor local de arquivos estaticos.
+- Node.js apenas para scripts de build/conversao.
+- Build estatico publicado como Static Site no Render.
 - Fisica manual em vez de motor de fisica generico.
 - Geracao procedural de terreno com Simplex/Perlin noise.
 
@@ -47,4 +47,3 @@ A sensacao de voar em 3D e boa o suficiente para jogar novamente por pelo menos 
 - Fisica realista demais pode atrapalhar a diversao; o prototipo deve priorizar controle e leitura visual.
 - Terreno pesado pode prejudicar desempenho.
 - Bots nao precisam ser inteligentes no MVP, apenas suficientes para dar contexto competitivo.
-

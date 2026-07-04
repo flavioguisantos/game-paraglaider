@@ -12,7 +12,7 @@
 
 ## Fase 1: Base tecnica - concluida
 - [x] Criar `package.json`.
-- [x] Criar servidor Express simples em `server.js`.
+- [x] Criar build estatico sem backend permanente.
 - [x] Criar `index.html`.
 - [x] Criar `src/main.js` com cena Three.js, renderer, luz, camera temporaria e loop.
 - [x] Validar que a cena abre localmente.
@@ -56,6 +56,12 @@
 - [x] Ajustar velocidade, curva, sink e forca das termicas.
 - [x] Melhorar legibilidade visual das termicas.
 - [x] Fazer verificacao em desktop e mobile, se possivel.
+
+## Deploy Render - preparado
+- [x] Remover backend Express nao utilizado.
+- [x] Criar `scripts/build-static.js`.
+- [x] Criar `render.yaml` para Static Site.
+- [x] Publicar `dist/` como saida de build.
 
 ## Ordem de prioridade
 1. Cena 3D renderizando.
