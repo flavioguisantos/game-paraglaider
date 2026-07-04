@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { applyFlightPhysics, updateAltitudeMetrics } from './physics.js';
+import { applyFlightPhysics, updateAltitudeMetrics } from './physics.js?v=wind-physics-1';
 import { createParagliderModel, setParagliderLandedPose } from './paragliderModel.js';
 
 const PLAYER_CONFIG = {
@@ -32,11 +32,16 @@ export class Player {
     this.turnRate = 0;
     this.speed = PLAYER_CONFIG.baseSpeedKmh;
     this.targetSpeed = PLAYER_CONFIG.baseSpeedKmh;
+    this.groundSpeedKmh = 0;
+    this.windAdjustedSpeedKmh = PLAYER_CONFIG.baseSpeedKmh;
+    this.windAngleDegrees = 0;
+    this.windAngleStepDegrees = 0;
     this.verticalSpeed = 0;
     this.groundHeight = 0;
     this.groundClearance = 0;
     this.altitudeAboveSeaLevel = 0;
     this.distanceTravelled = 0;
+    this.distanceFromStart = 0;
     this.landed = false;
     this.entangled = false;
     this.entanglementId = null;
@@ -46,6 +51,7 @@ export class Player {
 
     const startY = terrain.getHeightAt(PLAYER_CONFIG.launchX, PLAYER_CONFIG.launchZ) + PLAYER_CONFIG.startAltitude;
     this.position.set(PLAYER_CONFIG.launchX, startY, PLAYER_CONFIG.launchZ);
+    this.launchPosition = this.position.clone();
     updateAltitudeMetrics(this, terrain);
   }
 

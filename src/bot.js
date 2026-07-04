@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { applyFlightPhysics, updateAltitudeMetrics } from './physics.js';
+import { applyFlightPhysics, updateAltitudeMetrics } from './physics.js?v=wind-physics-1';
 import { createParagliderModel, setParagliderLandedPose } from './paragliderModel.js';
 
 const BOT_CONFIG = {
@@ -32,11 +32,16 @@ export class Bot {
     this.turnRate = 0;
     this.speed = BOT_CONFIG.baseSpeedKmh;
     this.targetSpeed = BOT_CONFIG.baseSpeedKmh;
+    this.groundSpeedKmh = 0;
+    this.windAdjustedSpeedKmh = BOT_CONFIG.baseSpeedKmh;
+    this.windAngleDegrees = 0;
+    this.windAngleStepDegrees = 0;
     this.verticalSpeed = 0;
     this.groundHeight = 0;
     this.groundClearance = 0;
     this.altitudeAboveSeaLevel = 0;
     this.distanceTravelled = 0;
+    this.distanceFromStart = 0;
     this.landed = false;
     this.entangled = false;
     this.entanglementId = null;
@@ -44,6 +49,7 @@ export class Bot {
     this.landingPoseApplied = false;
 
     this.position.set(x, terrain.getHeightAt(x, z) + BOT_CONFIG.startAltitude, z);
+    this.launchPosition = this.position.clone();
     updateAltitudeMetrics(this, terrain);
     this.group.rotation.y = this.heading;
   }

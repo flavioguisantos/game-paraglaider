@@ -2,7 +2,7 @@ import * as THREE from 'three';
 
 const FLIGHT_PHYSICS = {
   sinkRate: -2,
-  windInfluence: 0.24,
+  windAngleStepDegrees: 10,
   landingClearance: 0.75,
   collisionRadius: 18,
   collisionHeight: 12,
@@ -13,20 +13,47 @@ const FLIGHT_PHYSICS = {
 };
 
 const tempWind = new THREE.Vector3();
+const tempForward = new THREE.Vector3();
+const tempRight = new THREE.Vector3();
 const tempHorizontalVelocity = new THREE.Vector3();
 const tempPairCenter = new THREE.Vector3();
+
+const WIND_CONFIG = {
+  minSpeedKmh: 10,
+  maxSpeedKmh: 50,
+  initialDirectionRadians: Math.atan2(3.2, 1.1),
+  directionChangeRate: 0.08,
+  speedCycleRate: 0.11,
+  gustCycleRate: 0.37
+};
+
+export function createWindState() {
+  const wind = new THREE.Vector3();
+  wind.elapsedSeconds = 0;
+  wind.speedKmh = 0;
+  wind.directionRadians = WIND_CONFIG.initialDirectionRadians;
+  wind.directionDegrees = 0;
+  updateWindVector(wind, 0);
+  return wind;
+}
+
+export function updateWind(wind, delta) {
+  wind.elapsedSeconds += delta;
+  updateWindVector(wind, wind.elapsedSeconds);
+}
 
 export function applyFlightPhysics(entity, delta, { terrain, thermals, wind }) {
   if (entity.landed || entity.entangled) return;
 
   const forward = entity.getForwardVector();
+  const windRelativeVelocity = getSteppedWindRelativeVelocity(forward, wind);
   const worldUnitsPerMeter = terrain.worldUnitsPerMeter ?? 1;
   const forwardMetersPerSecond = kmhToMetersPerSecond(entity.speed);
-  tempWind.copy(wind).multiplyScalar(FLIGHT_PHYSICS.windInfluence);
+
   tempHorizontalVelocity
     .copy(forward)
     .multiplyScalar(forwardMetersPerSecond)
-    .add(tempWind);
+    .add(windRelativeVelocity);
 
   entity.velocity.set(
     tempHorizontalVelocity.x * worldUnitsPerMeter,
@@ -36,6 +63,11 @@ export function applyFlightPhysics(entity, delta, { terrain, thermals, wind }) {
 
   entity.position.addScaledVector(entity.velocity, delta);
   entity.distanceTravelled += tempHorizontalVelocity.length() * delta;
+  updateDistanceFromStart(entity, terrain);
+  entity.groundSpeedKmh = metersPerSecondToKmh(tempHorizontalVelocity.length());
+  entity.windAngleDegrees = windRelativeVelocity.angleDegrees;
+  entity.windAngleStepDegrees = windRelativeVelocity.steppedAngleDegrees;
+  entity.windAdjustedSpeedKmh = entity.speed + metersPerSecondToKmh(windRelativeVelocity.headwindComponent);
 
   const lift = thermals.getLiftAt(entity.position);
   entity.verticalSpeed = FLIGHT_PHYSICS.sinkRate + lift;
@@ -49,6 +81,8 @@ export function applyFlightPhysics(entity, delta, { terrain, thermals, wind }) {
     entity.velocity.set(0, 0, 0);
     entity.speed = 0;
     entity.targetSpeed = 0;
+    entity.groundSpeedKmh = 0;
+    entity.windAdjustedSpeedKmh = 0;
     entity.verticalSpeed = 0;
     entity.landed = true;
   }
@@ -61,6 +95,20 @@ export function updateAltitudeMetrics(entity, terrain) {
   entity.groundHeight = groundHeight;
   entity.altitudeAboveSeaLevel = entity.position.y;
   entity.groundClearance = Math.max(0, entity.position.y - groundHeight);
+}
+
+export function updateDistanceFromStart(entity, terrain) {
+  const worldUnitsPerMeter = terrain.worldUnitsPerMeter ?? 1;
+  const start = entity.launchPosition ?? entity.startPosition;
+  if (!start) {
+    entity.distanceFromStart = entity.distanceTravelled ?? 0;
+    return;
+  }
+
+  entity.distanceFromStart = Math.hypot(
+    entity.position.x - start.x,
+    entity.position.z - start.z
+  ) / worldUnitsPerMeter;
 }
 
 export function detectParagliderCollisions(entities) {
@@ -152,11 +200,78 @@ export function updateEntangledParagliders(entities, delta, { terrain, wind }) {
 }
 
 export function createWindVector() {
-  return new THREE.Vector3(3.2, 0, 1.1);
+  return createWindState();
 }
 
 function kmhToMetersPerSecond(value) {
   return value / 3.6;
+}
+
+function metersPerSecondToKmh(value) {
+  return value * 3.6;
+}
+
+function updateWindVector(wind, elapsedSeconds) {
+  const speedWave = (Math.sin(elapsedSeconds * WIND_CONFIG.speedCycleRate) + 1) / 2;
+  const gustWave = (Math.sin(elapsedSeconds * WIND_CONFIG.gustCycleRate + 1.7) + 1) / 2;
+  const mixedWave = speedWave * 0.72 + gustWave * 0.28;
+  const speedKmh = THREE.MathUtils.lerp(WIND_CONFIG.minSpeedKmh, WIND_CONFIG.maxSpeedKmh, mixedWave);
+  const directionRadians = WIND_CONFIG.initialDirectionRadians
+    + Math.sin(elapsedSeconds * WIND_CONFIG.directionChangeRate) * THREE.MathUtils.degToRad(42);
+  const speedMetersPerSecond = kmhToMetersPerSecond(speedKmh);
+
+  wind.set(
+    -Math.sin(directionRadians) * speedMetersPerSecond,
+    0,
+    -Math.cos(directionRadians) * speedMetersPerSecond
+  );
+  wind.speedKmh = speedKmh;
+  wind.directionRadians = directionRadians;
+  wind.directionDegrees = normalizeDegrees(THREE.MathUtils.radToDeg(directionRadians));
+}
+
+function getSteppedWindRelativeVelocity(forward, wind) {
+  tempForward.copy(forward).normalize();
+  tempRight.set(-tempForward.z, 0, tempForward.x);
+
+  const windSpeed = wind.length();
+  if (windSpeed <= 0.0001) {
+    tempWind.set(0, 0, 0);
+    tempWind.angleDegrees = 0;
+    tempWind.steppedAngleDegrees = 0;
+    tempWind.headwindComponent = 0;
+    return tempWind;
+  }
+
+  const windDirection = tempWind.copy(wind).normalize();
+  const signedAngle = Math.atan2(
+    windDirection.dot(tempRight),
+    windDirection.dot(tempForward)
+  );
+  const angleDegrees = THREE.MathUtils.radToDeg(signedAngle);
+  const steppedAngleDegrees = Math.round(angleDegrees / FLIGHT_PHYSICS.windAngleStepDegrees)
+    * FLIGHT_PHYSICS.windAngleStepDegrees;
+  const steppedAngleRadians = THREE.MathUtils.degToRad(steppedAngleDegrees);
+  const headwindComponent = windSpeed * Math.cos(steppedAngleRadians);
+  const crosswindComponent = windSpeed * Math.sin(steppedAngleRadians);
+
+  tempWind
+    .copy(tempForward)
+    .multiplyScalar(headwindComponent)
+    .addScaledVector(tempRight, crosswindComponent);
+  tempWind.angleDegrees = normalizeSignedDegrees(angleDegrees);
+  tempWind.steppedAngleDegrees = normalizeSignedDegrees(steppedAngleDegrees);
+  tempWind.headwindComponent = headwindComponent;
+  return tempWind;
+}
+
+function normalizeDegrees(degrees) {
+  return ((degrees % 360) + 360) % 360;
+}
+
+function normalizeSignedDegrees(degrees) {
+  const normalized = ((degrees + 180) % 360 + 360) % 360 - 180;
+  return Object.is(normalized, -0) ? 0 : normalized;
 }
 
 function canCollide(entity) {

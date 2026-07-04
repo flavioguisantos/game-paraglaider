@@ -4,7 +4,7 @@
 O jogador pilota um parapente em terreno montanhoso, buscando colunas de ar quente para ganhar altitude e permanecer voando mais tempo que os competidores.
 
 ## Objetivo da rodada
-Durante 3 minutos, ganhar altitude e percorrer distancia. Ao final, o ranking compara jogador e bots por desempenho.
+Ganhar altitude e afastar-se do ponto de decolagem. A rodada nao tem limite de tempo; ao final, o ranking compara jogador e bots por desempenho.
 
 ## Controles iniciais
 Antes da rodada, o jogador escolhe a cor principal do parapente em uma paleta ampliada e inicia o voo por um botao de tela.
@@ -28,7 +28,7 @@ Quando o jogador pousa, o parapente deixa de voar, mas os comandos continuam ati
 - X/Z/Y passam a representar metros no mundo do jogo.
 - A velocidade padrao do parapente e 40 km/h, convertida internamente para 11,11 m/s ao aplicar deslocamento no mapa.
 - O jogador pode variar a velocidade entre 32 km/h e 48 km/h enquanto mantem o comando pressionado; ao soltar, o parapente retorna suavemente para 40 km/h.
-- A distancia acumulada no ranking e HUD e medida em metros reais de deslocamento horizontal.
+- A distancia no ranking e HUD e medida em linha reta entre o ponto de decolagem de cada participante e sua posicao atual, nao pelo caminho efetivamente percorrido.
 - Y representa altitude absoluta em metros em relacao ao nivel do mar.
 - A altura exibida como valor principal do parapente e a distancia vertical ate o terreno exatamente abaixo da posicao X/Z atual: `position.y - terrain.getHeightAt(position.x, position.z)`.
 - O HUD tambem exibe a altitude absoluta em relacao ao nivel do mar para diferenciar as duas medidas.
@@ -50,11 +50,14 @@ Regras iniciais:
 - A sustentacao deve ser claramente mais alta no centro e cair em direcao as extremidades da coluna.
 - Fora da termica, o parapente perde altitude constantemente.
 - Dentro da termica, o parapente deve subir visualmente em relacao ao solo quando a sustentacao superar o sink.
-- Termicas se deslocam lentamente com o vento.
-- As termicas iniciais usam diametros menores para ficarem mais proporcionais ao mapa real e ao voo em 40 km/h.
+- Termicas derivam junto com o vento na mesma escala horizontal aplicada ao parapente, representando a massa de ar em movimento.
+- A representacao visual da coluna inclina levemente na direcao do vento para comunicar a deriva da massa de ar em relacao ao solo.
+- As termicas usam diametros moderados para permitir permanecer enroscado mesmo com vento e taxa de curva realista.
 - Conforme o piloto avanca, o jogo mantem novas termicas surgindo no corredor a frente da direcao de voo, com variacao de raio, forca e afastamento lateral.
 - Termicas que ficam muito para tras podem ser removidas para manter o custo da cena controlado.
-- Termicas nao precisam ter limite vertical no MVP.
+- O topo das termicas fica em 2000 m acima do nivel do mar. Acima desse teto, a termica nao gera mais sustentacao.
+- Cada termica exibe uma nuvem presa ao topo absoluto da coluna, ajudando o jogador a ler visualmente o limite de subida. A nuvem tem diametro aproximado de duas vezes o diametro da termica e usa volumes arredondados irregulares para ficar menos geometrica.
+- A base de cada termica exibe a sustentacao maxima da coluna em m/s, para indicar ao jogador a velocidade de subida esperada no centro.
 
 ## Variometro
 O variometro aparece no HUD em m/s e tambem emite bips quando o jogador esta subindo em uma termica. O som e destravado no primeiro gesto do usuario, incluindo o toque em iniciar voo no mobile, por restricao normal dos navegadores, e fica mais agudo, frequente, intenso e sustentado conforme a taxa de subida aumenta.
@@ -72,10 +75,13 @@ Quando dois parapentes colidem em voo, ambos entram em estado enroscado. Nesse e
 O vento e um vetor horizontal em X/Z.
 
 Regras iniciais:
-- Afeta levemente a trajetoria do parapente.
+- Varia dinamicamente entre 10 km/h e 50 km/h.
+- Afeta a trajetoria do parapente pela soma vetorial entre velocidade propria no ar e vento.
+- O parapente deriva com o vento como parte da massa de ar, inclusive com componente lateral quando o vento nao esta alinhado ao rumo.
+- O efeito relativo do vento no parapente e discretizado em passos de 10 graus ao redor do circulo trigonometrico. Com vento de cauda, a velocidade sobre o solo aumenta; com vento de frente, diminui; em angulos intermediarios, o efeito e proporcional ao angulo, incluindo deriva lateral.
 - Move termicas ao longo do tempo.
 - Pode mudar de direcao/intensidade em intervalos definidos.
-- A interface pode exibir uma pequena bussola ou texto de direcao depois do HUD basico.
+- A interface exibe velocidade e direcao do vento no HUD, e a cena mostra marcadores 3D de direcao de vento proximos ao voo.
 
 ## Terreno
 O terreno deve ser baixo custo, procedural e legivel.
@@ -90,6 +96,7 @@ Regras iniciais:
 - A escala horizontal do terreno e calculada a partir do world file do XCM e da latitude central. Na regiao de Atibaia, cada pixel do relevo representa cerca de 85 m em longitude por 92 m em latitude, mantendo o deslocamento proporcional ao mapa real.
 - A camada de relevo usa uma paleta naturalista por altitude e inclinação: verdes de vegetação nas áreas suaves, tons oliva/terra nas áreas altas e cinza/bege nas encostas mais íngremes para sugerir solo ou rocha exposta.
 - O carregamento online OpenStreetMap/Mapzen usado anteriormente esta desativado para nao misturar duas fontes de relevo.
+- Nuvens de horizonte ficam distribuidas longe da origem e acima do relevo para reforcar a impressao de voo durante o enquadramento da camera.
 - Evitar malha densa demais.
 - Garantir que o jogador comece acima do terreno.
 - Colisao e baseada em consulta de altura do terreno na posicao X/Z.
