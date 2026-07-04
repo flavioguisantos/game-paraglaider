@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { unzlibSync } from 'fflate';
 
 const DEFAULT_OPTIONS = {
   manifestUrl: '/mapas/processed/BRA_SUDESTE_HighRes/manifest.json',
@@ -472,6 +473,15 @@ function getChunkKey(tileX, tileY) {
 }
 
 async function loadImageData(url) {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Image HTTP ${response.status}`);
+    const buffer = await response.arrayBuffer();
+    return decodePngRgbData(new Uint8Array(buffer));
+  } catch (error) {
+    console.warn(`Nao foi possivel decodificar PNG de relevo como dados RGB: ${url}`, error);
+  }
+
   if (typeof createImageBitmap === 'function') {
     try {
       const response = await fetch(url);
@@ -491,6 +501,132 @@ async function loadImageData(url) {
 
   const image = await loadImageElement(url);
   return getImageData(image);
+}
+
+function decodePngRgbData(bytes) {
+  const signature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+  for (let index = 0; index < signature.length; index += 1) {
+    if (bytes[index] !== signature[index]) throw new Error('Assinatura PNG invalida');
+  }
+
+  let offset = 8;
+  let width = 0;
+  let height = 0;
+  let bitDepth = 0;
+  let colorType = 0;
+  const idatChunks = [];
+
+  while (offset < bytes.length) {
+    const length = readUint32(bytes, offset);
+    const type = readChunkType(bytes, offset + 4);
+    const dataStart = offset + 8;
+    const dataEnd = dataStart + length;
+
+    if (type === 'IHDR') {
+      width = readUint32(bytes, dataStart);
+      height = readUint32(bytes, dataStart + 4);
+      bitDepth = bytes[dataStart + 8];
+      colorType = bytes[dataStart + 9];
+      const compression = bytes[dataStart + 10];
+      const filter = bytes[dataStart + 11];
+      const interlace = bytes[dataStart + 12];
+      if (bitDepth !== 8 || compression !== 0 || filter !== 0 || interlace !== 0) {
+        throw new Error('PNG de relevo em formato nao suportado');
+      }
+      if (colorType !== 2 && colorType !== 6) {
+        throw new Error(`PNG de relevo com colorType nao suportado: ${colorType}`);
+      }
+    } else if (type === 'IDAT') {
+      idatChunks.push(bytes.slice(dataStart, dataEnd));
+    } else if (type === 'IEND') {
+      break;
+    }
+
+    offset = dataEnd + 4;
+  }
+
+  if (!width || !height || idatChunks.length === 0) {
+    throw new Error('PNG de relevo incompleto');
+  }
+
+  const compressedLength = idatChunks.reduce((total, chunk) => total + chunk.length, 0);
+  const compressed = new Uint8Array(compressedLength);
+  let writeOffset = 0;
+  for (const chunk of idatChunks) {
+    compressed.set(chunk, writeOffset);
+    writeOffset += chunk.length;
+  }
+
+  const channels = colorType === 6 ? 4 : 3;
+  const bytesPerPixel = channels;
+  const stride = width * channels;
+  const inflated = unzlibSync(compressed);
+  const data = new Uint8ClampedArray(width * height * 4);
+  const previous = new Uint8Array(stride);
+  const current = new Uint8Array(stride);
+  let readOffset = 0;
+
+  for (let y = 0; y < height; y += 1) {
+    const filter = inflated[readOffset];
+    readOffset += 1;
+    current.set(inflated.subarray(readOffset, readOffset + stride));
+    readOffset += stride;
+    unfilterPngScanline(current, previous, filter, bytesPerPixel);
+
+    for (let x = 0; x < width; x += 1) {
+      const sourceIndex = x * channels;
+      const targetIndex = (y * width + x) * 4;
+      data[targetIndex] = current[sourceIndex];
+      data[targetIndex + 1] = current[sourceIndex + 1];
+      data[targetIndex + 2] = current[sourceIndex + 2];
+      data[targetIndex + 3] = colorType === 6 ? current[sourceIndex + 3] : 255;
+    }
+
+    previous.set(current);
+  }
+
+  return { data, width, height };
+}
+
+function unfilterPngScanline(scanline, previous, filter, bytesPerPixel) {
+  for (let index = 0; index < scanline.length; index += 1) {
+    const left = index >= bytesPerPixel ? scanline[index - bytesPerPixel] : 0;
+    const up = previous[index] ?? 0;
+    const upLeft = index >= bytesPerPixel ? previous[index - bytesPerPixel] : 0;
+
+    if (filter === 1) {
+      scanline[index] = (scanline[index] + left) & 0xff;
+    } else if (filter === 2) {
+      scanline[index] = (scanline[index] + up) & 0xff;
+    } else if (filter === 3) {
+      scanline[index] = (scanline[index] + Math.floor((left + up) / 2)) & 0xff;
+    } else if (filter === 4) {
+      scanline[index] = (scanline[index] + paethPredictor(left, up, upLeft)) & 0xff;
+    } else if (filter !== 0) {
+      throw new Error(`Filtro PNG nao suportado: ${filter}`);
+    }
+  }
+}
+
+function paethPredictor(left, up, upLeft) {
+  const estimate = left + up - upLeft;
+  const leftDistance = Math.abs(estimate - left);
+  const upDistance = Math.abs(estimate - up);
+  const upLeftDistance = Math.abs(estimate - upLeft);
+  if (leftDistance <= upDistance && leftDistance <= upLeftDistance) return left;
+  if (upDistance <= upLeftDistance) return up;
+  return upLeft;
+}
+
+function readUint32(bytes, offset) {
+  return (
+    bytes[offset] * 0x1000000
+    + ((bytes[offset + 1] << 16) | (bytes[offset + 2] << 8) | bytes[offset + 3])
+  );
+}
+
+function readChunkType(bytes, offset) {
+  return String.fromCharCode(bytes[offset], bytes[offset + 1], bytes[offset + 2], bytes[offset + 3]);
 }
 
 function loadImageElement(url) {

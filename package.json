@@ -9,6 +9,7 @@
     "process:xcm": "node scripts/process-xcm-map.js mapas/BRA_SUDESTE_HighRes.xcm"
   },
   "dependencies": {
+    "fflate": "^0.8.3",
     "three": "^0.179.1"
   }
 }
