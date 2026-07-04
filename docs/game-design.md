@@ -21,7 +21,12 @@ Quando o jogador pousa, o parapente deixa de voar, mas os comandos continuam ati
 
 ## Movimento
 - X/Z representam deslocamento horizontal.
-- Y representa altitude.
+- X/Z/Y passam a representar metros no mundo do jogo.
+- A velocidade padrao do parapente e 40 km/h, convertida internamente para 11,11 m/s ao aplicar deslocamento no mapa.
+- O jogador pode variar a velocidade aproximadamente entre 28 km/h e 55 km/h pelos controles.
+- A distancia acumulada no ranking e HUD e medida em metros reais de deslocamento horizontal.
+- Y representa altitude em metros.
+- Fora de sustentacao, a taxa base de descida do parapente e 2 m/s.
 - O parapente deve sempre ter algum movimento para frente.
 - Curvas devem ser suaves, nao instantaneas.
 - A curva deve ser fechada o suficiente para permitir permanecer dentro de uma termica media.
@@ -37,10 +42,14 @@ Regras iniciais:
 - Fora da termica, o parapente perde altitude constantemente.
 - Dentro da termica, o parapente deve subir visualmente em relacao ao solo quando a sustentacao superar o sink.
 - Termicas se deslocam lentamente com o vento.
+- As termicas iniciais usam diametros menores para ficarem mais proporcionais ao mapa real e ao voo em 40 km/h.
 - Termicas nao precisam ter limite vertical no MVP.
 
 ## Variometro
-O variometro aparece no HUD em m/s e tambem emite bips quando o jogador esta subindo em uma termica. O som so toca depois do primeiro gesto do usuario, por restricao normal dos navegadores, e fica mais agudo e frequente conforme a taxa de subida aumenta.
+O variometro aparece no HUD em m/s e tambem emite bips quando o jogador esta subindo em uma termica. O som so toca depois do primeiro gesto do usuario, por restricao normal dos navegadores, e fica mais agudo, frequente e intenso conforme a taxa de subida aumenta.
+
+## Colisao entre parapentes
+Quando dois parapentes colidem em voo, ambos entram em estado enroscado. Nesse estado, controles, termicas e trajetoria normal deixam de atuar; os dois giram próximos um do outro e descem juntos ate tocar o terreno. Ao chegar ao solo, ambos pousam e saem da rodada.
 
 ## Vento
 O vento e um vetor horizontal em X/Z.
@@ -56,6 +65,12 @@ O terreno deve ser baixo custo, procedural e legivel.
 
 Regras iniciais:
 - Usar heightmap gerado por ruido.
+- Para teste offline/local, o arquivo `mapas/BRA_SUDESTE_HighRes.xcm` pode ser processado por `npm run process:xcm`. A saida em `mapas/processed/BRA_SUDESTE_HighRes/` contem tiles de relevo locais para carregamento progressivo em chunks, cobrindo todo o Sudeste do Brasil em vez de apenas Pedra Grande.
+- O jogo usa o manifesto local processado como fonte ativa de terreno. A camada base e o relevo XCM em mesh propria, com camadas vetoriais locais renderizadas por cima para estradas, ferrovias, rios, areas de agua, areas urbanas e pontos de cidades/vilas.
+- A origem do mundo (`x=0`, `z=0`) e o ponto inicial do jogador ficam sobre a Pedra Grande em Atibaia.
+- A escala horizontal do terreno e calculada a partir do world file do XCM e da latitude central. Na regiao de Atibaia, cada pixel do relevo representa cerca de 85 m em longitude por 92 m em latitude, mantendo o deslocamento proporcional ao mapa real.
+- A camada de relevo usa uma paleta naturalista por altitude e inclinação: verdes de vegetação nas áreas suaves, tons oliva/terra nas áreas altas e cinza/bege nas encostas mais íngremes para sugerir solo ou rocha exposta.
+- O carregamento online OpenStreetMap/Mapzen usado anteriormente esta desativado para nao misturar duas fontes de relevo.
 - Evitar malha densa demais.
 - Garantir que o jogador comece acima do terreno.
 - Colisao e baseada em consulta de altura do terreno na posicao X/Z.

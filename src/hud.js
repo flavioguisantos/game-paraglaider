@@ -35,7 +35,7 @@ export function createHud(root) {
       <span>Altitude</span><strong data-hud="altitude">0 m</strong>
       <span>Solo</span><strong data-hud="groundClearance">0 m</strong>
       <span>Vario</span><strong data-hud="vario">0.0 m/s</strong>
-      <span>Velocidade</span><strong data-hud="speed">0 m/s</strong>
+      <span>Velocidade</span><strong data-hud="speed">0 km/h</strong>
       <span>Distancia</span><strong data-hud="distance">0 m</strong>
       <span>Status</span><strong data-hud="status">Voando</strong>
     </div>
@@ -67,8 +67,8 @@ export function updateHud(elements, { player, bots = [], terrain, round }) {
   elements.altitude.textContent = `${Math.round(player.position.y)} m`;
   elements.groundClearance.textContent = `${Math.round(groundClearance)} m`;
   elements.vario.textContent = `${formatSigned(player.verticalSpeed, 1)} m/s`;
-  elements.speed.textContent = `${Math.round(player.speed)} m/s`;
-  elements.distance.textContent = `${Math.round(player.distanceTravelled)} m`;
+  elements.speed.textContent = `${Math.round(player.speed)} km/h`;
+  elements.distance.textContent = formatDistance(player.distanceTravelled);
   elements.status.textContent = getStatusText(round, player);
   elements.rankingTitle.textContent = round.ended ? 'Ranking final' : 'Ranking';
   elements.ranking.innerHTML = getRankingRows([
@@ -91,6 +91,7 @@ function formatSigned(value, digits) {
 function getStatusText(round, player) {
   if (round.endReason === 'time') return 'Tempo encerrado';
   if (round.endReason === 'landed' || player.landed) return 'Pousou';
+  if (player.entangled) return 'Enroscado';
   return 'Voando';
 }
 
@@ -99,10 +100,15 @@ function getRankingRows(entries) {
     .sort(compareRankingEntries)
     .map(({ name, entity }) => {
       const state = entity.landed ? 'pousou' : 'voando';
+      const status = entity.entangled ? 'enroscado' : state;
       const altitude = Math.round(entity.position.y);
-      const distance = Math.round(entity.distanceTravelled);
-      return `<li><span>${name}</span><strong>${altitude} m / ${distance} m</strong><em>${state}</em></li>`;
+      return `<li><span>${name}</span><strong>${altitude} m / ${formatDistance(entity.distanceTravelled)}</strong><em>${status}</em></li>`;
     });
+}
+
+function formatDistance(meters) {
+  if (meters >= 1000) return `${(meters / 1000).toFixed(2)} km`;
+  return `${Math.round(meters)} m`;
 }
 
 function compareRankingEntries(a, b) {

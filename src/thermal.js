@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 const THERMAL_CONFIG = {
-  columnHeight: 72,
+  columnHeight: 650,
   driftScale: 0.16,
   particleCount: 26,
   liftFalloffExponent: 1.7,
@@ -12,10 +12,10 @@ const THERMAL_CONFIG = {
 };
 
 const THERMAL_SEEDS = [
-  { x: -46, z: -36, radius: 24, strength: 3.7 },
-  { x: 32, z: -58, radius: 20, strength: 3.3 },
-  { x: 58, z: 34, radius: 27, strength: 4.1 },
-  { x: -34, z: 52, radius: 22, strength: 3.5 }
+  { x: -280, z: -220, radius: 95, strength: 3.7 },
+  { x: 360, z: -430, radius: 115, strength: 3.3 },
+  { x: 640, z: 380, radius: 135, strength: 4.1 },
+  { x: -420, z: 520, radius: 105, strength: 3.5 }
 ];
 
 export function createThermalField({ scene, terrain }) {
@@ -39,15 +39,18 @@ class ThermalField {
 
   update(delta, wind) {
     const halfSize = this.terrain.size / 2;
+    const worldUnitsPerMeter = this.terrain.worldUnitsPerMeter ?? 1;
 
     for (const thermal of this.thermals) {
-      thermal.position.x += wind.x * THERMAL_CONFIG.driftScale * delta;
-      thermal.position.z += wind.z * THERMAL_CONFIG.driftScale * delta;
+      thermal.position.x += wind.x * worldUnitsPerMeter * THERMAL_CONFIG.driftScale * delta;
+      thermal.position.z += wind.z * worldUnitsPerMeter * THERMAL_CONFIG.driftScale * delta;
 
-      if (thermal.position.x > halfSize) thermal.position.x = -halfSize;
-      if (thermal.position.x < -halfSize) thermal.position.x = halfSize;
-      if (thermal.position.z > halfSize) thermal.position.z = -halfSize;
-      if (thermal.position.z < -halfSize) thermal.position.z = halfSize;
+      if (halfSize > 0) {
+        if (thermal.position.x > halfSize) thermal.position.x = -halfSize;
+        if (thermal.position.x < -halfSize) thermal.position.x = halfSize;
+        if (thermal.position.z > halfSize) thermal.position.z = -halfSize;
+        if (thermal.position.z < -halfSize) thermal.position.z = halfSize;
+      }
 
       const groundHeight = this.terrain.getHeightAt(thermal.position.x, thermal.position.z);
       thermal.visual.position.set(
@@ -112,7 +115,7 @@ function createThermal(seed, index, terrain, hotThermalIndex) {
   visual.add(column);
 
   const ring = new THREE.Mesh(
-    new THREE.TorusGeometry(seed.radius, 0.18, 8, 48),
+    new THREE.TorusGeometry(seed.radius, 3.2, 8, 48),
     new THREE.MeshBasicMaterial({
       color: 0xfff0a8,
       transparent: true,
@@ -133,7 +136,7 @@ function createThermal(seed, index, terrain, hotThermalIndex) {
   });
 
   for (let i = 0; i < THERMAL_CONFIG.particleCount; i += 1) {
-    const particle = new THREE.Mesh(new THREE.SphereGeometry(0.42, 8, 6), particleMaterial);
+    const particle = new THREE.Mesh(new THREE.SphereGeometry(3.8, 8, 6), particleMaterial);
     const angle = (i / THERMAL_CONFIG.particleCount) * Math.PI * 2;
     const radius = seed.radius * (0.2 + ((i * 7) % 10) / 16);
     particle.userData.baseAngle = angle;
@@ -161,7 +164,7 @@ function createThermal(seed, index, terrain, hotThermalIndex) {
 
 function animateParticles(thermal, delta) {
   for (const particle of thermal.particles) {
-    particle.userData.heightOffset = (particle.userData.heightOffset + delta * 7.5) % THERMAL_CONFIG.columnHeight;
+    particle.userData.heightOffset = (particle.userData.heightOffset + delta * 28) % THERMAL_CONFIG.columnHeight;
     particle.userData.baseAngle += delta * 0.85;
 
     particle.position.set(

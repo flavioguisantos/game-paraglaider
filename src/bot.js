@@ -3,15 +3,15 @@ import { applyFlightPhysics } from './physics.js';
 import { createParagliderModel, setParagliderLandedPose } from './paragliderModel.js';
 
 const BOT_CONFIG = {
-  baseSpeed: 16,
+  baseSpeedKmh: 40,
   turnRate: 0.85,
   visualBank: 0.42,
   startAltitude: 26
 };
 
 const BOT_STARTS = [
-  { name: 'Bot Azul', color: 0x3f7cff, x: -18, z: 18, heading: -0.5 },
-  { name: 'Bot Verde', color: 0x53d17a, x: 22, z: 12, heading: 0.4 }
+  { name: 'Bot Azul', color: 0x3f7cff, x: -180, z: 180, heading: -0.5 },
+  { name: 'Bot Verde', color: 0x53d17a, x: 220, z: 120, heading: 0.4 }
 ];
 
 export function createBots({ terrain }) {
@@ -26,11 +26,14 @@ export class Bot {
     this.position = this.group.position;
     this.velocity = new THREE.Vector3();
     this.heading = heading;
-    this.speed = BOT_CONFIG.baseSpeed;
-    this.targetSpeed = BOT_CONFIG.baseSpeed;
+    this.speed = BOT_CONFIG.baseSpeedKmh;
+    this.targetSpeed = BOT_CONFIG.baseSpeedKmh;
     this.verticalSpeed = 0;
     this.distanceTravelled = 0;
     this.landed = false;
+    this.entangled = false;
+    this.entanglementId = null;
+    this.entanglementSpin = 0;
     this.landingPoseApplied = false;
 
     this.position.set(x, terrain.getHeightAt(x, z) + BOT_CONFIG.startAltitude, z);
@@ -38,7 +41,7 @@ export class Bot {
   }
 
   update(delta, flightContext) {
-    if (this.landed) return;
+    if (this.landed || this.entangled) return;
 
     const nearestThermal = flightContext.thermals.getNearestThermal(this.position);
     const desiredHeading = getHeadingTo(this.position, nearestThermal.position);

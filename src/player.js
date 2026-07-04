@@ -3,11 +3,13 @@ import { applyFlightPhysics } from './physics.js';
 import { createParagliderModel, setParagliderLandedPose } from './paragliderModel.js';
 
 const PLAYER_CONFIG = {
+  launchX: 0,
+  launchZ: 0,
   startAltitude: 24,
-  baseSpeed: 17,
-  minSpeed: 9,
-  maxSpeed: 30,
-  acceleration: 10,
+  baseSpeedKmh: 40,
+  minSpeedKmh: 28,
+  maxSpeedKmh: 55,
+  accelerationKmh: 18,
   turnRate: 1.68,
   visualBank: 0.5,
   visualPitch: 0.14
@@ -28,28 +30,31 @@ export class Player {
     this.position = this.group.position;
     this.velocity = new THREE.Vector3();
     this.heading = 0;
-    this.speed = PLAYER_CONFIG.baseSpeed;
-    this.targetSpeed = PLAYER_CONFIG.baseSpeed;
+    this.speed = PLAYER_CONFIG.baseSpeedKmh;
+    this.targetSpeed = PLAYER_CONFIG.baseSpeedKmh;
     this.verticalSpeed = 0;
     this.distanceTravelled = 0;
     this.landed = false;
+    this.entangled = false;
+    this.entanglementId = null;
+    this.entanglementSpin = 0;
     this.landingPoseApplied = false;
     this.input = createInputState();
 
-    const startY = terrain.getHeightAt(0, 0) + PLAYER_CONFIG.startAltitude;
-    this.position.set(0, startY, 0);
+    const startY = terrain.getHeightAt(PLAYER_CONFIG.launchX, PLAYER_CONFIG.launchZ) + PLAYER_CONFIG.startAltitude;
+    this.position.set(PLAYER_CONFIG.launchX, startY, PLAYER_CONFIG.launchZ);
   }
 
   update(delta, flightContext) {
-    if (this.landed) return;
+    if (this.landed || this.entangled) return;
 
     const turnInput = Number(this.input.left) - Number(this.input.right);
     const speedInput = Number(this.input.forward) - Number(this.input.backward);
 
     this.targetSpeed = THREE.MathUtils.clamp(
-      this.targetSpeed + speedInput * PLAYER_CONFIG.acceleration * delta,
-      PLAYER_CONFIG.minSpeed,
-      PLAYER_CONFIG.maxSpeed
+      this.targetSpeed + speedInput * PLAYER_CONFIG.accelerationKmh * delta,
+      PLAYER_CONFIG.minSpeedKmh,
+      PLAYER_CONFIG.maxSpeedKmh
     );
     this.speed = THREE.MathUtils.lerp(this.speed, this.targetSpeed, 1 - Math.exp(-delta * 4));
     this.heading += turnInput * PLAYER_CONFIG.turnRate * delta;

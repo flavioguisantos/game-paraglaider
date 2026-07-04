@@ -31,20 +31,26 @@ jogo-parapente/
 
 ## Responsabilidades dos modulos
 
+### `server.js`
+Serve a aplicacao local e expoe um proxy simples em `/tiles/:source/:z/:x/:y.png` para buscar tiles OpenStreetMap e Mapzen/AWS. O proxy evita bloqueio de CORS ao decodificar pixels do tile Terrarium no navegador.
+
 ### `src/main.js`
 Inicializa cena, renderer, relogio, terreno, jogador, bots, termicas, HUD e loop principal. Coordena atualizacoes por frame.
 
 ### `src/terrain.js`
-Gera geometria procedural do terreno e expoe uma funcao para consultar altura do solo em uma coordenada X/Z.
+Gera e gerencia o terreno local em chunks a partir do manifesto processado de `mapas/BRA_SUDESTE_HighRes.xcm`. O modulo carrega `manifest.json`, converte a posicao local do piloto para tile/pixel do mapa, calcula a escala horizontal em metros a partir do world file e da latitude central, carrega os chunks `terrain-rgb/{x}/{y}.png` ao redor do piloto e descarrega chunks distantes. A cena do terreno separa `XcmReliefLayer`, com a malha de relevo, de `XcmVectorOverlayLayer`, com estradas, ferrovias, rios, areas de agua, areas urbanas e pontos de cidades/vilas vindos de `vectors/{x}/{y}.json`. `getHeightAt()` consulta a altura do chunk carregado em metros e retorna altura de fallback enquanto o tile ainda nao carregou, quando a posicao e invalida ou quando esta fora dos tiles disponiveis. O relevo online OSM/Mapzen usado no teste anterior fica desativado para nao conflitar com o mapa XCM local.
+
+### `scripts/process-xcm-map.js`
+Processa mapas XCSoar `.xcm` locais. O script extrai o pacote, converte `terrain.jp2` para RAW 16-bit via ImageMagick e gera tiles PNG `256x256` em codificacao Terrarium RGB (`R * 256 + G - 32768`). Tambem le os shapefiles do pacote, converte todas as camadas vetoriais para JSONs por tile em `vectors/{x}/{y}.json` e escreve `manifest.json` com bounds, world file, grade de tiles, camadas disponiveis e indice de tiles vetoriais para carregamento progressivo conforme o piloto avanca.
 
 ### `src/physics.js`
-Calcula movimento simplificado, sink, sustentacao de termicas, efeito do vento e colisao com terreno.
+Calcula movimento simplificado, sink, sustentacao de termicas, efeito do vento e colisao com terreno. A velocidade horizontal das entidades e armazenada em km/h e convertida para m/s antes de aplicar deslocamento em X/Z, mantendo a distancia percorrida proporcional ao mapa real. Tambem detecta colisao entre parapentes e controla o estado enroscado, no qual os dois participantes deixam de voar normalmente e descem juntos ate o solo.
 
 ### `src/thermal.js`
 Cria, atualiza e renderiza zonas de termica. Deve separar dados de gameplay da representacao visual.
 
 ### `src/player.js`
-Representa o parapente do jogador, controles, estado de voo, posicao, direcao, altitude e pouso.
+Representa o parapente do jogador, controles, estado de voo, posicao, direcao, altitude e pouso. A posicao inicial do jogador fica em `x=0`, `z=0`, que corresponde a Pedra Grande em Atibaia pela configuracao central do terreno.
 
 ### `src/bot.js`
 Representa bots simples que escolhem a termica mais proxima e voam em sua direcao.
@@ -53,7 +59,7 @@ Representa bots simples que escolhem a termica mais proxima e voam em sua direca
 Cria o modelo visual compartilhado de parapente, incluindo vela, linhas de suspensao, piloto e poses de voo/pouso. Jogador e bots carregam a vela OBJ `image/nova-vortex.obj` via `OBJLoader`, usando a mesma escala e configuracao visual, com cores diferentes por participante. O modulo remapeia os eixos do OBJ para o padrao da cena, centraliza, escala e aplica material proprio. Apos o OBJ carregar, as ancoragens das linhas sao recalculadas a partir dos vertices transformados da area inferior da vela, conectando as linhas a pontos reais da malha. Se o asset falhar, o modelo usa a vela procedural como fallback. Na pose de pouso, `player.js` e `bot.js` passam a altura do terreno para o modelo, que achata a vela visualmente e a posiciona deitada perto do solo.
 
 ### `src/audio.js`
-Controla feedback sonoro local com Web Audio API. O variometro sonoro destrava apos o primeiro gesto do usuario e emite bips apenas quando o jogador esta com velocidade vertical positiva suficiente.
+Controla feedback sonoro local com Web Audio API. O variometro sonoro destrava apos o primeiro gesto do usuario e emite bips apenas quando o jogador esta com velocidade vertical positiva suficiente, aumentando frequencia, ritmo e intensidade conforme a subida fica mais forte.
 
 ### `src/camera.js`
 Controla camera em terceira pessoa com suavizacao. Apos pouso do jogador, os mesmos comandos de direcao passam a orbitar e aproximar/afastar a camera ao redor do local de pouso.
@@ -78,5 +84,7 @@ Atualiza elementos 2D de interface: altitude, variometro, tempo, estado de rodad
 - `heading`: direcao horizontal.
 - `turnRate`: taxa de curva atual.
 - `verticalSpeed`: variometro atual.
-- `distanceTravelled`: distancia acumulada.
+- `speed`: velocidade horizontal em km/h.
+- `distanceTravelled`: distancia horizontal acumulada em metros.
+- `entangled`: se esta enroscado com outro parapente apos colisao.
 - `landed`: se ja pousou.
