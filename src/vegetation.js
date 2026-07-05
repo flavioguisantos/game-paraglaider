@@ -69,6 +69,15 @@ class Vegetation {
     this.rebuild(position);
   }
 
+  reset() {
+    this.lastCenter = null;
+    this.retryAt = 0;
+    this.canopyMesh.count = 0;
+    this.trunkMesh.count = 0;
+    this.canopyMesh.instanceMatrix.needsUpdate = true;
+    this.trunkMesh.instanceMatrix.needsUpdate = true;
+  }
+
   rebuild(center) {
     const { cellSize, radius, presenceThreshold, maxForestHeight, maxInstances } = VEGETATION_CONFIG;
     const fallbackHeight = this.terrain.config?.fallbackHeight;
@@ -96,6 +105,8 @@ class Vegetation {
           : this.terrain.getHeightAt(x, z);
         // fallbackHeight indica chunk ainda nao carregado; evita arvores flutuando.
         if (groundHeight === fallbackHeight || groundHeight > maxForestHeight) continue;
+        if (this.terrain.isSeaAt?.(x, z)) continue;
+        if (this.terrain.isCoastalSandAt?.(x, z)) continue;
 
         const scale = 0.75 + hashCell(cellX, cellZ, 3) * 0.75;
         this.dummy.position.set(x, groundHeight, z);

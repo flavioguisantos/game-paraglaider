@@ -58,7 +58,9 @@ export class Bot {
     if (this.landed || this.entangled) return;
 
     const nearestThermal = flightContext.thermals.getNearestThermal(this.position);
-    const desiredHeading = getHeadingTo(this.position, nearestThermal.position);
+    const desiredHeading = nearestThermal
+      ? getHeadingTo(this.position, nearestThermal.position)
+      : this.heading;
     const turnDelta = normalizeAngle(desiredHeading - this.heading);
     const targetTurnRate = THREE.MathUtils.clamp(turnDelta * 0.9, -BOT_CONFIG.maxTurnRate, BOT_CONFIG.maxTurnRate);
 

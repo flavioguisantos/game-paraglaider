@@ -15,7 +15,12 @@ const PLAYER_CONFIG = {
 };
 
 export class Player {
-  constructor({ terrain, canopyColor = 0xa8dff2 }) {
+  constructor({
+    terrain,
+    canopyColor = 0xa8dff2,
+    launchAltitudeMeters = PLAYER_CONFIG.startAltitude,
+    launchHeadingRadians = 0
+  }) {
     this.terrain = terrain;
     this.group = createParagliderModel({
       canopyAssetUrl: '/image/nova-vortex.obj',
@@ -28,7 +33,7 @@ export class Player {
     });
     this.position = this.group.position;
     this.velocity = new THREE.Vector3();
-    this.heading = 0;
+    this.heading = launchHeadingRadians;
     this.turnRate = 0;
     this.speed = PLAYER_CONFIG.baseSpeedKmh;
     this.targetSpeed = PLAYER_CONFIG.baseSpeedKmh;
@@ -49,9 +54,10 @@ export class Player {
     this.landingPoseApplied = false;
     this.input = createInputState();
 
-    const startY = terrain.getHeightAt(PLAYER_CONFIG.launchX, PLAYER_CONFIG.launchZ) + PLAYER_CONFIG.startAltitude;
+    const startY = terrain.getHeightAt(PLAYER_CONFIG.launchX, PLAYER_CONFIG.launchZ) + launchAltitudeMeters;
     this.position.set(PLAYER_CONFIG.launchX, startY, PLAYER_CONFIG.launchZ);
     this.launchPosition = this.position.clone();
+    this.group.rotation.y = this.heading;
     updateAltitudeMetrics(this, terrain);
   }
 

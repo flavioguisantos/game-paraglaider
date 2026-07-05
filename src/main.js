@@ -4,8 +4,10 @@ import { createCloudBillboard } from './clouds.js';
 import { createAdventureMusic, createVarioAudio, unlockGameAudio } from './audio.js';
 import { createBots } from './bot.js?v=wind-physics-1';
 import { initializeThirdPersonCamera, updateStandbyCamera, updateThirdPersonCamera } from './camera.js';
-import { createWindVector, detectParagliderCollisions, updateEntangledParagliders, updateWind } from './physics.js?v=wind-physics-1';
+import { configureWind, createWindVector, detectParagliderCollisions, updateEntangledParagliders, updateWind } from './physics.js?v=wind-physics-1';
 import { createHud, createRoundState, updateHud, updateRoundState } from './hud.js?v=wind-physics-1';
+import { findFlightLocation } from './flightLocations.js';
+import { createOrographicLift } from './orographicLift.js';
 import { Player } from './player.js?v=wind-physics-1';
 import { createTerrain } from './terrain.js?v=vector-realism-1';
 import { createThermalField } from './thermal.js?v=thermal-drift-1';
@@ -14,6 +16,7 @@ import { createVegetation } from './vegetation.js';
 const canvas = document.querySelector('#game');
 const startButton = document.querySelector('#start-flight');
 const colorInputs = [...document.querySelectorAll('input[name="canopy-color"]')];
+const locationInputs = [...document.querySelectorAll('input[name="flight-location"]')];
 const scene = new THREE.Scene();
 // Perspectiva aerea: nevoa azulada/dessaturada aproximando a cor do horizonte do ceu fisico.
 scene.fog = new THREE.Fog(0xc3d9e8, 3500, 26000);
@@ -103,6 +106,8 @@ const wind = createWindVector();
 const windMarkers = createWindMarkers();
 scene.add(windMarkers);
 const thermals = createThermalField({ scene, terrain, sunDirection: SUN_DIRECTION });
+const orographicLift = createOrographicLift();
+scene.add(orographicLift.group);
 const hud = createHud(document.querySelector('#hud'));
 const varioAudio = createVarioAudio();
 const adventureMusic = createAdventureMusic();
@@ -114,7 +119,9 @@ const appState = {
   player: null,
   bots: [],
   flyers: [],
-  round: null
+  round: null,
+  starting: false,
+  selectedLocation: getSelectedFlightLocation()
 };
 
 camera.position.set(0, 1760, 2250);
@@ -133,6 +140,13 @@ function handleResize() {
 window.addEventListener('resize', handleResize);
 window.visualViewport?.addEventListener('resize', handleResize);
 startButton.addEventListener('click', startFlight);
+for (const input of locationInputs) {
+  input.addEventListener('change', () => {
+    if (input.checked && !appState.started) {
+      applySelectedFlightLocation();
+    }
+  });
+}
 setupLayerPanel();
 
 // Painel de teste: liga/desliga cada camada vetorial do mapa.
@@ -166,9 +180,21 @@ function setupLayerPanel() {
   }
 }
 
-function startFlight() {
-  if (appState.started) return;
+async function startFlight() {
+  if (appState.started || appState.starting) return;
 
+  appState.starting = true;
+  startButton.disabled = true;
+  applySelectedFlightLocation();
+  let hasLaunchHeight = false;
+  try {
+    hasLaunchHeight = await terrain.ensureHeightAt(0, 0);
+  } catch (error) {
+    console.warn('Nao foi possivel aguardar a altura real de decolagem.', error);
+  }
+  if (!hasLaunchHeight) {
+    console.warn('Altura real de decolagem indisponivel; usando fallback do terreno.');
+  }
   varioAudio.unlock();
   unlockGameAudio();
 
@@ -177,7 +203,13 @@ function startFlight() {
     16
   );
 
-  appState.player = new Player({ terrain, canopyColor: selectedColor });
+  const selectedLocation = getSelectedFlightLocation();
+  appState.player = new Player({
+    terrain,
+    canopyColor: selectedColor,
+    launchAltitudeMeters: selectedLocation.launchAltitudeMeters,
+    launchHeadingRadians: selectedLocation.launchHeadingRadians
+  });
   scene.add(appState.player.group);
   initializeThirdPersonCamera(camera, appState.player, { terrain });
 
@@ -193,12 +225,32 @@ function startFlight() {
   document.body.classList.remove('round-ended');
   adventureMusic.start();
   clock.start();
+  appState.starting = false;
+  startButton.disabled = false;
+}
+
+function getSelectedFlightLocation() {
+  const selectedLocationId = locationInputs.find((input) => input.checked)?.value;
+  return findFlightLocation(selectedLocationId);
+}
+
+function applySelectedFlightLocation() {
+  const location = getSelectedFlightLocation();
+  appState.selectedLocation = location;
+  terrain.setCenterCoordinates({
+    latitude: location.latitude,
+    longitude: location.longitude
+  });
+  vegetation.reset();
+  configureWind(wind, location.wind);
+  thermals.setEnabled(location.liftMode !== 'orographic');
+  orographicLift.configure(location.orographicLift);
 }
 
 renderer.setAnimationLoop(() => {
   const delta = Math.min(clock.getDelta(), 0.05);
   const referencePosition = appState.player?.position ?? standbyPosition;
-  terrain.update(referencePosition);
+  terrain.update(referencePosition, delta);
   vegetation.update(referencePosition);
   updateSunLight(referencePosition);
   updateWind(wind, delta);
@@ -206,21 +258,26 @@ renderer.setAnimationLoop(() => {
 
   if (!appState.started) {
     thermals.update(delta, wind);
-    updateStandbyCamera(camera, terrain, delta);
+    orographicLift.update(delta, { referencePosition, terrain, wind });
+    updateStandbyCamera(camera, terrain, delta, {
+      headingRadians: appState.selectedLocation?.standbyHeadingRadians
+        ?? appState.selectedLocation?.launchHeadingRadians
+    });
     renderer.render(scene, camera);
     return;
   }
 
   const { player, bots, flyers, round } = appState;
   thermals.update(delta, wind, player);
+  orographicLift.update(delta, { referencePosition: player.position, terrain, wind });
 
   if (!round.ended) {
-    player.update(delta, { terrain, thermals, wind });
+    player.update(delta, { terrain, thermals, orographicLift, wind });
   }
 
   if (!round.ended || round.endReason === 'landed') {
     for (const bot of bots) {
-      bot.update(delta, { terrain, thermals, wind });
+      bot.update(delta, { terrain, thermals, orographicLift, wind });
     }
 
     detectParagliderCollisions(flyers);

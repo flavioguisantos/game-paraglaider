@@ -1,11 +1,13 @@
 import * as THREE from 'three';
 import { decompressSync } from 'fflate';
+import { createUrbanScenery } from './urbanScenery.js';
+import { DEFAULT_FLIGHT_LOCATION } from './flightLocations.js';
 
 const DEFAULT_OPTIONS = {
   manifestUrl: '/mapas/processed/BRA_SUDESTE_HighRes/manifest.json',
-  // Pedra Grande, Atibaia: world origin and launch reference.
-  centerLatitude: -23.169090319406045,
-  centerLongitude: -46.52831806228563,
+  // Local geografico que sera mapeado para a origem do mundo (x=0, z=0).
+  centerLatitude: DEFAULT_FLIGHT_LOCATION.latitude,
+  centerLongitude: DEFAULT_FLIGHT_LOCATION.longitude,
   chunkSegments: 96,
   loadRadius: 1,
   unloadRadius: 2,
@@ -19,6 +21,10 @@ const DEFAULT_OPTIONS = {
 };
 
 const TERRAIN_ASSET_VERSION = 'terrain-rgb-binary-5';
+const NO_DATA_ELEVATION_THRESHOLD = -1000;
+const SEA_LEVEL_ELEVATION = 0;
+const COASTAL_SAND_MAX_ELEVATION = 45;
+const COASTAL_SAND_SEARCH_PIXELS = 5;
 const tempTile = { x: 0, y: 0 };
 // Camadas vetoriais renderizadas de forma realista sobre o relevo:
 // - ribbon: fita de geometria com largura real em metros drapejada no terreno
@@ -53,7 +59,8 @@ class LocalXcmTerrain {
     this.reliefGroup.name = 'XcmReliefLayer';
     this.vectorGroup = new THREE.Group();
     this.vectorGroup.name = 'XcmVectorOverlayLayer';
-    this.mesh.add(this.reliefGroup, this.vectorGroup);
+    this.urbanScenery = createUrbanScenery({ terrain: this });
+    this.mesh.add(this.reliefGroup, this.vectorGroup, this.urbanScenery.group);
     this.size = 0;
     this.segments = config.chunkSegments * (config.loadRadius * 2 + 1);
     this.source = 'xcm-local-loading';
@@ -71,6 +78,7 @@ class LocalXcmTerrain {
     this.vectorMaterials = new Map();
     this.labelTextureCache = new Map();
     this.layerVisibility = new Map();
+    this.centerRevision = 0;
     this.isReady = false;
 
     if (typeof fetch !== 'undefined' && typeof document !== 'undefined') {
@@ -101,12 +109,43 @@ class LocalXcmTerrain {
     this.manifestBaseUrl = url.slice(0, url.lastIndexOf('/') + 1);
     this.manifest = await response.json();
     this.availableVectorTiles = new Set(this.manifest.vectors?.available ?? []);
+    this.applyCenterCoordinates(this.config.centerLatitude, this.config.centerLongitude);
+  }
+
+  setCenterCoordinates({ latitude, longitude }) {
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+
+    if (
+      latitude === this.config.centerLatitude
+      && longitude === this.config.centerLongitude
+    ) {
+      return;
+    }
+
+    this.config.centerLatitude = latitude;
+    this.config.centerLongitude = longitude;
+    this.centerRevision += 1;
+
+    for (const key of [...this.chunks.keys()]) {
+      this.unloadChunk(key);
+    }
+
+    this.loadingChunks.clear();
+    this.failedChunks.clear();
+
+    if (this.manifest) {
+      this.applyCenterCoordinates(latitude, longitude);
+      this.update(new THREE.Vector3(0, 0, 0));
+    }
+  }
+
+  applyCenterCoordinates(latitude, longitude) {
     this.centerPixel = lonLatToPixel(
-      this.config.centerLongitude,
-      this.config.centerLatitude,
+      longitude,
+      latitude,
       this.manifest.source.worldFile
     );
-    const pixelScale = getMetersPerPixel(this.config.centerLatitude, this.manifest.source.worldFile);
+    const pixelScale = getMetersPerPixel(latitude, this.manifest.source.worldFile);
     this.worldUnitsPerPixelX = pixelScale.x * this.config.horizontalScale;
     this.worldUnitsPerPixelY = pixelScale.y * this.config.horizontalScale;
     this.worldUnitsPerMeter = this.config.horizontalScale;
@@ -116,7 +155,7 @@ class LocalXcmTerrain {
     this.segments = this.config.chunkSegments * (this.config.loadRadius * 2 + 1);
   }
 
-  update(position) {
+  update(position, delta = 0) {
     if (!this.manifest || !this.centerPixel) return;
 
     const centerTile = this.getTileForWorld(position.x, position.z);
@@ -142,6 +181,8 @@ class LocalXcmTerrain {
         this.unloadChunk(key);
       }
     }
+
+    this.urbanScenery.update(delta);
   }
 
   getHeightAt(x, z) {
@@ -158,6 +199,64 @@ class LocalXcmTerrain {
     const sample = this.getTilePixelForWorld(x, z, tile);
     const elevation = sampleTileElevation(chunk.imageData, sample.u, sample.v, this.config.referenceElevation);
     return this.elevationToWorldHeight(elevation);
+  }
+
+  hasLoadedHeightAt(x, z) {
+    if (!this.manifest || !this.centerPixel || !Number.isFinite(x) || !Number.isFinite(z)) {
+      return false;
+    }
+
+    const tile = this.getTileForWorld(x, z);
+    if (!this.isValidTile(tile.x, tile.y)) return false;
+    return Boolean(this.chunks.get(getChunkKey(tile.x, tile.y))?.imageData);
+  }
+
+  isSeaAt(x, z) {
+    if (!this.manifest || !this.centerPixel || !Number.isFinite(x) || !Number.isFinite(z)) {
+      return false;
+    }
+
+    const tile = this.getTileForWorld(x, z);
+    if (!this.isValidTile(tile.x, tile.y)) return false;
+
+    const chunk = this.chunks.get(getChunkKey(tile.x, tile.y));
+    if (!chunk?.imageData) return false;
+
+    const sample = this.getTilePixelForWorld(x, z, tile);
+    return sampleTileHasNoData(chunk.imageData, sample.u, sample.v);
+  }
+
+  isCoastalSandAt(x, z) {
+    if (!this.manifest || !this.centerPixel || !Number.isFinite(x) || !Number.isFinite(z)) {
+      return false;
+    }
+
+    const tile = this.getTileForWorld(x, z);
+    if (!this.isValidTile(tile.x, tile.y)) return false;
+
+    const chunk = this.chunks.get(getChunkKey(tile.x, tile.y));
+    if (!chunk?.imageData) return false;
+
+    const sample = this.getTilePixelForWorld(x, z, tile);
+    const elevation = sampleTileElevation(chunk.imageData, sample.u, sample.v, this.config.referenceElevation);
+    return !sampleTileHasNoData(chunk.imageData, sample.u, sample.v)
+      && isCoastalSandSample(chunk.imageData, sample.u, sample.v, elevation);
+  }
+
+  async ensureHeightAt(x, z, timeoutMs = 6000) {
+    await this.ready;
+
+    if (this.hasLoadedHeightAt(x, z)) return true;
+
+    this.update(new THREE.Vector3(x, 0, z));
+    const startedAt = performance.now();
+
+    while (performance.now() - startedAt < timeoutMs) {
+      if (this.hasLoadedHeightAt(x, z)) return true;
+      await waitForNextFrame();
+    }
+
+    return this.hasLoadedHeightAt(x, z);
   }
 
   // Altura da malha renderizada (lattice de vertices do chunk), que pode divergir
@@ -225,10 +324,13 @@ class LocalXcmTerrain {
 
   async loadChunk(tileX, tileY) {
     const key = getChunkKey(tileX, tileY);
+    const revision = this.centerRevision;
     this.loadingChunks.add(key);
 
     try {
       const imageData = await loadImageData(this.getTileUrl(tileX, tileY));
+      if (revision !== this.centerRevision) return;
+
       const chunk = {
         tileX,
         tileY,
@@ -239,8 +341,10 @@ class LocalXcmTerrain {
       this.chunks.set(key, chunk);
       this.reliefGroup.add(chunk.mesh);
       recordTerrainDebug('chunkLoaded', { key, chunks: this.chunks.size });
-      this.loadVectorChunk(chunk);
+      this.loadVectorChunk(chunk, revision);
     } catch (error) {
+      if (revision !== this.centerRevision) return;
+
       this.failedChunks.add(key);
       recordTerrainDebug('chunkFailed', {
         key,
@@ -262,6 +366,7 @@ class LocalXcmTerrain {
       this.vectorGroup.remove(chunk.vectors);
       disposeObject3D(chunk.vectors);
     }
+    this.urbanScenery.removeChunk(key);
     chunk.mesh.geometry.dispose();
     // O material do terreno e compartilhado entre chunks; nao descartar aqui.
     this.chunks.delete(key);
@@ -280,7 +385,7 @@ class LocalXcmTerrain {
       .replace('{y}', tileY)}`);
   }
 
-  async loadVectorChunk(chunk) {
+  async loadVectorChunk(chunk, revision = this.centerRevision) {
     const key = getChunkKey(chunk.tileX, chunk.tileY);
     if (!this.availableVectorTiles.has(key)) return;
 
@@ -288,7 +393,11 @@ class LocalXcmTerrain {
       const response = await fetch(this.getVectorTileUrl(chunk.tileX, chunk.tileY));
       if (!response.ok) throw new Error(`Vector HTTP ${response.status}`);
       const vectorTile = await response.json();
+      if (revision !== this.centerRevision || !this.chunks.has(key)) return;
+
+      chunk.vectorTile = vectorTile;
       const group = this.createVectorGroup(vectorTile, chunk);
+      this.urbanScenery.addChunk(key, vectorTile, chunk);
       if (group.children.length === 0) return;
 
       group.name = `XcmVectorChunk_${chunk.tileX}_${chunk.tileY}`;
@@ -318,10 +427,12 @@ class LocalXcmTerrain {
       const u = ((localX / this.chunkWorldWidth) + 0.5) * (this.manifest.terrain.tileSize - 1);
       const v = ((localZ / this.chunkWorldDepth) + 0.5) * (this.manifest.terrain.tileSize - 1);
       const elevation = sampleTileElevation(imageData, u, v);
+      const isSea = sampleTileHasNoData(imageData, u, v);
+      const isSand = !isSea && isCoastalSandSample(imageData, u, v, elevation);
       const worldHeight = this.elevationToWorldHeight(elevation);
       const slope = sampleTileSlope(imageData, u, v, this.worldUnitsPerPixelX, this.worldUnitsPerPixelY);
       positions.setY(index, worldHeight);
-      addTerrainColor(colors, worldHeight, slope, chunkCenter.x + localX, chunkCenter.z + localZ);
+      addTerrainColor(colors, worldHeight, slope, chunkCenter.x + localX, chunkCenter.z + localZ, isSea, isSand);
     }
 
     positions.needsUpdate = true;
@@ -631,7 +742,7 @@ class LocalXcmTerrain {
   }
 
   elevationToWorldHeight(elevation) {
-    return (elevation - this.config.referenceElevation) * this.config.heightScale;
+    return (normalizeTerrainElevation(elevation) - this.config.referenceElevation) * this.config.heightScale;
   }
 }
 
@@ -1027,12 +1138,50 @@ function sampleTileElevation(imageData, u, v, fallbackElevation = 0) {
   return THREE.MathUtils.lerp(hx0, hx1, ty);
 }
 
+function sampleTileHasNoData(imageData, u, v) {
+  if (!imageData?.data || !Number.isFinite(u) || !Number.isFinite(v)) return false;
+
+  const x = THREE.MathUtils.clamp(Math.round(u), 0, imageData.width - 1);
+  const y = THREE.MathUtils.clamp(Math.round(v), 0, imageData.height - 1);
+  return isNoDataElevation(getRawPixelElevation(imageData, x, y));
+}
+
+function isCoastalSandSample(imageData, u, v, elevation) {
+  if (normalizeTerrainElevation(elevation) > COASTAL_SAND_MAX_ELEVATION) return false;
+  if (!imageData?.data || !Number.isFinite(u) || !Number.isFinite(v)) return false;
+
+  const centerX = THREE.MathUtils.clamp(Math.round(u), 0, imageData.width - 1);
+  const centerY = THREE.MathUtils.clamp(Math.round(v), 0, imageData.height - 1);
+
+  for (let y = centerY - COASTAL_SAND_SEARCH_PIXELS; y <= centerY + COASTAL_SAND_SEARCH_PIXELS; y += 1) {
+    if (y < 0 || y >= imageData.height) continue;
+    for (let x = centerX - COASTAL_SAND_SEARCH_PIXELS; x <= centerX + COASTAL_SAND_SEARCH_PIXELS; x += 1) {
+      if (x < 0 || x >= imageData.width) continue;
+      if (isNoDataElevation(getRawPixelElevation(imageData, x, y))) return true;
+    }
+  }
+
+  return false;
+}
+
 function getPixelElevation(imageData, x, y) {
+  return normalizeTerrainElevation(getRawPixelElevation(imageData, x, y));
+}
+
+function getRawPixelElevation(imageData, x, y) {
   const index = (y * imageData.width + x) * 4;
   if (!Number.isFinite(index) || index < 0 || index + 1 >= imageData.data.length) {
     return 0;
   }
   return imageData.data[index] * 256 + imageData.data[index + 1] - 32768;
+}
+
+function normalizeTerrainElevation(elevation) {
+  return isNoDataElevation(elevation) ? SEA_LEVEL_ELEVATION : elevation;
+}
+
+function isNoDataElevation(elevation) {
+  return elevation < NO_DATA_ELEVATION_THRESHOLD;
 }
 
 function sampleTileSlope(imageData, u, v, metersPerPixelX, metersPerPixelY) {
@@ -1047,6 +1196,10 @@ function sampleTileSlope(imageData, u, v, metersPerPixelX, metersPerPixelY) {
 }
 
 const TERRAIN_PALETTE = {
+  sea: new THREE.Color(0x2f7197),
+  shallowSea: new THREE.Color(0x4f93aa),
+  sand: new THREE.Color(0xe9e2c9),
+  paleSand: new THREE.Color(0xf7f2df),
   lowForest: new THREE.Color(0x315f32),
   forest: new THREE.Color(0x47733a),
   highForest: new THREE.Color(0x667849),
@@ -1057,9 +1210,23 @@ const TERRAIN_PALETTE = {
 };
 const tempTerrainColor = new THREE.Color();
 
-function addTerrainColor(colors, height, slope, worldX, worldZ) {
+function addTerrainColor(colors, height, slope, worldX, worldZ, isSea = false, isSand = false) {
   const color = tempTerrainColor;
   const palette = TERRAIN_PALETTE;
+
+  if (isSea) {
+    const waterNoise = terrainValueNoise(worldX * 0.0018, worldZ * 0.0018);
+    color.copy(palette.sea).lerp(palette.shallowSea, waterNoise * 0.35);
+    colors.push(color.r, color.g, color.b);
+    return;
+  }
+
+  if (isSand) {
+    const sandNoise = terrainValueNoise(worldX * 0.018, worldZ * 0.018);
+    color.copy(palette.sand).lerp(palette.paleSand, 0.35 + sandNoise * 0.35);
+    colors.push(color.r, color.g, color.b);
+    return;
+  }
 
   if (height < 750) {
     color.copy(palette.lowForest);
@@ -1110,6 +1277,10 @@ function hash2D(x, z) {
 
 function smoothstep01(t) {
   return t * t * (3 - 2 * t);
+}
+
+function waitForNextFrame() {
+  return new Promise((resolve) => requestAnimationFrame(resolve));
 }
 
 function createDetailTexture() {

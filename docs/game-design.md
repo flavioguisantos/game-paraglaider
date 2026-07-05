@@ -7,7 +7,10 @@ O jogador pilota um parapente em terreno montanhoso, buscando colunas de ar quen
 Ganhar altitude e afastar-se do ponto de decolagem. A rodada nao tem limite de tempo; ao final, o ranking compara jogador e bots por desempenho.
 
 ## Controles iniciais
-Antes da rodada, o jogador escolhe a cor principal do parapente em uma paleta ampliada e inicia o voo por um botao de tela.
+Antes da rodada, o jogador escolhe o local de voo, escolhe a cor principal do parapente em uma paleta ampliada e inicia o voo por um botao de tela. Locais iniciais disponiveis:
+- Atibaia / Pedra Grande, Atibaia - SP.
+- Praia de Sao Vicente, Itarare, Sao Vicente - SP (`-23.964517, -46.363531`), com decolagem inicial mais alta, parapente apontado para o mar e vento vindo do mar.
+- Ao selecionar Sao Vicente na tela inicial, a camera de pre-voo tambem deve olhar de frente para o mar.
 
 - `W` ou seta para cima: acelerar o parapente ate 20% acima da velocidade padrao enquanto o comando estiver pressionado.
 - `S` ou seta para baixo: frear o parapente ate 20% abaixo da velocidade padrao enquanto o comando estiver pressionado.
@@ -50,6 +53,7 @@ Regras iniciais:
 - A sustentacao deve ser claramente mais alta no centro e cair em direcao as extremidades da coluna.
 - Fora da termica, o parapente perde altitude constantemente.
 - Dentro da termica, o parapente deve subir visualmente em relacao ao solo quando a sustentacao superar o sink.
+- Locais podem desativar termicas. Em Sao Vicente/Itarare nao ha termicas no MVP; a sustentacao vem do vento na montanha.
 - Termicas derivam junto com o vento na mesma escala horizontal aplicada ao parapente, representando a massa de ar em movimento.
 - A representacao visual da coluna inclina levemente na direcao do vento para comunicar a deriva da massa de ar em relacao ao solo.
 - As termicas usam diametros moderados para permitir permanecer enroscado mesmo com vento e taxa de curva realista.
@@ -77,8 +81,11 @@ O vento e um vetor horizontal em X/Z.
 Regras iniciais:
 - Varia dinamicamente entre 8 km/h e 30 km/h (teto realista para voo de parapente; tambem evita velocidade real exagerada a favor do vento).
 - Afeta a trajetoria do parapente pela soma vetorial entre velocidade propria no ar e vento.
+- O local escolhido pode definir a direcao base do vento. Em Sao Vicente, o vento inicial vem do quadrante sudeste/mar para o interior, com variacao menor que a configuracao padrao.
 - O parapente deriva com o vento como parte da massa de ar, inclusive com componente lateral quando o vento nao esta alinhado ao rumo.
 - O efeito relativo do vento no parapente e discretizado em passos de 10 graus ao redor do circulo trigonometrico. Com vento de cauda, a velocidade sobre o solo aumenta; com vento de frente, diminui; em angulos intermediarios, o efeito e proporcional ao angulo, incluindo deriva lateral.
+- Em Sao Vicente, o vento do mar gera lift orografico quando encontra terreno ascendente. A faixa util considera a encosta ate cerca de 50 m a frente no sentido do vento e enfraquece ate zerar por volta de 300 m acima da crista local.
+- O lift orografico deve ser marcado visualmente de forma parecida com as termicas em legibilidade, mas como faixa de corrente ascendente, nao como cilindro. A faixa usa uma base alongada, uma parede translucida de ar subindo e rotulo de m/s nos pontos fortes da encosta.
 - Move termicas ao longo do tempo.
 - Pode mudar de direcao/intensidade em intervalos definidos.
 - A interface exibe velocidade e direcao do vento no HUD, e a cena mostra marcadores 3D de direcao de vento proximos ao voo.
@@ -91,9 +98,12 @@ Regras iniciais:
 - Para teste offline/local, o arquivo `mapas/BRA_SUDESTE_HighRes.xcm` pode ser processado por `npm run process:xcm`. A saida em `mapas/processed/BRA_SUDESTE_HighRes/` contem tiles de relevo locais para carregamento progressivo em chunks, cobrindo todo o Sudeste do Brasil em vez de apenas Pedra Grande.
 - O jogo usa o manifesto local processado como fonte ativa de terreno. A camada base e o relevo XCM em mesh propria, com camadas vetoriais locais renderizadas por cima para estradas, ferrovias, rios, areas de agua, areas urbanas e pontos de cidades/vilas.
 - Os tiles `terrain-rgb` codificam altitude diretamente nos canais RGB; a leitura no navegador deve preservar os bytes originais para evitar alturas incorretas, paredes artificiais no relevo e decolagem em altitude errada.
+- Em regioes costeiras, pixels NoData do DEM representam mar aberto; o jogo deve normalizar esses valores para nivel do mar e renderiza-los como agua, evitando buracos ou paredes verticais na costa.
+- Em Sao Vicente, a terra baixa junto ao mar deve formar uma faixa de areia clara; entre a rodovia e o mar nao devem ser plantadas arvores ou vegetacao.
 - A pasta `mapas/` deve manter apenas o XCM original usado como entrada de conversao e a saida consumida pelo jogo: `manifest.json`, `terrain-rgb/` e `vectors/`. Extracoes, RAW intermediario e pastas de inspecao sao regeneraveis e nao devem permanecer.
-- A origem do mundo (`x=0`, `z=0`) e o ponto inicial do jogador ficam sobre a Pedra Grande em Atibaia.
-- A escala horizontal do terreno e calculada a partir do world file do XCM e da latitude central. Na regiao de Atibaia, cada pixel do relevo representa cerca de 85 m em longitude por 92 m em latitude, mantendo o deslocamento proporcional ao mapa real.
+- A origem do mundo (`x=0`, `z=0`) e o ponto inicial do jogador ficam sobre o local de voo escolhido na tela inicial. Atibaia / Pedra Grande e o padrao.
+- A escala horizontal do terreno e calculada a partir do world file do XCM e da latitude central do local escolhido, mantendo o deslocamento proporcional ao mapa real.
+- Cada local pode ajustar a altura inicial do jogador sobre o terreno. Sao Vicente usa 180 m sobre o solo para compensar a largada costeira baixa no relevo.
 - A camada de relevo usa uma paleta naturalista por altitude e inclinação: verdes de vegetação nas áreas suaves, tons oliva/terra nas áreas altas e cinza/bege nas encostas mais íngremes para sugerir solo ou rocha exposta.
 - O carregamento online OpenStreetMap/Mapzen usado anteriormente esta desativado para nao misturar duas fontes de relevo.
 - Nuvens de horizonte ficam distribuidas longe da origem e acima do relevo para reforcar a impressao de voo durante o enquadramento da camera.

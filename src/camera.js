@@ -21,6 +21,7 @@ const CAMERA_CONFIG = {
 const desiredPosition = new THREE.Vector3();
 const desiredLookAt = new THREE.Vector3();
 const currentLookAt = new THREE.Vector3();
+const standbyForward = new THREE.Vector3();
 const landedCamera = {
   initialized: false,
   angle: 0,
@@ -63,10 +64,18 @@ export function updateThirdPersonCamera(camera, target, delta, context = {}) {
   camera.lookAt(currentLookAt);
 }
 
-export function updateStandbyCamera(camera, terrain, delta) {
+export function updateStandbyCamera(camera, terrain, delta, context = {}) {
   const groundHeight = terrain.getHeightAt(0, 0);
-  desiredLookAt.set(0, groundHeight + CAMERA_CONFIG.standbyLookHeight, 0);
-  desiredPosition.set(0, groundHeight + CAMERA_CONFIG.standbyHeight, CAMERA_CONFIG.standbyDistance);
+  const heading = context.headingRadians ?? 0;
+  standbyForward.set(-Math.sin(heading), 0, -Math.cos(heading)).normalize();
+  desiredLookAt
+    .copy(standbyForward)
+    .multiplyScalar(CAMERA_CONFIG.standbyDistance * 0.28);
+  desiredLookAt.y = groundHeight + CAMERA_CONFIG.standbyLookHeight;
+  desiredPosition
+    .copy(standbyForward)
+    .multiplyScalar(-CAMERA_CONFIG.standbyDistance)
+    .add(new THREE.Vector3(0, groundHeight + CAMERA_CONFIG.standbyHeight, 0));
   keepCameraAboveTerrain(desiredPosition, terrain, CAMERA_CONFIG.standbyGroundClearance);
 
   const followAlpha = 1 - Math.exp(-delta * 2.4);

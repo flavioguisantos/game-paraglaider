@@ -24,19 +24,35 @@ const WIND_CONFIG = {
   minSpeedKmh: 8,
   maxSpeedKmh: 30,
   initialDirectionRadians: Math.atan2(3.2, 1.1),
+  directionVariationDegrees: 42,
   directionChangeRate: 0.08,
   speedCycleRate: 0.11,
   gustCycleRate: 0.37
 };
 
-export function createWindState() {
+export function createWindState(options = {}) {
   const wind = new THREE.Vector3();
   wind.elapsedSeconds = 0;
   wind.speedKmh = 0;
-  wind.directionRadians = WIND_CONFIG.initialDirectionRadians;
+  wind.baseDirectionRadians = options.directionRadians ?? WIND_CONFIG.initialDirectionRadians;
+  wind.directionVariationRadians = THREE.MathUtils.degToRad(
+    options.directionVariationDegrees ?? WIND_CONFIG.directionVariationDegrees
+  );
+  wind.directionRadians = wind.baseDirectionRadians;
   wind.directionDegrees = 0;
   updateWindVector(wind, 0);
   return wind;
+}
+
+export function configureWind(wind, options = {}) {
+  if (!wind) return;
+
+  wind.elapsedSeconds = 0;
+  wind.baseDirectionRadians = options.directionRadians ?? WIND_CONFIG.initialDirectionRadians;
+  wind.directionVariationRadians = THREE.MathUtils.degToRad(
+    options.directionVariationDegrees ?? WIND_CONFIG.directionVariationDegrees
+  );
+  updateWindVector(wind, 0);
 }
 
 export function updateWind(wind, delta) {
@@ -44,7 +60,7 @@ export function updateWind(wind, delta) {
   updateWindVector(wind, wind.elapsedSeconds);
 }
 
-export function applyFlightPhysics(entity, delta, { terrain, thermals, wind }) {
+export function applyFlightPhysics(entity, delta, { terrain, thermals, orographicLift, wind }) {
   if (entity.landed || entity.entangled) return;
 
   const forward = entity.getForwardVector();
@@ -71,7 +87,9 @@ export function applyFlightPhysics(entity, delta, { terrain, thermals, wind }) {
   entity.windAngleStepDegrees = windRelativeVelocity.steppedAngleDegrees;
   entity.windAdjustedSpeedKmh = entity.speed + metersPerSecondToKmh(windRelativeVelocity.headwindComponent);
 
-  const lift = thermals.getLiftAt(entity.position);
+  const thermalLift = thermals?.getLiftAt(entity.position) ?? 0;
+  const ridgeLift = orographicLift?.getLiftAt(entity.position, { terrain, wind }) ?? 0;
+  const lift = thermalLift + ridgeLift;
   entity.verticalSpeed = FLIGHT_PHYSICS.sinkRate + lift;
   entity.position.y += entity.verticalSpeed * delta;
 
@@ -201,8 +219,8 @@ export function updateEntangledParagliders(entities, delta, { terrain, wind }) {
   }
 }
 
-export function createWindVector() {
-  return createWindState();
+export function createWindVector(options = {}) {
+  return createWindState(options);
 }
 
 function kmhToMetersPerSecond(value) {
@@ -218,8 +236,9 @@ function updateWindVector(wind, elapsedSeconds) {
   const gustWave = (Math.sin(elapsedSeconds * WIND_CONFIG.gustCycleRate + 1.7) + 1) / 2;
   const mixedWave = speedWave * 0.72 + gustWave * 0.28;
   const speedKmh = THREE.MathUtils.lerp(WIND_CONFIG.minSpeedKmh, WIND_CONFIG.maxSpeedKmh, mixedWave);
-  const directionRadians = WIND_CONFIG.initialDirectionRadians
-    + Math.sin(elapsedSeconds * WIND_CONFIG.directionChangeRate) * THREE.MathUtils.degToRad(42);
+  const directionRadians = (wind.baseDirectionRadians ?? WIND_CONFIG.initialDirectionRadians)
+    + Math.sin(elapsedSeconds * WIND_CONFIG.directionChangeRate)
+      * (wind.directionVariationRadians ?? THREE.MathUtils.degToRad(WIND_CONFIG.directionVariationDegrees));
   const speedMetersPerSecond = kmhToMetersPerSecond(speedKmh);
 
   wind.set(

@@ -65,6 +65,7 @@ class ThermalField {
     this.sunDirection = sunDirection?.clone().normalize() ?? DEFAULT_SUN_DIRECTION.clone();
     this.group = new THREE.Group();
     this.group.name = 'Thermals';
+    this.enabled = true;
     const hotThermalIndex = Math.floor(Math.random() * THERMAL_SEEDS.length);
     this.nextThermalId = 1;
     this.thermals = THERMAL_SEEDS.map((seed, index) => createThermal(
@@ -81,6 +82,9 @@ class ThermalField {
   }
 
   update(delta, wind, referenceEntity = null) {
+    this.group.visible = this.enabled;
+    if (!this.enabled) return;
+
     if (referenceEntity) {
       this.ensureAheadThermals(referenceEntity);
       this.pruneDistantThermals(referenceEntity);
@@ -195,6 +199,8 @@ class ThermalField {
   }
 
   getLiftAt(position) {
+    if (!this.enabled) return 0;
+
     let lift = 0;
 
     for (const thermal of this.thermals) {
@@ -212,6 +218,8 @@ class ThermalField {
   }
 
   getNearestThermal(position) {
+    if (!this.enabled || this.thermals.length === 0) return null;
+
     let nearest = this.thermals[0];
     let nearestDistance = Infinity;
 
@@ -224,6 +232,11 @@ class ThermalField {
     }
 
     return nearest;
+  }
+
+  setEnabled(enabled) {
+    this.enabled = Boolean(enabled);
+    this.group.visible = this.enabled;
   }
 }
 

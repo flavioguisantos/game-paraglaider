@@ -246,6 +246,55 @@
         font-weight: 700;
       }
 
+      .start-field {
+        display: grid;
+        gap: 8px;
+        margin-bottom: 14px;
+      }
+
+      .start-field-title {
+        color: rgba(247, 251, 255, 0.76);
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+
+      .location-options {
+        display: grid;
+        gap: 8px;
+      }
+
+      .location-option {
+        position: relative;
+        display: grid;
+        gap: 2px;
+        padding: 10px 12px;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 6px;
+        cursor: pointer;
+      }
+
+      .location-option input {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .location-option strong {
+        font-size: 14px;
+      }
+
+      .location-option span {
+        color: rgba(247, 251, 255, 0.7);
+        font-size: 12px;
+      }
+
+      .location-option:has(input:checked) {
+        border-color: #ffd166;
+        background: rgba(255, 209, 102, 0.16);
+      }
+
       .color-options {
         display: grid;
         grid-template-columns: repeat(6, 36px);
@@ -293,6 +342,7 @@
       }
 
       .start-button:focus-visible,
+      .location-option input:focus-visible + strong,
       .color-option input:focus-visible + span {
         outline: 2px solid #ffffff;
         outline-offset: 3px;
@@ -432,7 +482,24 @@
     </div>
     <div id="start-panel" class="start-panel">
       <h1 class="start-title">Jogo Parapente 3D</h1>
-      <div class="color-options" aria-label="Cor do parapente">
+      <div class="start-field">
+        <div class="start-field-title">Local de voo</div>
+        <div class="location-options" aria-label="Local de voo">
+          <label class="location-option">
+            <input type="radio" name="flight-location" value="atibaia-pedra-grande" checked>
+            <strong>Atibaia / Pedra Grande</strong>
+            <span>Atibaia - SP</span>
+          </label>
+          <label class="location-option">
+            <input type="radio" name="flight-location" value="sao-vicente-itarare">
+            <strong>Praia de Sao Vicente, Itarare</strong>
+            <span>Sao Vicente - SP · -23.964517, -46.363531</span>
+          </label>
+        </div>
+      </div>
+      <div class="start-field">
+        <div class="start-field-title">Cor do parapente</div>
+        <div class="color-options" aria-label="Cor do parapente">
         <label class="color-option">
           <input type="radio" name="canopy-color" value="0xa8dff2" checked>
           <span style="background: #a8dff2"></span>
@@ -481,6 +548,7 @@
           <input type="radio" name="canopy-color" value="0x9acd32">
           <span style="background: #9acd32"></span>
         </label>
+        </div>
       </div>
       <button id="start-flight" class="start-button" type="button">Iniciar voo</button>
     </div>
