@@ -133,6 +133,38 @@ function handleResize() {
 window.addEventListener('resize', handleResize);
 window.visualViewport?.addEventListener('resize', handleResize);
 startButton.addEventListener('click', startFlight);
+setupLayerPanel();
+
+// Painel de teste: liga/desliga cada camada vetorial do mapa.
+function setupLayerPanel() {
+  const panel = document.querySelector('#layer-panel');
+  if (!panel) return;
+
+  const toggles = [
+    { label: 'Rodovias', layers: ['roadbig_line'] },
+    { label: 'Estradas medias', layers: ['roadmedium_line'] },
+    { label: 'Estradas de terra', layers: ['roadsmall_line'] },
+    { label: 'Ferrovias', layers: ['railway_line'] },
+    { label: 'Rios', layers: ['water_line'] },
+    { label: 'Lagos e represas', layers: ['water_area'] },
+    { label: 'Areas urbanas', layers: ['city_area'] },
+    { label: 'Nomes de cidades', layers: ['city_point', 'town_point', 'suburb_point', 'village_point'] }
+  ];
+
+  for (const toggle of toggles) {
+    const label = document.createElement('label');
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = true;
+    input.addEventListener('change', () => {
+      for (const layerName of toggle.layers) {
+        terrain.setLayerVisibility(layerName, input.checked);
+      }
+    });
+    label.append(input, document.createTextNode(toggle.label));
+    panel.append(label);
+  }
+}
 
 function startFlight() {
   if (appState.started) return;

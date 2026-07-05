@@ -70,6 +70,7 @@ class LocalXcmTerrain {
     this.availableVectorTiles = new Set();
     this.vectorMaterials = new Map();
     this.labelTextureCache = new Map();
+    this.layerVisibility = new Map();
     this.isReady = false;
 
     if (typeof fetch !== 'undefined' && typeof document !== 'undefined') {
@@ -365,16 +366,29 @@ class LocalXcmTerrain {
         const object = style.type === 'area'
           ? this.createVectorAreas(layerName, layer.lines, chunk, style)
           : this.createVectorRibbons(layerName, layer.lines, chunk, style);
-        if (object) group.add(object);
+        if (object) group.add(this.tagVectorLayerObject(object, layerName));
       }
 
       if (layer.points?.length) {
         const pointGroup = this.createVectorPoints(layerName, layer.points, chunk.imageData, style);
-        if (pointGroup.children.length > 0) group.add(pointGroup);
+        if (pointGroup.children.length > 0) group.add(this.tagVectorLayerObject(pointGroup, layerName));
       }
     }
 
     return group;
+  }
+
+  tagVectorLayerObject(object, layerName) {
+    object.userData.vectorLayer = layerName;
+    object.visible = this.layerVisibility.get(layerName) ?? true;
+    return object;
+  }
+
+  setLayerVisibility(layerName, visible) {
+    this.layerVisibility.set(layerName, visible);
+    this.vectorGroup.traverse((child) => {
+      if (child.userData.vectorLayer === layerName) child.visible = visible;
+    });
   }
 
   // Altura de drapejamento sobre o relevo visivel. Fallbacks em ordem:

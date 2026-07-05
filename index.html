@@ -129,6 +129,52 @@
         font-style: normal;
       }
 
+      .layer-panel {
+        position: fixed;
+        top: 16px;
+        right: 16px;
+        display: grid;
+        gap: 5px;
+        max-width: 190px;
+        padding: 10px 12px;
+        color: #f7fbff;
+        background: rgba(17, 33, 46, 0.72);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 6px;
+        font-size: 12px;
+        line-height: 1.3;
+        z-index: 10;
+      }
+
+      .layer-panel-title {
+        font-weight: 700;
+        font-size: 13px;
+      }
+
+      .layer-panel label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+
+      .layer-panel input {
+        margin: 0;
+      }
+
+      @media (max-width: 640px) {
+        .layer-panel {
+          top: auto;
+          bottom: 88px;
+          right: 8px;
+          max-width: 150px;
+          padding: 8px;
+          font-size: 11px;
+        }
+      }
+
       .touch-controls {
         position: fixed;
         inset: auto max(14px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
@@ -376,6 +422,9 @@
   <body>
     <canvas id="game"></canvas>
     <div id="hud" class="hud"></div>
+    <div id="layer-panel" class="layer-panel" aria-label="Camadas do mapa">
+      <div class="layer-panel-title">Camadas</div>
+    </div>
     <div id="touch-controls" class="touch-controls" aria-label="Controles de voo por toque">
       <div class="touch-cluster touch-cluster--turn">
         <button class="touch-control" type="button" data-control="left" aria-label="Virar para esquerda">‹</button>
