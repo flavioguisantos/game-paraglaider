@@ -63,6 +63,7 @@ export function createParagliderModel(options = {}) {
   pilot.name = 'Pilot';
   group.add(pilot);
   group.userData.parts = { canopyGroup, suspensionLines, pilot };
+  enableShadowCasting(group);
 
   if (options.canopyAssetUrl) {
     loadObjCanopy({
@@ -132,6 +133,7 @@ function loadObjCanopy({ url, canopyGroup, suspensionLines, fallback, colors }) 
         if (!child.isMesh) return;
         child.material = material;
       });
+      enableShadowCasting(object);
 
       canopyGroup.remove(fallback);
       canopyGroup.add(object);
@@ -182,6 +184,12 @@ function prepareObjCanopyTemplate(object) {
   object.position.set(0, ASSET_CANOPY_CONFIG.verticalOffset, ASSET_CANOPY_CONFIG.depthOffset);
 
   return object;
+}
+
+function enableShadowCasting(object) {
+  object.traverse((child) => {
+    if (child.isMesh) child.castShadow = true;
+  });
 }
 
 function isBrowserOffline() {
@@ -547,30 +555,36 @@ function createCanopySuspensionLine({ anchorPoint, targetHarness, material, line
 
 function createPilot(colors) {
   const group = new THREE.Group();
+  const podMaterial = new THREE.MeshStandardMaterial({ color: colors.pilot, roughness: 0.72 });
+  const suitMaterial = new THREE.MeshStandardMaterial({ color: 0x2a3440, roughness: 0.8 });
+  const strapMaterial = new THREE.MeshStandardMaterial({ color: 0x111820, roughness: 0.85 });
 
-  const body = new THREE.Mesh(
-    new THREE.CapsuleGeometry(0.34, 0.92, 6, 12),
-    new THREE.MeshStandardMaterial({ color: colors.pilot, roughness: 0.78 })
-  );
-  body.rotation.x = Math.PI / 2;
-  body.position.y = -0.05;
-  group.add(body);
+  // Casulo (pod harness): capsula alongada, afilada atras, deitada em voo.
+  const pod = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 1.15, 6, 12), podMaterial);
+  pod.scale.set(0.82, 1, 0.72);
+  group.add(pod);
+
+  // Tronco do piloto emergindo do casulo, levemente reclinado.
+  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.21, 0.42, 6, 10), suitMaterial);
+  group.add(torso);
 
   const helmet = new THREE.Mesh(
-    new THREE.SphereGeometry(0.22, 12, 8),
-    new THREE.MeshStandardMaterial({ color: colors.helmet, roughness: 0.58 })
+    new THREE.SphereGeometry(0.2, 12, 8),
+    new THREE.MeshStandardMaterial({ color: colors.helmet, roughness: 0.45 })
   );
-  helmet.position.set(0, 0.28, -0.5);
   group.add(helmet);
 
-  const harness = new THREE.Mesh(
-    new THREE.BoxGeometry(0.85, 0.08, 0.18),
-    new THREE.MeshStandardMaterial({ color: 0x111820, roughness: 0.8 })
-  );
-  harness.position.y = 0.42;
-  group.add(harness);
-  group.userData.parts = { body, helmet, harness };
+  // Bracos erguidos em direcao aos tirantes.
+  const armGeometry = new THREE.CylinderGeometry(0.05, 0.055, 0.66, 6);
+  const leftArm = new THREE.Mesh(armGeometry, suitMaterial);
+  const rightArm = new THREE.Mesh(armGeometry, suitMaterial);
+  group.add(leftArm, rightArm);
 
+  const harness = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.07, 0.4), strapMaterial);
+  group.add(harness);
+
+  group.userData.parts = { pod, torso, helmet, leftArm, rightArm, harness };
+  setPilotFlightPose(group);
   return group;
 }
 
@@ -580,10 +594,23 @@ function setPilotFlightPose(pilot) {
 
   pilot.position.set(0, 0, 0);
   pilot.rotation.set(0, 0, 0);
-  parts.body.rotation.set(Math.PI / 2, 0, 0);
-  parts.body.position.set(0, -0.05, 0);
-  parts.helmet.position.set(0, 0.28, -0.5);
-  parts.harness.position.set(0, 0.42, 0);
+
+  parts.pod.visible = true;
+  parts.pod.rotation.set(Math.PI / 2 - 0.18, 0, 0);
+  parts.pod.position.set(0, -0.12, 0.28);
+
+  parts.torso.rotation.set(-0.42, 0, 0);
+  parts.torso.position.set(0, 0.22, -0.32);
+
+  parts.helmet.position.set(0, 0.52, -0.52);
+
+  parts.leftArm.rotation.set(0.32, 0, -0.5);
+  parts.leftArm.position.set(-0.36, 0.42, -0.3);
+  parts.rightArm.rotation.set(0.32, 0, 0.5);
+  parts.rightArm.position.set(0.36, 0.42, -0.3);
+
+  parts.harness.rotation.set(0, 0, 0);
+  parts.harness.position.set(0, 0.28, 0);
 }
 
 function setPilotStandingPose(pilot) {
@@ -592,8 +619,20 @@ function setPilotStandingPose(pilot) {
 
   pilot.position.set(2.8, 0.95, 1.25);
   pilot.rotation.set(0, -0.35, 0);
-  parts.body.rotation.set(0, 0, 0);
-  parts.body.position.set(0, 0, 0);
-  parts.helmet.position.set(0, 0.72, -0.05);
-  parts.harness.position.set(0, 0.3, 0.12);
+
+  // Em pe, o casulo fica recolhido atras das pernas.
+  parts.pod.visible = false;
+
+  parts.torso.rotation.set(0, 0, 0);
+  parts.torso.position.set(0, 0.3, 0);
+
+  parts.helmet.position.set(0, 0.78, -0.02);
+
+  parts.leftArm.rotation.set(0, 0, 0.15);
+  parts.leftArm.position.set(-0.28, 0.24, 0);
+  parts.rightArm.rotation.set(0, 0, -0.15);
+  parts.rightArm.position.set(0.28, 0.24, 0);
+
+  parts.harness.rotation.set(0.2, 0, 0);
+  parts.harness.position.set(0, 0.12, 0.14);
 }

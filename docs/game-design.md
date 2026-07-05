@@ -55,7 +55,7 @@ Regras iniciais:
 - As termicas usam diametros moderados para permitir permanecer enroscado mesmo com vento e taxa de curva realista.
 - Conforme o piloto avanca, o jogo mantem novas termicas surgindo no corredor a frente da direcao de voo, com variacao de raio, forca e afastamento lateral.
 - Termicas que ficam muito para tras podem ser removidas para manter o custo da cena controlado.
-- O topo das termicas fica em 2000 m acima do nivel do mar. Acima desse teto, a termica nao gera mais sustentacao.
+- O topo das termicas fica em 2000 m acima do nivel do mar. Nos ultimos 650 m antes do teto, a sustentacao enfraquece gradualmente ate 2 m/s no centro do topo; acima do teto nao ha sustentacao.
 - Cada termica exibe uma nuvem presa ao topo absoluto da coluna, ajudando o jogador a ler visualmente o limite de subida. A nuvem tem diametro aproximado de duas vezes o diametro da termica e usa volumes arredondados irregulares para ficar menos geometrica.
 - A base de cada termica exibe a sustentacao maxima da coluna em m/s, para indicar ao jogador a velocidade de subida esperada no centro.
 
@@ -75,7 +75,7 @@ Quando dois parapentes colidem em voo, ambos entram em estado enroscado. Nesse e
 O vento e um vetor horizontal em X/Z.
 
 Regras iniciais:
-- Varia dinamicamente entre 10 km/h e 50 km/h.
+- Varia dinamicamente entre 8 km/h e 30 km/h (teto realista para voo de parapente; tambem evita velocidade real exagerada a favor do vento).
 - Afeta a trajetoria do parapente pela soma vetorial entre velocidade propria no ar e vento.
 - O parapente deriva com o vento como parte da massa de ar, inclusive com componente lateral quando o vento nao esta alinhado ao rumo.
 - O efeito relativo do vento no parapente e discretizado em passos de 10 graus ao redor do circulo trigonometrico. Com vento de cauda, a velocidade sobre o solo aumenta; com vento de frente, diminui; em angulos intermediarios, o efeito e proporcional ao angulo, incluindo deriva lateral.

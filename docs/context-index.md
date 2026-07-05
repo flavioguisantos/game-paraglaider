@@ -20,6 +20,9 @@ Use este arquivo para escolher somente o contexto necessario para a tarefa atual
 ### Ordem de implementacao ou proximo passo tecnico
 - `docs/implementation-plan.md`
 
+### Realismo visual, iluminacao, ceu, nuvens, sombras ou vegetacao
+- `docs/visual-realism-plan.md`
+
 ### Deploy, hospedagem ou Render
 - `docs/deploy-render.md`
 

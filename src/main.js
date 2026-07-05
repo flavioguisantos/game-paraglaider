@@ -1,43 +1,108 @@
 import * as THREE from 'three';
+import { Sky } from 'three/addons/objects/Sky.js';
+import { createCloudBillboard } from './clouds.js';
 import { createAdventureMusic, createVarioAudio, unlockGameAudio } from './audio.js';
 import { createBots } from './bot.js?v=wind-physics-1';
 import { initializeThirdPersonCamera, updateStandbyCamera, updateThirdPersonCamera } from './camera.js';
 import { createWindVector, detectParagliderCollisions, updateEntangledParagliders, updateWind } from './physics.js?v=wind-physics-1';
 import { createHud, createRoundState, updateHud, updateRoundState } from './hud.js?v=wind-physics-1';
 import { Player } from './player.js?v=wind-physics-1';
-import { createTerrain } from './terrain.js?v=terrain-rgb-binary-5';
+import { createTerrain } from './terrain.js?v=vector-realism-1';
 import { createThermalField } from './thermal.js?v=thermal-drift-1';
+import { createVegetation } from './vegetation.js';
 
 const canvas = document.querySelector('#game');
 const startButton = document.querySelector('#start-flight');
 const colorInputs = [...document.querySelectorAll('input[name="canopy-color"]')];
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x8fc7e8);
-scene.fog = new THREE.Fog(0x8fc7e8, 3000, 28000);
+// Perspectiva aerea: nevoa azulada/dessaturada aproximando a cor do horizonte do ceu fisico.
+scene.fog = new THREE.Fog(0xc3d9e8, 3500, 26000);
 
 const viewport = getViewportSize();
-const camera = new THREE.PerspectiveCamera(getCameraFov(viewport), viewport.width / viewport.height, 0.1, 90000);
+// near=2: com far=90000, near menor destroi a precisao do depth buffer a distancia
+// (a ~2 km a resolucao cai para metros e overlays finos sobre o relevo somem).
+const camera = new THREE.PerspectiveCamera(getCameraFov(viewport), viewport.width / viewport.height, 2, 90000);
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(getRendererPixelRatio());
 renderer.setSize(viewport.width, viewport.height);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.12;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 setAppHeight();
 
-const ambientLight = new THREE.HemisphereLight(0xdfefff, 0x40563a, 1.85);
+const ambientLight = new THREE.HemisphereLight(0xdfefff, 0x40563a, 1.15);
 scene.add(ambientLight);
 
-const sunLight = new THREE.DirectionalLight(0xfff8e8, 2.85);
-sunLight.position.set(-220, 520, 180);
+// Direcao fixa do sol; a posicao da luz acompanha o jogador para manter o frustum de sombra util.
+const SUN_DIRECTION = new THREE.Vector3(-220, 520, 180).normalize();
+const SUN_DISTANCE = 2600;
+const SHADOW_FRUSTUM_RADIUS = 950;
+const sunLight = new THREE.DirectionalLight(0xfff8e8, 3.1);
+sunLight.position.copy(SUN_DIRECTION).multiplyScalar(SUN_DISTANCE);
+sunLight.castShadow = true;
+sunLight.shadow.mapSize.set(2048, 2048);
+sunLight.shadow.camera.near = 200;
+sunLight.shadow.camera.far = SUN_DISTANCE + 2600;
+sunLight.shadow.camera.left = -SHADOW_FRUSTUM_RADIUS;
+sunLight.shadow.camera.right = SHADOW_FRUSTUM_RADIUS;
+sunLight.shadow.camera.top = SHADOW_FRUSTUM_RADIUS;
+sunLight.shadow.camera.bottom = -SHADOW_FRUSTUM_RADIUS;
+sunLight.shadow.bias = -0.0002;
+sunLight.shadow.normalBias = 3;
 scene.add(sunLight);
+scene.add(sunLight.target);
+
+function updateSunLight(referencePosition) {
+  sunLight.target.position.copy(referencePosition);
+  sunLight.position.copy(SUN_DIRECTION).multiplyScalar(SUN_DISTANCE).add(referencePosition);
+  sky.position.set(referencePosition.x, 0, referencePosition.z);
+}
+
+const sky = createAtmosphericSky();
+scene.add(sky);
+applySkyEnvironment();
+
+function createAtmosphericSky() {
+  const sky = new Sky();
+  sky.name = 'AtmosphericSky';
+  // Mantem a cupula do ceu dentro do far plane da camera (90000).
+  sky.scale.setScalar(80000);
+
+  const uniforms = sky.material.uniforms;
+  uniforms.turbidity.value = 5.5;
+  uniforms.rayleigh.value = 1.9;
+  uniforms.mieCoefficient.value = 0.0045;
+  uniforms.mieDirectionalG.value = 0.8;
+  uniforms.sunPosition.value.copy(SUN_DIRECTION);
+  return sky;
+}
+
+function applySkyEnvironment() {
+  const pmremGenerator = new THREE.PMREMGenerator(renderer);
+  const environmentScene = new THREE.Scene();
+  const environmentSky = createAtmosphericSky();
+  environmentSky.scale.setScalar(1000);
+  environmentScene.add(environmentSky);
+
+  const environment = pmremGenerator.fromScene(environmentScene, 0.02);
+  scene.environment = environment.texture;
+  scene.environmentIntensity = 0.45;
+  pmremGenerator.dispose();
+}
 
 const terrain = createTerrain();
 scene.add(terrain.mesh);
+const vegetation = createVegetation({ terrain });
+scene.add(vegetation.group);
 scene.add(createHorizonClouds());
 
 const wind = createWindVector();
 const windMarkers = createWindMarkers();
 scene.add(windMarkers);
-const thermals = createThermalField({ scene, terrain });
+const thermals = createThermalField({ scene, terrain, sunDirection: SUN_DIRECTION });
 const hud = createHud(document.querySelector('#hud'));
 const varioAudio = createVarioAudio();
 const adventureMusic = createAdventureMusic();
@@ -102,6 +167,8 @@ renderer.setAnimationLoop(() => {
   const delta = Math.min(clock.getDelta(), 0.05);
   const referencePosition = appState.player?.position ?? standbyPosition;
   terrain.update(referencePosition);
+  vegetation.update(referencePosition);
+  updateSunLight(referencePosition);
   updateWind(wind, delta);
   updateWindMarkers(windMarkers, wind, referencePosition, terrain);
 
@@ -173,13 +240,6 @@ function getCameraFov({ width, height }) {
 function createHorizonClouds() {
   const group = new THREE.Group();
   group.name = 'HorizonClouds';
-  const material = new THREE.MeshBasicMaterial({
-    color: 0xffffff,
-    transparent: true,
-    opacity: 0.72,
-    depthWrite: false
-  });
-  const geometry = new THREE.SphereGeometry(1, 16, 10);
   const cloudConfigs = [
     { angle: -72, distance: 9800, altitude: 2750, scale: 1.1 },
     { angle: -38, distance: 12500, altitude: 3100, scale: 1.4 },
@@ -189,39 +249,23 @@ function createHorizonClouds() {
     { angle: 101, distance: 14500, altitude: 3300, scale: 1.65 }
   ];
 
-  for (const config of cloudConfigs) {
+  for (let index = 0; index < cloudConfigs.length; index += 1) {
+    const config = cloudConfigs[index];
     const angle = THREE.MathUtils.degToRad(config.angle);
-    const cloud = createCloudCluster(geometry, material, 360 * config.scale);
+    const cloud = createCloudBillboard({
+      width: 1750 * config.scale,
+      variant: index,
+      opacity: 0.9
+    });
     cloud.position.set(
       Math.sin(angle) * config.distance,
       config.altitude,
       -Math.cos(angle) * config.distance
     );
-    cloud.rotation.y = angle;
     group.add(cloud);
   }
 
   return group;
-}
-
-function createCloudCluster(geometry, material, radius) {
-  const cloud = new THREE.Group();
-  const puffs = [
-    { x: 0, z: 0, sx: 1.0, sy: 0.22, sz: 0.36 },
-    { x: -0.56, z: 0.03, sx: 0.58, sy: 0.18, sz: 0.3 },
-    { x: 0.58, z: -0.02, sx: 0.66, sy: 0.2, sz: 0.32 },
-    { x: 0.08, z: 0.28, sx: 0.5, sy: 0.16, sz: 0.26 },
-    { x: -0.12, z: -0.34, sx: 0.7, sy: 0.17, sz: 0.28 }
-  ];
-
-  for (const puff of puffs) {
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.set(puff.x * radius, 0, puff.z * radius);
-    mesh.scale.set(puff.sx * radius, puff.sy * radius, puff.sz * radius);
-    cloud.add(mesh);
-  }
-
-  return cloud;
 }
 
 function createWindMarkers() {
@@ -229,9 +273,9 @@ function createWindMarkers() {
   group.name = 'WindDirectionMarkers';
   group.visible = false;
   const material = new THREE.MeshBasicMaterial({
-    color: 0xd8fbff,
+    color: 0xf4fbff,
     transparent: true,
-    opacity: 0.68,
+    opacity: 0.55,
     depthWrite: false
   });
   const positions = [
@@ -271,7 +315,7 @@ function createWindMarker(material) {
   head.rotation.x = -Math.PI / 2;
   head.position.z = -42;
   marker.add(head);
-  marker.scale.setScalar(1.15);
+  marker.scale.setScalar(0.85);
   return marker;
 }
 
@@ -282,7 +326,10 @@ function updateWindMarkers(markers, wind, referencePosition, terrain) {
     const offset = marker.userData.offset;
     const x = referencePosition.x + offset.x;
     const z = referencePosition.z + offset.z;
-    marker.position.set(x, terrain.getHeightAt(x, z) + 95, z);
+    // Acompanha a altitude do jogador (ex.: subindo na termica), sem afundar no relevo.
+    // Fica abaixo da linha do olhar para contrastar com o terreno, nao com o ceu.
+    const y = Math.max(terrain.getHeightAt(x, z) + 60, referencePosition.y - 45);
+    marker.position.set(x, y, z);
     marker.rotation.y = wind.directionRadians;
   }
 }

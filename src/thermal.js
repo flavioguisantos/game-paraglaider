@@ -1,7 +1,12 @@
 import * as THREE from 'three';
+import { createCloudBillboard, createCloudShadow } from './clouds.js';
 
 const THERMAL_CONFIG = {
   topAltitudeAboveSeaLevel: 2000,
+  // A sustentacao enfraquece gradualmente na faixa final da coluna,
+  // chegando a topLiftMetersPerSecond no teto (nada de corte abrupto).
+  liftFadeBandMeters: 650,
+  topLiftMetersPerSecond: 2,
   driftScale: 1,
   particleCount: 26,
   particleRiseSpeed: 92,
@@ -46,15 +51,18 @@ const THERMAL_SEEDS = [
   { x: -420, z: 520, radius: 135, strength: 3.5 }
 ];
 
-export function createThermalField({ scene, terrain }) {
-  const field = new ThermalField(terrain);
+const DEFAULT_SUN_DIRECTION = new THREE.Vector3(0, 1, 0);
+
+export function createThermalField({ scene, terrain, sunDirection }) {
+  const field = new ThermalField(terrain, sunDirection);
   scene.add(field.group);
   return field;
 }
 
 class ThermalField {
-  constructor(terrain) {
+  constructor(terrain, sunDirection) {
     this.terrain = terrain;
+    this.sunDirection = sunDirection?.clone().normalize() ?? DEFAULT_SUN_DIRECTION.clone();
     this.group = new THREE.Group();
     this.group.name = 'Thermals';
     const hotThermalIndex = Math.floor(Math.random() * THERMAL_SEEDS.length);
@@ -63,7 +71,8 @@ class ThermalField {
       seed,
       this.nextThermalId++,
       terrain,
-      index === hotThermalIndex
+      index === hotThermalIndex,
+      this.sunDirection
     ));
 
     for (const thermal of this.thermals) {
@@ -92,9 +101,10 @@ class ThermalField {
       }
 
       const groundHeight = this.terrain.getHeightAt(thermal.position.x, thermal.position.z);
-      updateThermalVerticalLayout(thermal, groundHeight, wind);
+      updateThermalVerticalLayout(thermal, groundHeight, wind, this.sunDirection, this.terrain);
 
       animateParticles(thermal, delta);
+      animateBirds(thermal, delta);
     }
   }
 
@@ -142,7 +152,7 @@ class ThermalField {
       strength: THREE.MathUtils.randFloat(THERMAL_CONFIG.dynamicStrengthMin, THERMAL_CONFIG.dynamicStrengthMax)
     };
     const isHotThermal = Math.random() < THERMAL_CONFIG.dynamicHotChance;
-    const thermal = createThermal(seed, this.nextThermalId++, this.terrain, isHotThermal);
+    const thermal = createThermal(seed, this.nextThermalId++, this.terrain, isHotThermal, this.sunDirection);
 
     this.thermals.push(thermal);
     this.group.add(thermal.visual);
@@ -194,7 +204,8 @@ class ThermalField {
       if (distance >= thermal.radius) continue;
 
       const centerInfluence = 1 - distance / thermal.radius;
-      lift += thermal.strength * Math.pow(centerInfluence, THERMAL_CONFIG.liftFalloffExponent);
+      const radialLift = thermal.strength * Math.pow(centerInfluence, THERMAL_CONFIG.liftFalloffExponent);
+      lift += radialLift * getVerticalLiftFactor(thermal, position.y);
     }
 
     return lift;
@@ -216,7 +227,7 @@ class ThermalField {
   }
 }
 
-function createThermal(seed, id, terrain, isHotThermal) {
+function createThermal(seed, id, terrain, isHotThermal, sunDirection = DEFAULT_SUN_DIRECTION) {
   const position = new THREE.Vector3(seed.x, 0, seed.z);
   const visual = new THREE.Group();
   visual.name = `Thermal_${id}`;
@@ -228,9 +239,9 @@ function createThermal(seed, id, terrain, isHotThermal) {
   const column = new THREE.Mesh(
     new THREE.CylinderGeometry(seed.radius, seed.radius * 0.72, 1, 24, 1, true),
     new THREE.MeshBasicMaterial({
-      color: 0xffd166,
+      color: 0xfff3d2,
       transparent: true,
-      opacity: 0.13,
+      opacity: 0.055,
       depthWrite: false,
       side: THREE.DoubleSide
     })
@@ -238,33 +249,42 @@ function createThermal(seed, id, terrain, isHotThermal) {
   visual.add(column);
 
   const ring = new THREE.Mesh(
-    new THREE.TorusGeometry(seed.radius, 3.2, 8, 48),
+    new THREE.TorusGeometry(seed.radius, 2.4, 8, 48),
     new THREE.MeshBasicMaterial({
       color: 0xfff0a8,
       transparent: true,
-      opacity: 0.5,
+      opacity: 0.24,
       depthWrite: false
     })
   );
   ring.rotation.x = Math.PI / 2;
   visual.add(ring);
 
+  const birds = createThermalBirds(seed.radius);
+  visual.add(birds);
+
   const cloud = createCloud(seed.radius);
   visual.add(cloud);
+
+  const cloudShadow = createCloudShadow({
+    width: seed.radius * THERMAL_CONFIG.cloudDiameterMultiplier * 1.2,
+    opacity: 0.22
+  });
+  visual.add(cloudShadow);
 
   const label = createThermalLabel(strength);
   visual.add(label);
 
   const particles = [];
   const particleMaterial = new THREE.MeshBasicMaterial({
-    color: 0xffffff,
+    color: 0xfdf7ea,
     transparent: true,
-    opacity: 0.58,
+    opacity: 0.3,
     depthWrite: false
   });
 
   for (let i = 0; i < THERMAL_CONFIG.particleCount; i += 1) {
-    const particle = new THREE.Mesh(new THREE.SphereGeometry(3.8, 8, 6), particleMaterial);
+    const particle = new THREE.Mesh(new THREE.SphereGeometry(2.6, 8, 6), particleMaterial);
     const angle = (i / THERMAL_CONFIG.particleCount) * Math.PI * 2;
     const radius = seed.radius * (0.2 + ((i * 7) % 10) / 16);
     particle.userData.baseAngle = angle;
@@ -285,16 +305,19 @@ function createThermal(seed, id, terrain, isHotThermal) {
     topAltitudeAboveSeaLevel: THERMAL_CONFIG.topAltitudeAboveSeaLevel,
     columnHeight: 0,
     tiltOffset: new THREE.Vector3(),
+    birdTime: Math.random() * 10,
     visual,
     column,
     ring,
     cloud,
+    cloudShadow,
     label,
+    birds,
     particles
   };
   visual.userData.tiltOffset = thermal.tiltOffset;
 
-  updateThermalVerticalLayout(thermal, groundHeight, new THREE.Vector3());
+  updateThermalVerticalLayout(thermal, groundHeight, new THREE.Vector3(), sunDirection, terrain);
 
   for (let i = 0; i < particles.length; i += 1) {
     const particle = particles[i];
@@ -354,40 +377,16 @@ function drawRoundRect(context, x, y, width, height, radius) {
 }
 
 function createCloud(radius) {
-  const cloud = new THREE.Group();
-  cloud.name = 'ThermalTopCloud';
-
-  const material = new THREE.MeshBasicMaterial({
-    color: 0xffffff,
-    transparent: true,
-    opacity: THERMAL_CONFIG.cloudOpacity,
-    depthWrite: false
+  const cloud = createCloudBillboard({
+    width: radius * THERMAL_CONFIG.cloudDiameterMultiplier * 1.5,
+    variant: Math.floor(Math.random() * 4),
+    opacity: THERMAL_CONFIG.cloudOpacity
   });
-  const geometry = new THREE.SphereGeometry(1, 18, 12);
-  const cloudRadius = radius * THERMAL_CONFIG.cloudDiameterMultiplier;
-  const puffs = [
-    { x: -0.04, z: 0.02, y: 0.02, sx: 0.62, sy: 0.22, sz: 0.36 },
-    { x: -0.44, z: 0.02, y: -0.02, sx: 0.34, sy: 0.16, sz: 0.26 },
-    { x: 0.42, z: -0.04, y: 0.01, sx: 0.38, sy: 0.18, sz: 0.28 },
-    { x: 0.02, z: 0.28, y: -0.03, sx: 0.3, sy: 0.14, sz: 0.24 },
-    { x: -0.12, z: -0.32, y: 0.03, sx: 0.42, sy: 0.17, sz: 0.24 },
-    { x: 0.68, z: 0.12, y: -0.04, sx: 0.23, sy: 0.13, sz: 0.2 },
-    { x: -0.72, z: -0.12, y: 0.01, sx: 0.26, sy: 0.12, sz: 0.19 },
-    { x: 0.2, z: -0.5, y: -0.01, sx: 0.27, sy: 0.13, sz: 0.18 },
-    { x: -0.26, z: 0.48, y: 0.02, sx: 0.24, sy: 0.12, sz: 0.2 }
-  ];
-
-  for (const puff of puffs) {
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.set(puff.x * cloudRadius, puff.y * cloudRadius, puff.z * cloudRadius);
-    mesh.scale.set(puff.sx * cloudRadius, puff.sy * cloudRadius, puff.sz * cloudRadius);
-    cloud.add(mesh);
-  }
-
+  cloud.name = 'ThermalTopCloud';
   return cloud;
 }
 
-function updateThermalVerticalLayout(thermal, groundHeight, wind) {
+function updateThermalVerticalLayout(thermal, groundHeight, wind, sunDirection = DEFAULT_SUN_DIRECTION, terrain = null) {
   const columnHeight = Math.max(0, thermal.topAltitudeAboveSeaLevel - groundHeight);
   thermal.columnHeight = columnHeight;
   thermal.visual.visible = columnHeight > 0;
@@ -428,6 +427,107 @@ function updateThermalVerticalLayout(thermal, groundHeight, wind) {
   thermal.ring.position.set(0, 0.5, 0);
   thermal.label.position.set(0, THERMAL_CONFIG.labelGroundClearance, thermal.radius * 0.92);
   thermal.cloud.position.set(thermal.tiltOffset.x, columnHeight, thermal.tiltOffset.z);
+  updateCloudShadow(thermal, groundHeight, sunDirection, terrain);
+}
+
+function updateCloudShadow(thermal, groundHeight, sunDirection, terrain) {
+  const shadow = thermal.cloudShadow;
+  if (!shadow) return;
+
+  if (sunDirection.y <= 0.05) {
+    shadow.visible = false;
+    return;
+  }
+
+  // Projeta a base da nuvem ao longo do raio de sol ate o chao.
+  const rayLength = thermal.columnHeight / sunDirection.y;
+  const localX = thermal.tiltOffset.x - sunDirection.x * rayLength;
+  const localZ = thermal.tiltOffset.z - sunDirection.z * rayLength;
+  const shadowGroundHeight = terrain
+    ? terrain.getHeightAt(thermal.position.x + localX, thermal.position.z + localZ)
+    : groundHeight;
+
+  shadow.visible = true;
+  shadow.position.set(localX, shadowGroundHeight - groundHeight + 2.2, localZ);
+}
+
+function getVerticalLiftFactor(thermal, altitude) {
+  const fadeStart = thermal.topAltitudeAboveSeaLevel - THERMAL_CONFIG.liftFadeBandMeters;
+  if (altitude <= fadeStart) return 1;
+
+  const fadeProgress = THREE.MathUtils.clamp(
+    (altitude - fadeStart) / THERMAL_CONFIG.liftFadeBandMeters,
+    0,
+    1
+  );
+  const topFactor = Math.min(1, THERMAL_CONFIG.topLiftMetersPerSecond / thermal.strength);
+  return THREE.MathUtils.lerp(1, topFactor, fadeProgress);
+}
+
+function createThermalBirds(radius) {
+  const group = new THREE.Group();
+  group.name = 'ThermalBirds';
+  const material = new THREE.MeshBasicMaterial({ color: 0x2d2f33, side: THREE.DoubleSide });
+  const count = 3 + Math.floor(Math.random() * 3);
+
+  for (let index = 0; index < count; index += 1) {
+    const bird = createBird(material);
+    bird.userData.orbitRadius = radius * (0.28 + Math.random() * 0.45);
+    bird.userData.angle = Math.random() * Math.PI * 2;
+    bird.userData.orbitSpeed = 0.32 + Math.random() * 0.26;
+    bird.userData.heightRatio = 0.3 + Math.random() * 0.45;
+    bird.userData.flapPhase = Math.random() * Math.PI * 2;
+    bird.userData.flapSpeed = 4.5 + Math.random() * 2.5;
+    group.add(bird);
+  }
+
+  return group;
+}
+
+function createBird(material) {
+  const bird = new THREE.Group();
+  const wingGeometry = new THREE.BufferGeometry();
+  wingGeometry.setAttribute('position', new THREE.Float32BufferAttribute([
+    0, 0, 0.35,
+    1.35, 0.1, 0.55,
+    1.35, 0.1, -0.4,
+    0, 0, 0.35,
+    1.35, 0.1, -0.4,
+    0, 0, -0.55
+  ], 3));
+  wingGeometry.computeVertexNormals();
+
+  const rightWing = new THREE.Mesh(wingGeometry, material);
+  const leftWing = new THREE.Mesh(wingGeometry, material);
+  leftWing.scale.x = -1;
+  bird.add(rightWing, leftWing);
+  bird.userData.wings = { leftWing, rightWing };
+  return bird;
+}
+
+function animateBirds(thermal, delta) {
+  if (thermal.columnHeight <= 0 || !thermal.birds) return;
+
+  thermal.birdTime += delta;
+
+  for (const bird of thermal.birds.children) {
+    bird.userData.angle += delta * bird.userData.orbitSpeed;
+    const height = thermal.columnHeight * bird.userData.heightRatio;
+    const drift = bird.userData.heightRatio;
+    bird.position.set(
+      Math.cos(bird.userData.angle) * bird.userData.orbitRadius + thermal.tiltOffset.x * drift,
+      height,
+      Math.sin(bird.userData.angle) * bird.userData.orbitRadius + thermal.tiltOffset.z * drift
+    );
+    bird.rotation.y = -bird.userData.angle;
+
+    // Planar com batidas de asa ocasionais, como urubus em termica.
+    const flapCycle = Math.sin(thermal.birdTime * 0.6 + bird.userData.flapPhase);
+    const flapStrength = THREE.MathUtils.clamp((flapCycle - 0.55) / 0.45, 0, 1);
+    const flap = Math.sin(thermal.birdTime * bird.userData.flapSpeed + bird.userData.flapPhase) * 0.5 * flapStrength;
+    bird.userData.wings.rightWing.rotation.z = flap + 0.08;
+    bird.userData.wings.leftWing.rotation.z = -flap - 0.08;
+  }
 }
 
 function animateParticles(thermal, delta) {
@@ -487,6 +587,6 @@ function disposeObject3D(object) {
 
 function disposeMaterialTextures(material) {
   for (const value of Object.values(material)) {
-    if (value?.isTexture) value.dispose();
+    if (value?.isTexture && !value.userData.shared) value.dispose();
   }
 }

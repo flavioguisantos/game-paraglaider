@@ -18,9 +18,11 @@ const tempRight = new THREE.Vector3();
 const tempHorizontalVelocity = new THREE.Vector3();
 const tempPairCenter = new THREE.Vector3();
 
+// Teto realista para voo de parapente: acima de ~30 km/h nao se decola.
+// Tambem evita bots a favor do vento com velocidade real muito acima do padrao.
 const WIND_CONFIG = {
-  minSpeedKmh: 10,
-  maxSpeedKmh: 50,
+  minSpeedKmh: 8,
+  maxSpeedKmh: 30,
   initialDirectionRadians: Math.atan2(3.2, 1.1),
   directionChangeRate: 0.08,
   speedCycleRate: 0.11,

@@ -20,18 +20,24 @@ const DEFAULT_OPTIONS = {
 
 const TERRAIN_ASSET_VERSION = 'terrain-rgb-binary-5';
 const tempTile = { x: 0, y: 0 };
+// Camadas vetoriais renderizadas de forma realista sobre o relevo:
+// - ribbon: fita de geometria com largura real em metros drapejada no terreno
+//   (estradas de asfalto, estradas de terra, ferrovias, rios).
+// - area: contornos encadeados em aneis e preenchidos por triangulacao
+//   (agua com superficie plana; area urbana translucida drapejada).
+// - point: apenas rotulos (sem marcadores geometricos).
 const VECTOR_LAYER_STYLES = {
-  city_area: { color: 0xdede00, opacity: 0.38, yOffset: 0.72 },
-  water_area: { color: 0x55a0ff, opacity: 0.7, yOffset: 0.86 },
-  water_line: { color: 0x55a0ff, opacity: 0.85, yOffset: 0.9 },
-  roadbig_line: { color: 0xf04040, opacity: 0.95, yOffset: 1.05 },
-  roadmedium_line: { color: 0xf07055, opacity: 0.8, yOffset: 1.0 },
-  roadsmall_line: { color: 0xe7aa74, opacity: 0.58, yOffset: 0.95 },
-  railway_line: { color: 0x303030, opacity: 0.8, yOffset: 1.12 },
-  city_point: { color: 0xf4e55c, opacity: 1, yOffset: 3.5 },
-  town_point: { color: 0xf4e55c, opacity: 0.92, yOffset: 3.2 },
-  suburb_point: { color: 0xe9de76, opacity: 0.78, yOffset: 2.8 },
-  village_point: { color: 0xe9de76, opacity: 0.72, yOffset: 2.6 }
+  city_area: { type: 'area', color: 0x8f8b80, opacity: 0.3, flat: false, yOffset: 1.0 },
+  water_area: { type: 'area', color: 0x2f5f7d, opacity: 1, flat: true, yOffset: 1.3, roughness: 0.32 },
+  water_line: { type: 'ribbon', color: 0x3a6d84, widthMeters: 9, yOffset: 1.2 },
+  roadbig_line: { type: 'ribbon', color: 0x63636a, widthMeters: 12, yOffset: 1.6 },
+  roadmedium_line: { type: 'ribbon', color: 0x7a756e, widthMeters: 8, yOffset: 1.4 },
+  roadsmall_line: { type: 'ribbon', color: 0x99885f, widthMeters: 5, yOffset: 1.2 },
+  railway_line: { type: 'ribbon', color: 0x45433f, widthMeters: 3.4, yOffset: 1.8 },
+  city_point: { type: 'point', color: 0xf4e55c, opacity: 1, yOffset: 3.5 },
+  town_point: { type: 'point', color: 0xf4e55c, opacity: 0.92, yOffset: 3.2 },
+  suburb_point: { type: 'point', color: 0xe9de76, opacity: 0.78, yOffset: 2.8 },
+  village_point: { type: 'point', color: 0xe9de76, opacity: 0.72, yOffset: 2.6 }
 };
 
 export function createTerrain(options = {}) {
@@ -153,6 +159,48 @@ class LocalXcmTerrain {
     return this.elevationToWorldHeight(elevation);
   }
 
+  // Altura da malha renderizada (lattice de vertices do chunk), que pode divergir
+  // varios metros de getHeightAt() em encostas por causa do espacamento dos vertices.
+  // Use para apoiar objetos visuais (ex.: arvores) exatamente sobre o relevo visivel.
+  getRenderedHeightAt(x, z) {
+    if (!this.manifest || !this.centerPixel || !Number.isFinite(x) || !Number.isFinite(z)) {
+      return this.config.fallbackHeight;
+    }
+
+    const tile = this.getTileForWorld(x, z);
+    if (!this.isValidTile(tile.x, tile.y)) return this.config.fallbackHeight;
+
+    const chunk = this.chunks.get(getChunkKey(tile.x, tile.y));
+    if (!chunk?.imageData) return this.config.fallbackHeight;
+
+    const center = this.getChunkCenterWorld(tile.x, tile.y);
+    const segments = this.config.chunkSegments;
+    const gridX = ((x - center.x) / this.chunkWorldWidth + 0.5) * segments;
+    const gridZ = ((z - center.z) / this.chunkWorldDepth + 0.5) * segments;
+    const x0 = THREE.MathUtils.clamp(Math.floor(gridX), 0, segments - 1);
+    const z0 = THREE.MathUtils.clamp(Math.floor(gridZ), 0, segments - 1);
+    const fx = THREE.MathUtils.clamp(gridX - x0, 0, 1);
+    const fz = THREE.MathUtils.clamp(gridZ - z0, 0, 1);
+
+    const vertexHeight = (ix, iz) => {
+      const u = (ix / segments) * (this.manifest.terrain.tileSize - 1);
+      const v = (iz / segments) * (this.manifest.terrain.tileSize - 1);
+      return this.elevationToWorldHeight(sampleTileElevation(chunk.imageData, u, v));
+    };
+
+    // Interpolacao identica a triangulacao da PlaneGeometry (diagonal b-d por quad),
+    // para que a altura calculada coincida com a superficie que a GPU desenha.
+    const heightA = vertexHeight(x0, z0);
+    const heightB = vertexHeight(x0, z0 + 1);
+    const heightC = vertexHeight(x0 + 1, z0 + 1);
+    const heightD = vertexHeight(x0 + 1, z0);
+
+    if (fx + fz <= 1) {
+      return heightA + (heightD - heightA) * fx + (heightB - heightA) * fz;
+    }
+    return heightC + (heightB - heightC) * (1 - fx) + (heightD - heightC) * (1 - fz);
+  }
+
   getTileForWorld(x, z) {
     const pixelX = this.centerPixel.x + x / this.worldUnitsPerPixelX;
     const pixelY = this.centerPixel.y + z / this.worldUnitsPerPixelY;
@@ -214,7 +262,7 @@ class LocalXcmTerrain {
       disposeObject3D(chunk.vectors);
     }
     chunk.mesh.geometry.dispose();
-    chunk.mesh.material.dispose();
+    // O material do terreno e compartilhado entre chunks; nao descartar aqui.
     this.chunks.delete(key);
   }
 
@@ -239,7 +287,7 @@ class LocalXcmTerrain {
       const response = await fetch(this.getVectorTileUrl(chunk.tileX, chunk.tileY));
       if (!response.ok) throw new Error(`Vector HTTP ${response.status}`);
       const vectorTile = await response.json();
-      const group = this.createVectorGroup(vectorTile, chunk.imageData);
+      const group = this.createVectorGroup(vectorTile, chunk);
       if (group.children.length === 0) return;
 
       group.name = `XcmVectorChunk_${chunk.tileX}_${chunk.tileY}`;
@@ -272,38 +320,56 @@ class LocalXcmTerrain {
       const worldHeight = this.elevationToWorldHeight(elevation);
       const slope = sampleTileSlope(imageData, u, v, this.worldUnitsPerPixelX, this.worldUnitsPerPixelY);
       positions.setY(index, worldHeight);
-      addTerrainColor(colors, worldHeight, slope);
+      addTerrainColor(colors, worldHeight, slope, chunkCenter.x + localX, chunkCenter.z + localZ);
     }
 
     positions.needsUpdate = true;
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
     geometry.computeVertexNormals();
 
-    const mesh = new THREE.Mesh(
-      geometry,
-      new THREE.MeshStandardMaterial({
-        vertexColors: true,
-        roughness: 0.74,
-        metalness: 0
-      })
-    );
+    const mesh = new THREE.Mesh(geometry, this.getTerrainMaterial());
     mesh.name = `XcmTerrainChunk_${tileX}_${tileY}`;
     mesh.position.set(chunkCenter.x, 0, chunkCenter.z);
+    mesh.receiveShadow = true;
+    mesh.castShadow = true;
     return mesh;
   }
 
-  createVectorGroup(vectorTile, imageData) {
+  getTerrainMaterial() {
+    if (!this.terrainMaterial) {
+      this.terrainMaterial = new THREE.MeshStandardMaterial({
+        vertexColors: true,
+        roughness: 0.82,
+        metalness: 0
+      });
+
+      const detailTexture = createDetailTexture();
+      if (detailTexture) {
+        // Repeticao inteira mantem o padrao continuo entre chunks vizinhos.
+        detailTexture.repeat.set(64, 64);
+        this.terrainMaterial.map = detailTexture;
+      }
+    }
+
+    return this.terrainMaterial;
+  }
+
+  createVectorGroup(vectorTile, chunk) {
     const group = new THREE.Group();
     const layers = vectorTile.layers ?? {};
 
     for (const [layerName, layer] of Object.entries(layers)) {
+      const style = getVectorStyle(layerName);
+
       if (layer.lines?.length) {
-        const lineObject = this.createVectorLines(layerName, layer.lines, imageData);
-        if (lineObject) group.add(lineObject);
+        const object = style.type === 'area'
+          ? this.createVectorAreas(layerName, layer.lines, chunk, style)
+          : this.createVectorRibbons(layerName, layer.lines, chunk, style);
+        if (object) group.add(object);
       }
 
       if (layer.points?.length) {
-        const pointGroup = this.createVectorPoints(layerName, layer.points, imageData);
+        const pointGroup = this.createVectorPoints(layerName, layer.points, chunk.imageData, style);
         if (pointGroup.children.length > 0) group.add(pointGroup);
       }
     }
@@ -311,43 +377,178 @@ class LocalXcmTerrain {
     return group;
   }
 
-  createVectorLines(layerName, lines, imageData) {
+  // Altura de drapejamento sobre o relevo visivel. Fallbacks em ordem:
+  // altura por pixel do tile correto e, por ultimo, amostra clampada no
+  // proprio chunk (pontos fora dos tiles carregados).
+  getVectorHeight(worldX, worldZ, chunk) {
+    const rendered = this.getRenderedHeightAt(worldX, worldZ);
+    if (rendered !== this.config.fallbackHeight) return rendered;
+
+    const pixelHeight = this.getHeightAt(worldX, worldZ);
+    if (pixelHeight !== this.config.fallbackHeight) return pixelHeight;
+
+    const tileSize = this.manifest.terrain.tileSize;
+    const pixelX = this.centerPixel.x + worldX / this.worldUnitsPerPixelX;
+    const pixelY = this.centerPixel.y + worldZ / this.worldUnitsPerPixelY;
+    const u = THREE.MathUtils.clamp(pixelX - chunk.tileX * tileSize, 0, tileSize - 1);
+    const v = THREE.MathUtils.clamp(pixelY - chunk.tileY * tileSize, 0, tileSize - 1);
+    return this.elevationToWorldHeight(
+      sampleTileElevation(chunk.imageData, u, v, this.config.referenceElevation)
+    );
+  }
+
+  pixelToWorldXZ(pixelX, pixelY) {
+    return {
+      x: (pixelX - this.centerPixel.x) * this.worldUnitsPerPixelX,
+      z: (pixelY - this.centerPixel.y) * this.worldUnitsPerPixelY
+    };
+  }
+
+  createVectorRibbons(layerName, lines, chunk, style) {
     const positions = [];
-    const style = getVectorStyle(layerName);
+    const indices = [];
+    const halfWidth = (style.widthMeters * this.worldUnitsPerMeter) / 2;
+    // Subdivide cada segmento em passos menores que meio quad da malha do terreno,
+    // para a fita acompanhar o relevo em vez de atravessar elevacoes no caminho.
+    const stepLength = Math.max(20, (this.chunkWorldWidth / this.config.chunkSegments) * 0.5);
 
     for (const line of lines) {
-      const start = this.pixelToWorld(line[0], line[1], imageData, style.yOffset);
-      const end = this.pixelToWorld(line[2], line[3], imageData, style.yOffset);
-      positions.push(start.x, start.y, start.z, end.x, end.y, end.z);
+      const start = this.pixelToWorldXZ(line[0], line[1]);
+      const end = this.pixelToWorldXZ(line[2], line[3]);
+      const dirX = end.x - start.x;
+      const dirZ = end.z - start.z;
+      const length = Math.hypot(dirX, dirZ);
+      if (length < 0.001) continue;
+
+      // Perpendicular para a largura; extensao nas pontas cobre juntas entre segmentos.
+      const perpX = (-dirZ / length) * halfWidth;
+      const perpZ = (dirX / length) * halfWidth;
+      const extX = (dirX / length) * halfWidth * 0.6;
+      const extZ = (dirZ / length) * halfWidth * 0.6;
+      const startX = start.x - extX;
+      const startZ = start.z - extZ;
+      const endX = end.x + extX;
+      const endZ = end.z + extZ;
+      const steps = Math.max(1, Math.ceil(length / stepLength));
+      const base = positions.length / 3;
+
+      // Amostra as alturas da linha central e recorta outliers contra a mediana
+      // do segmento: pixels NoData do DEM criariam cunhas de centenas de metros.
+      const stepPoints = [];
+      for (let step = 0; step <= steps; step += 1) {
+        const t = step / steps;
+        const centerX = startX + (endX - startX) * t;
+        const centerZ = startZ + (endZ - startZ) * t;
+        stepPoints.push({
+          x: centerX,
+          z: centerZ,
+          height: this.getVectorHeight(centerX, centerZ, chunk)
+        });
+      }
+
+      const sortedHeights = stepPoints.map((point) => point.height).sort((a, b) => a - b);
+      const medianHeight = sortedHeights[Math.floor(sortedHeights.length / 2)];
+
+      for (const point of stepPoints) {
+        if (Math.abs(point.height - medianHeight) > 120) point.height = medianHeight;
+        const height = point.height + style.yOffset;
+        positions.push(point.x - perpX, height, point.z - perpZ);
+        positions.push(point.x + perpX, height, point.z + perpZ);
+      }
+
+      for (let step = 0; step < steps; step += 1) {
+        const row = base + step * 2;
+        indices.push(row, row + 2, row + 1, row + 1, row + 2, row + 3);
+      }
     }
 
     if (positions.length === 0) return null;
 
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    const object = new THREE.LineSegments(geometry, this.getVectorMaterial(layerName));
-    object.name = `XcmVectorLines_${layerName}`;
-    object.frustumCulled = false;
-    return object;
+    const mesh = new THREE.Mesh(
+      this.buildVectorGeometry(positions, indices),
+      this.getVectorMaterial(layerName, style)
+    );
+    mesh.name = `XcmVectorRibbons_${layerName}`;
+    mesh.receiveShadow = true;
+    return mesh;
   }
 
-  createVectorPoints(layerName, points, imageData) {
+  createVectorAreas(layerName, lines, chunk, style) {
+    const rings = chainSegmentsIntoRings(lines);
+    const positions = [];
+    const indices = [];
+
+    for (const ring of rings) {
+      if (ring.length < 3) continue;
+
+      const contour = ring.map(([px, py]) => new THREE.Vector2(px, py));
+      if (Math.abs(THREE.ShapeUtils.area(contour)) < 1.5) continue;
+
+      let triangles;
+      try {
+        triangles = THREE.ShapeUtils.triangulateShape(contour, []);
+      } catch {
+        continue;
+      }
+      if (triangles.length === 0) continue;
+
+      const base = positions.length / 3;
+      const worldPoints = contour.map((point) => this.pixelToWorldXZ(point.x, point.y));
+
+      // Agua e plana: usa a mediana das alturas da margem, robusta a pixels
+      // corrompidos/NoData do DEM que afundariam o lago inteiro.
+      let flatHeight = 0;
+      if (style.flat) {
+        const heights = worldPoints
+          .map((point) => this.getVectorHeight(point.x, point.z, chunk))
+          .sort((a, b) => a - b);
+        flatHeight = heights[Math.floor(heights.length / 2)];
+      }
+
+      for (const point of worldPoints) {
+        const height = style.flat
+          ? flatHeight
+          : this.getVectorHeight(point.x, point.z, chunk);
+        positions.push(point.x, height + style.yOffset, point.z);
+      }
+
+      for (const triangle of triangles) {
+        indices.push(base + triangle[0], base + triangle[1], base + triangle[2]);
+      }
+    }
+
+    if (positions.length === 0) return null;
+
+    const mesh = new THREE.Mesh(
+      this.buildVectorGeometry(positions, indices),
+      this.getVectorMaterial(layerName, style)
+    );
+    mesh.name = `XcmVectorAreas_${layerName}`;
+    mesh.receiveShadow = true;
+    return mesh;
+  }
+
+  buildVectorGeometry(positions, indices) {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setIndex(indices);
+
+    const normals = new Float32Array(positions.length);
+    for (let index = 1; index < normals.length; index += 3) normals[index] = 1;
+    geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+    return geometry;
+  }
+
+  createVectorPoints(layerName, points, imageData, style) {
     const group = new THREE.Group();
-    const style = getVectorStyle(layerName);
-    const markerGeometry = new THREE.SphereGeometry(layerName === 'city_point' ? 0.9 : 0.55, 8, 6);
-    const markerMaterial = new THREE.MeshBasicMaterial({ color: style.color, transparent: true, opacity: style.opacity });
 
     for (const point of points) {
-      const position = this.pixelToWorld(point.x, point.y, imageData, style.yOffset);
-      const marker = new THREE.Mesh(markerGeometry, markerMaterial);
-      marker.position.copy(position);
-      group.add(marker);
+      if (!point.label) continue;
 
-      if (point.label) {
-        const label = this.createLabelSprite(point.label, style.color);
-        label.position.set(position.x, position.y + this.config.labelYOffset, position.z);
-        group.add(label);
-      }
+      const position = this.pixelToWorld(point.x, point.y, imageData, style.yOffset);
+      const label = this.createLabelSprite(point.label, style.color);
+      label.position.set(position.x, position.y + this.config.labelYOffset, position.z);
+      group.add(label);
     }
 
     group.name = `XcmVectorPoints_${layerName}`;
@@ -367,14 +568,20 @@ class LocalXcmTerrain {
     );
   }
 
-  getVectorMaterial(layerName) {
+  getVectorMaterial(layerName, style) {
     if (!this.vectorMaterials.has(layerName)) {
-      const style = getVectorStyle(layerName);
-      this.vectorMaterials.set(layerName, new THREE.LineBasicMaterial({
+      const transparent = (style.opacity ?? 1) < 1;
+      this.vectorMaterials.set(layerName, new THREE.MeshStandardMaterial({
         color: style.color,
-        transparent: true,
-        opacity: style.opacity,
-        depthWrite: false
+        roughness: style.roughness ?? 0.92,
+        metalness: 0,
+        transparent,
+        opacity: style.opacity ?? 1,
+        depthWrite: !transparent,
+        side: THREE.DoubleSide,
+        polygonOffset: true,
+        polygonOffsetFactor: -4,
+        polygonOffsetUnits: -4
       }));
     }
     return this.vectorMaterials.get(layerName);
@@ -415,7 +622,67 @@ class LocalXcmTerrain {
 }
 
 function getVectorStyle(layerName) {
-  return VECTOR_LAYER_STYLES[layerName] ?? { color: 0xffffff, opacity: 0.75, yOffset: 1 };
+  return VECTOR_LAYER_STYLES[layerName]
+    ?? { type: 'ribbon', color: 0xb8b0a2, widthMeters: 4, yOffset: 1 };
+}
+
+// Encadeia segmentos [x1,y1,x2,y2] em polilinhas/aneis pelos pontos coincidentes.
+// Aneis abertos (ex.: lago cortado na borda do tile) sao fechados na triangulacao
+// pela propria ligacao fim-inicio do contorno.
+function chainSegmentsIntoRings(lines) {
+  const pointKey = (x, y) => `${Math.round(x * 16)}:${Math.round(y * 16)}`;
+  const startMap = new Map();
+  const used = new Array(lines.length).fill(false);
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const key = pointKey(lines[index][0], lines[index][1]);
+    if (!startMap.has(key)) startMap.set(key, []);
+    startMap.get(key).push(index);
+  }
+
+  const takeSegmentStartingAt = (key) => {
+    const candidates = startMap.get(key);
+    if (!candidates) return -1;
+    while (candidates.length > 0) {
+      const index = candidates.pop();
+      if (!used[index]) return index;
+    }
+    return -1;
+  };
+
+  const rings = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    if (used[index]) continue;
+    used[index] = true;
+
+    const points = [
+      [lines[index][0], lines[index][1]],
+      [lines[index][2], lines[index][3]]
+    ];
+
+    let guard = lines.length;
+    while (guard > 0) {
+      guard -= 1;
+      const tail = points[points.length - 1];
+      const nextIndex = takeSegmentStartingAt(pointKey(tail[0], tail[1]));
+      if (nextIndex === -1) break;
+
+      used[nextIndex] = true;
+      points.push([lines[nextIndex][2], lines[nextIndex][3]]);
+    }
+
+    // Remove o ponto final duplicado quando o anel fecha no inicio.
+    const head = points[0];
+    const tail = points[points.length - 1];
+    if (points.length > 3 && pointKey(head[0], head[1]) === pointKey(tail[0], tail[1])) {
+      points.pop();
+    }
+
+    rings.push(points);
+  }
+
+  return rings;
 }
 
 function createLabelTexture(text, color) {
@@ -765,29 +1032,120 @@ function sampleTileSlope(imageData, u, v, metersPerPixelX, metersPerPixelY) {
   return Math.hypot(dx, dz);
 }
 
-function addTerrainColor(colors, height, slope) {
-  const lowForest = new THREE.Color(0x315f32);
-  const forest = new THREE.Color(0x47733a);
-  const highForest = new THREE.Color(0x667849);
-  const dryGrass = new THREE.Color(0x8a8153);
-  const exposedSoil = new THREE.Color(0x8f7356);
-  const granite = new THREE.Color(0xa49d91);
-  const color = new THREE.Color();
+const TERRAIN_PALETTE = {
+  lowForest: new THREE.Color(0x315f32),
+  forest: new THREE.Color(0x47733a),
+  highForest: new THREE.Color(0x667849),
+  dryGrass: new THREE.Color(0x8a8153),
+  exposedSoil: new THREE.Color(0x8f7356),
+  granite: new THREE.Color(0xa49d91),
+  clearing: new THREE.Color(0x6f7d43)
+};
+const tempTerrainColor = new THREE.Color();
+
+function addTerrainColor(colors, height, slope, worldX, worldZ) {
+  const color = tempTerrainColor;
+  const palette = TERRAIN_PALETTE;
 
   if (height < 750) {
-    color.copy(lowForest);
+    color.copy(palette.lowForest);
   } else if (height < 1150) {
-    color.copy(lowForest).lerp(forest, (height - 750) / 400);
+    color.copy(palette.lowForest).lerp(palette.forest, (height - 750) / 400);
   } else if (height < 1450) {
-    color.copy(forest).lerp(highForest, (height - 1150) / 300);
+    color.copy(palette.forest).lerp(palette.highForest, (height - 1150) / 300);
   } else {
-    color.copy(highForest).lerp(dryGrass, THREE.MathUtils.clamp((height - 1450) / 500, 0, 1));
+    color.copy(palette.highForest).lerp(palette.dryGrass, THREE.MathUtils.clamp((height - 1450) / 500, 0, 1));
   }
+
+  // Ruido em duas escalas quebra as faixas uniformes de altitude:
+  // manchas largas (clareiras/pasto) e granulacao fina de vegetacao.
+  const patchNoise = terrainValueNoise(worldX * 0.004, worldZ * 0.004);
+  const grainNoise = terrainValueNoise(worldX * 0.045 + 71.3, worldZ * 0.045 - 38.7);
+  color.lerp(palette.clearing, THREE.MathUtils.clamp((patchNoise - 0.62) / 0.38, 0, 1) * 0.5);
+  const brightness = 1 + (patchNoise - 0.5) * 0.14 + (grainNoise - 0.5) * 0.22;
+  color.multiplyScalar(THREE.MathUtils.clamp(brightness, 0.78, 1.22));
 
   const exposedFactor = THREE.MathUtils.clamp((slope - 0.14) / 0.24, 0, 1);
   const rockFactor = THREE.MathUtils.clamp((slope - 0.28) / 0.32, 0, 1);
-  color.lerp(exposedSoil, exposedFactor * 0.45);
-  color.lerp(granite, rockFactor * 0.55);
+  color.lerp(palette.exposedSoil, exposedFactor * 0.45);
+  color.lerp(palette.granite, rockFactor * 0.55);
 
   colors.push(color.r, color.g, color.b);
+}
+
+function terrainValueNoise(x, z) {
+  const x0 = Math.floor(x);
+  const z0 = Math.floor(z);
+  const tx = smoothstep01(x - x0);
+  const tz = smoothstep01(z - z0);
+  const v00 = hash2D(x0, z0);
+  const v10 = hash2D(x0 + 1, z0);
+  const v01 = hash2D(x0, z0 + 1);
+  const v11 = hash2D(x0 + 1, z0 + 1);
+  return THREE.MathUtils.lerp(
+    THREE.MathUtils.lerp(v00, v10, tx),
+    THREE.MathUtils.lerp(v01, v11, tx),
+    tz
+  );
+}
+
+function hash2D(x, z) {
+  const value = Math.sin(x * 127.1 + z * 311.7) * 43758.5453123;
+  return value - Math.floor(value);
+}
+
+function smoothstep01(t) {
+  return t * t * (3 - 2 * t);
+}
+
+function createDetailTexture() {
+  if (typeof document === 'undefined') return null;
+
+  const size = 256;
+  const period = 32;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const context = canvas.getContext('2d');
+  const image = context.createImageData(size, size);
+
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      // Ruido de treliça com lattice modular para a textura tilar sem emendas.
+      const u = (x / size) * period;
+      const v = (y / size) * period;
+      const coarse = tileableValueNoise(u, v, period);
+      const fine = tileableValueNoise(u * 4, v * 4, period * 4);
+      const value = Math.round(235 + (coarse - 0.5) * 26 + (fine - 0.5) * 14);
+      const index = (y * size + x) * 4;
+      image.data[index] = value;
+      image.data[index + 1] = value;
+      image.data[index + 2] = value;
+      image.data[index + 3] = 255;
+    }
+  }
+
+  context.putImageData(image, 0, 0);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+function tileableValueNoise(x, z, period) {
+  const x0 = Math.floor(x);
+  const z0 = Math.floor(z);
+  const tx = smoothstep01(x - x0);
+  const tz = smoothstep01(z - z0);
+  const wrap = (value) => ((value % period) + period) % period;
+  const v00 = hash2D(wrap(x0), wrap(z0));
+  const v10 = hash2D(wrap(x0 + 1), wrap(z0));
+  const v01 = hash2D(wrap(x0), wrap(z0 + 1));
+  const v11 = hash2D(wrap(x0 + 1), wrap(z0 + 1));
+  return THREE.MathUtils.lerp(
+    THREE.MathUtils.lerp(v00, v10, tx),
+    THREE.MathUtils.lerp(v01, v11, tx),
+    tz
+  );
 }
