@@ -15,16 +15,16 @@ const VARIO_AUDIO_CONFIG = {
 };
 
 const MUSIC_CONFIG = {
-  volume: 0.058,
-  tempo: 132,
-  lookAheadSeconds: 0.09,
-  scheduleAheadSeconds: 0.75,
-  melody: [0, 4, 7, 12, 10, 7, 5, 7, 3, 7, 10, 15, 12, 10, 7, 5],
-  bass: [0, 0, 7, 7, 5, 5, 3, 3],
+  volume: 0.072,
+  tempo: 148,
+  lookAheadSeconds: 0.1,
+  scheduleAheadSeconds: 0.8,
+  melody: [0, 4, 7, 11, 14, 11, 9, 7, 5, 7, 9, 12, 14, 12, 10, 7],
+  bass: [0, 0, 5, 5, 3, 3, 2, 2],
   chords: [
     [0, 4, 7],
-    [7, 10, 14],
     [5, 9, 12],
+    [7, 11, 14],
     [3, 7, 10]
   ]
 };
@@ -33,8 +33,8 @@ export function createVarioAudio() {
   return new VarioAudio();
 }
 
-export function createAdventureMusic() {
-  return new AdventureMusic();
+export function createAdventureMusic(options = {}) {
+  return new AdventureMusic(options);
 }
 
 export function unlockGameAudio() {
@@ -162,7 +162,7 @@ class VarioAudio {
 }
 
 class AdventureMusic {
-  constructor() {
+  constructor(options = {}) {
     this.context = null;
     this.masterGain = null;
     this.delay = null;
@@ -172,23 +172,31 @@ class AdventureMusic {
     this.nextNoteTime = 0;
     this.step = 0;
     this.timerId = null;
+    this.trackUrl = options.trackUrl ?? null;
+    this.externalAudio = null;
+    this.externalAudioSource = null;
   }
 
   start() {
     if (this.enabled) return;
 
     this.context = this.context || unlockGameAudio();
-    if (!this.context) {
+      if (!this.context) {
       recordAudioDebug('musicStartFailed', { reason: 'AudioContext indisponivel' });
       return;
     }
     this.masterGain = this.masterGain || this.context.createGain();
+    this.masterGain.gain.setValueAtTime(MUSIC_CONFIG.volume, this.context.currentTime);
+
+    if (this.trackUrl && this.canPlayExternalTrack()) {
+      this.startExternalTrack();
+      return;
+    }
+
     this.delay = this.delay || this.context.createDelay();
     this.delayGain = this.delayGain || this.context.createGain();
-
-    this.masterGain.gain.value = MUSIC_CONFIG.volume;
-    this.delay.delayTime.value = 0.22;
-    this.delayGain.gain.value = 0.14;
+    this.delay.delayTime.value = 0.18;
+    this.delayGain.gain.value = 0.16;
     if (!this.masterConnected) {
       this.masterGain.connect(this.context.destination);
       this.masterGain.connect(this.delay);
@@ -202,7 +210,7 @@ class AdventureMusic {
     this.step = 0;
     this.timerId = window.setInterval(() => this.schedule(), MUSIC_CONFIG.lookAheadSeconds * 1000);
     this.schedule();
-    recordAudioDebug('musicStarted', { state: this.context.state, currentTime: Number(this.context.currentTime.toFixed(3)) });
+    recordAudioDebug('musicStarted', { state: this.context.state, currentTime: Number(this.context.currentTime.toFixed(3)), track: 'procedural' });
   }
 
   stop() {
@@ -213,7 +221,81 @@ class AdventureMusic {
       window.clearInterval(this.timerId);
       this.timerId = null;
     }
-    recordAudioDebug('musicStopped', { state: this.context?.state ?? null });
+    if (this.externalAudio) {
+      this.externalAudio.pause();
+      this.externalAudio.currentTime = 0;
+      this.externalAudio.volume = 0;
+    }
+    recordAudioDebug('musicStopped', { state: this.context?.state ?? null, track: this.trackUrl ? 'external' : 'procedural' });
+  }
+
+  canPlayExternalTrack() {
+    return Boolean(this.trackUrl) && typeof window !== 'undefined' && typeof Audio !== 'undefined';
+  }
+
+  startExternalTrack() {
+    if (!this.externalAudio) {
+      this.externalAudio = new Audio(this.trackUrl);
+      this.externalAudio.loop = true;
+      this.externalAudio.preload = 'auto';
+      this.externalAudio.volume = 0.8;
+      this.externalAudio.crossOrigin = 'anonymous';
+      this.externalAudioSource = this.context.createMediaElementSource(this.externalAudio);
+      this.externalAudioSource.connect(this.masterGain);
+      this.masterGain.connect(this.context.destination);
+      this.masterConnected = true;
+    }
+
+    this.externalAudio.currentTime = 0;
+    this.enabled = true;
+    const startPlayback = () => {
+      const playPromise = this.externalAudio.play();
+      if (playPromise?.then) {
+        playPromise
+          .then(() => {
+            this.externalAudio.volume = 0.8;
+            recordAudioDebug('musicStarted', { state: this.context.state, currentTime: Number(this.context.currentTime.toFixed(3)), track: this.trackUrl });
+          })
+          .catch((error) => {
+            recordAudioDebug('musicStartFailed', { reason: getErrorMessage(error), track: this.trackUrl });
+            this.enabled = false;
+            this.startProceduralFallback();
+          });
+      }
+    };
+
+    if (this.context.state === 'suspended') {
+      this.context.resume().then(() => startPlayback()).catch(() => startPlayback());
+    } else {
+      startPlayback();
+    }
+  }
+
+  startProceduralFallback() {
+    if (this.masterConnected && this.externalAudioSource) {
+      this.externalAudioSource.disconnect();
+      this.externalAudioSource = null;
+      this.externalAudio = null;
+    }
+
+    this.delay = this.delay || this.context.createDelay();
+    this.delayGain = this.delayGain || this.context.createGain();
+    this.delay.delayTime.value = 0.18;
+    this.delayGain.gain.value = 0.16;
+    if (!this.masterConnected) {
+      this.masterGain.connect(this.context.destination);
+      this.masterGain.connect(this.delay);
+      this.delay.connect(this.delayGain);
+      this.delayGain.connect(this.context.destination);
+      this.masterConnected = true;
+    }
+
+    this.enabled = true;
+    this.nextNoteTime = this.context.currentTime + 0.05;
+    this.step = 0;
+    this.timerId = window.setInterval(() => this.schedule(), MUSIC_CONFIG.lookAheadSeconds * 1000);
+    this.schedule();
+    recordAudioDebug('musicFallback', { track: this.trackUrl });
   }
 
   schedule() {
@@ -228,9 +310,9 @@ class AdventureMusic {
       this.playTone({
         frequency: noteToFrequency(60 + MUSIC_CONFIG.melody[measureStep]),
         startTime: this.nextNoteTime,
-        duration: sixteenth * 0.92,
-        type: measureStep % 2 === 0 ? 'triangle' : 'sine',
-        gain: measureStep % 2 === 0 ? 0.34 : 0.24
+        duration: sixteenth * 0.95,
+        type: measureStep % 3 === 0 ? 'triangle' : measureStep % 3 === 1 ? 'sawtooth' : 'sine',
+        gain: measureStep % 2 === 0 ? 0.31 : 0.22
       });
 
       if (measureStep % 4 === 0) {
@@ -248,9 +330,9 @@ class AdventureMusic {
           this.playTone({
             frequency: noteToFrequency(48 + note),
             startTime: this.nextNoteTime,
-            duration: sixteenth * 1.55,
+            duration: sixteenth * 1.6,
             type: 'triangle',
-            gain: 0.12
+            gain: 0.13
           });
         }
       }

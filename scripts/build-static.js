@@ -8,6 +8,7 @@ const requiredPaths = [
   'index.html',
   'src',
   'image/nova-vortex.obj',
+  'assets',
   'mapas/processed/BRA_SUDESTE_HighRes/manifest.json',
   'mapas/processed/BRA_SUDESTE_HighRes/terrain-rgb',
   'mapas/processed/BRA_SUDESTE_HighRes/vectors',
@@ -29,6 +30,7 @@ fs.mkdirSync(distDir, { recursive: true });
 copyFile('index.html', 'index.html');
 copyDirectory('src', 'src');
 copyDirectory('image', 'image');
+copyDirectory('assets', 'assets');
 copyDirectory('mapas/processed', 'mapas/processed');
 copyFile('node_modules/fflate/esm/browser.js', 'vendor/fflate/browser.js');
 copyDirectory('node_modules/three/build', 'vendor/three');

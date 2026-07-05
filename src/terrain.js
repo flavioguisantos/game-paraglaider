@@ -1196,17 +1196,18 @@ function sampleTileSlope(imageData, u, v, metersPerPixelX, metersPerPixelY) {
 }
 
 const TERRAIN_PALETTE = {
-  sea: new THREE.Color(0x2f7197),
-  shallowSea: new THREE.Color(0x4f93aa),
-  sand: new THREE.Color(0xe9e2c9),
-  paleSand: new THREE.Color(0xf7f2df),
-  lowForest: new THREE.Color(0x315f32),
-  forest: new THREE.Color(0x47733a),
-  highForest: new THREE.Color(0x667849),
-  dryGrass: new THREE.Color(0x8a8153),
-  exposedSoil: new THREE.Color(0x8f7356),
-  granite: new THREE.Color(0xa49d91),
-  clearing: new THREE.Color(0x6f7d43)
+  sea: new THREE.Color(0x2e668a),
+  shallowSea: new THREE.Color(0x4e8ca8),
+  sand: new THREE.Color(0xe7e0c4),
+  paleSand: new THREE.Color(0xf3ecd2),
+  lowForest: new THREE.Color(0x3c6e36),
+  forest: new THREE.Color(0x5c8547),
+  highForest: new THREE.Color(0x7c8460),
+  dryGrass: new THREE.Color(0x9a8b5d),
+  exposedSoil: new THREE.Color(0x7a6b5b),
+  granite: new THREE.Color(0x8f9395),
+  clearing: new THREE.Color(0x8ca065),
+  mountainMist: new THREE.Color(0xb8c0c6)
 };
 const tempTerrainColor = new THREE.Color();
 
@@ -1248,8 +1249,10 @@ function addTerrainColor(colors, height, slope, worldX, worldZ, isSea = false, i
 
   const exposedFactor = THREE.MathUtils.clamp((slope - 0.14) / 0.24, 0, 1);
   const rockFactor = THREE.MathUtils.clamp((slope - 0.28) / 0.32, 0, 1);
+  const mountainBlend = THREE.MathUtils.clamp((height - 1050) / 700, 0, 1);
   color.lerp(palette.exposedSoil, exposedFactor * 0.45);
   color.lerp(palette.granite, rockFactor * 0.55);
+  color.lerp(palette.mountainMist, mountainBlend * 0.24);
 
   colors.push(color.r, color.g, color.b);
 }

@@ -6,20 +6,21 @@ import * as THREE from 'three';
 // jogador se afasta o suficiente do centro anterior.
 
 const VEGETATION_CONFIG = {
-  maxInstances: 2200,
-  cellSize: 52,
-  radius: 1500,
+  maxInstances: 3000,
+  cellSize: 48,
+  radius: 1700,
   rebuildDistance: 220,
-  presenceThreshold: 0.62,
+  presenceThreshold: 0.55,
   maxForestHeight: 1480
 };
 
 const treeColors = [
-  new THREE.Color(0x2c5230),
-  new THREE.Color(0x33603a),
-  new THREE.Color(0x3d6a33),
+  new THREE.Color(0x2d5130),
+  new THREE.Color(0x35673b),
+  new THREE.Color(0x427744),
   new THREE.Color(0x28492b),
-  new THREE.Color(0x4a7040)
+  new THREE.Color(0x4d7142),
+  new THREE.Color(0x6b804f)
 ];
 
 export function createVegetation({ terrain }) {

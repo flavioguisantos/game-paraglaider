@@ -18,8 +18,8 @@ const startButton = document.querySelector('#start-flight');
 const colorInputs = [...document.querySelectorAll('input[name="canopy-color"]')];
 const locationInputs = [...document.querySelectorAll('input[name="flight-location"]')];
 const scene = new THREE.Scene();
-// Perspectiva aerea: nevoa azulada/dessaturada aproximando a cor do horizonte do ceu fisico.
-scene.fog = new THREE.Fog(0xc3d9e8, 3500, 26000);
+// Perspectiva aerea: nevoa azulada e mais longa para reforcar a profundidade do horizonte.
+scene.fog = new THREE.Fog(0xdceaf5, 2600, 32000);
 
 const viewport = getViewportSize();
 // near=2: com far=90000, near menor destroi a precisao do depth buffer a distancia
@@ -75,10 +75,10 @@ function createAtmosphericSky() {
   sky.scale.setScalar(80000);
 
   const uniforms = sky.material.uniforms;
-  uniforms.turbidity.value = 5.5;
-  uniforms.rayleigh.value = 1.9;
-  uniforms.mieCoefficient.value = 0.0045;
-  uniforms.mieDirectionalG.value = 0.8;
+  uniforms.turbidity.value = 3.4;
+  uniforms.rayleigh.value = 3.2;
+  uniforms.mieCoefficient.value = 0.0031;
+  uniforms.mieDirectionalG.value = 0.82;
   uniforms.sunPosition.value.copy(SUN_DIRECTION);
   return sky;
 }
@@ -100,6 +100,7 @@ const terrain = createTerrain();
 scene.add(terrain.mesh);
 const vegetation = createVegetation({ terrain });
 scene.add(vegetation.group);
+scene.add(createDistantMountains());
 scene.add(createHorizonClouds());
 
 const wind = createWindVector();
@@ -110,7 +111,7 @@ const orographicLift = createOrographicLift();
 scene.add(orographicLift.group);
 const hud = createHud(document.querySelector('#hud'));
 const varioAudio = createVarioAudio();
-const adventureMusic = createAdventureMusic();
+const adventureMusic = createAdventureMusic({ trackUrl: '/assets/audio/adventure-track.mp3' });
 
 const clock = new THREE.Clock();
 const standbyPosition = new THREE.Vector3(0, 0, 0);
@@ -326,16 +327,91 @@ function getCameraFov({ width, height }) {
   return THREE.MathUtils.clamp(THREE.MathUtils.radToDeg(adjustedVerticalFov), baseVerticalFov, 82);
 }
 
+function createDistantMountains() {
+  const group = new THREE.Group();
+  group.name = 'DistantMountains';
+  const texture = createMountainSilhouetteTexture();
+  const material = new THREE.MeshBasicMaterial({
+    map: texture,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide
+  });
+
+  const ridges = [
+    { x: -18000, y: 900, z: 15500, width: 27000, height: 7000, opacity: 0.92 },
+    { x: 15000, y: 1150, z: 16700, width: 24000, height: 7800, opacity: 0.84 },
+    { x: -5000, y: 700, z: 18200, width: 32000, height: 6200, opacity: 0.78 }
+  ];
+
+  for (const ridge of ridges) {
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), material.clone());
+    mesh.material.opacity = ridge.opacity;
+    mesh.position.set(ridge.x, ridge.y, ridge.z);
+    mesh.scale.set(ridge.width, ridge.height, 1);
+    mesh.renderOrder = 1;
+    group.add(mesh);
+  }
+
+  return group;
+}
+
+function createMountainSilhouetteTexture() {
+  const size = 1024;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size / 2;
+  const context = canvas.getContext('2d');
+
+  const gradient = context.createLinearGradient(0, 0, 0, canvas.height);
+  gradient.addColorStop(0, 'rgba(242, 248, 255, 0)');
+  gradient.addColorStop(1, 'rgba(103, 113, 128, 0.95)');
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, size, canvas.height);
+
+  context.fillStyle = 'rgba(53, 61, 74, 0.96)';
+  context.beginPath();
+  context.moveTo(0, canvas.height);
+  context.lineTo(90, canvas.height * 0.66);
+  context.lineTo(180, canvas.height * 0.78);
+  context.lineTo(280, canvas.height * 0.5);
+  context.lineTo(410, canvas.height * 0.72);
+  context.lineTo(560, canvas.height * 0.42);
+  context.lineTo(700, canvas.height * 0.58);
+  context.lineTo(820, canvas.height * 0.34);
+  context.lineTo(940, canvas.height * 0.6);
+  context.lineTo(size, canvas.height);
+  context.closePath();
+  context.fill();
+
+  context.fillStyle = 'rgba(71, 80, 92, 0.9)';
+  context.beginPath();
+  context.moveTo(150, canvas.height);
+  context.lineTo(280, canvas.height * 0.64);
+  context.lineTo(380, canvas.height * 0.74);
+  context.lineTo(520, canvas.height * 0.5);
+  context.lineTo(660, canvas.height * 0.74);
+  context.lineTo(840, canvas.height * 0.58);
+  context.lineTo(size, canvas.height);
+  context.closePath();
+  context.fill();
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.needsUpdate = true;
+  return texture;
+}
+
 function createHorizonClouds() {
   const group = new THREE.Group();
   group.name = 'HorizonClouds';
   const cloudConfigs = [
-    { angle: -72, distance: 9800, altitude: 2750, scale: 1.1 },
-    { angle: -38, distance: 12500, altitude: 3100, scale: 1.4 },
-    { angle: -8, distance: 10800, altitude: 2550, scale: 1.0 },
-    { angle: 29, distance: 13200, altitude: 2950, scale: 1.55 },
-    { angle: 63, distance: 11200, altitude: 2650, scale: 1.2 },
-    { angle: 101, distance: 14500, altitude: 3300, scale: 1.65 }
+    { angle: -82, distance: 10400, altitude: 2750, scale: 1.25 },
+    { angle: -50, distance: 12800, altitude: 3120, scale: 1.45 },
+    { angle: -15, distance: 11100, altitude: 2580, scale: 1.1 },
+    { angle: 20, distance: 13600, altitude: 3010, scale: 1.65 },
+    { angle: 58, distance: 11600, altitude: 2710, scale: 1.3 },
+    { angle: 96, distance: 14800, altitude: 3320, scale: 1.8 }
   ];
 
   for (let index = 0; index < cloudConfigs.length; index += 1) {
