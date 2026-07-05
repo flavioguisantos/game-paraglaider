@@ -27,13 +27,13 @@ const tempTile = { x: 0, y: 0 };
 //   (agua com superficie plana; area urbana translucida drapejada).
 // - point: apenas rotulos (sem marcadores geometricos).
 const VECTOR_LAYER_STYLES = {
-  city_area: { type: 'area', color: 0x8f8b80, opacity: 0.3, flat: false, yOffset: 1.0 },
-  water_area: { type: 'area', color: 0x2f5f7d, opacity: 1, flat: true, yOffset: 1.3, roughness: 0.32 },
-  water_line: { type: 'ribbon', color: 0x3a6d84, widthMeters: 9, yOffset: 1.2 },
-  roadbig_line: { type: 'ribbon', color: 0x63636a, widthMeters: 12, yOffset: 1.6 },
-  roadmedium_line: { type: 'ribbon', color: 0x7a756e, widthMeters: 8, yOffset: 1.4 },
-  roadsmall_line: { type: 'ribbon', color: 0x99885f, widthMeters: 5, yOffset: 1.2 },
-  railway_line: { type: 'ribbon', color: 0x45433f, widthMeters: 3.4, yOffset: 1.8 },
+  city_area: { type: 'area', color: 0xb5ab9d, opacity: 0.45, flat: false, yOffset: 1.0 },
+  water_area: { type: 'area', color: 0x3a76ad, opacity: 1, flat: true, yOffset: 1.3, roughness: 0.28 },
+  water_line: { type: 'ribbon', color: 0x4181b2, widthMeters: 14, yOffset: 1.2 },
+  roadbig_line: { type: 'ribbon', color: 0xb0b0b6, widthMeters: 26, yOffset: 2.0 },
+  roadmedium_line: { type: 'ribbon', color: 0xa69d8f, widthMeters: 16, yOffset: 1.8 },
+  roadsmall_line: { type: 'ribbon', color: 0xc0a577, widthMeters: 9, yOffset: 1.5 },
+  railway_line: { type: 'ribbon', color: 0x57544e, widthMeters: 6, yOffset: 2.2 },
   city_point: { type: 'point', color: 0xf4e55c, opacity: 1, yOffset: 3.5 },
   town_point: { type: 'point', color: 0xf4e55c, opacity: 0.92, yOffset: 3.2 },
   suburb_point: { type: 'point', color: 0xe9de76, opacity: 0.78, yOffset: 2.8 },
