@@ -2,15 +2,15 @@ import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { createCloudBillboard } from './clouds.js';
 import { createAdventureMusic, createVarioAudio, unlockGameAudio } from './audio.js';
-import { createBots } from './bot.js?v=wind-physics-1';
-import { initializeThirdPersonCamera, updateStandbyCamera, updateThirdPersonCamera } from './camera.js';
-import { configureWind, createWindVector, detectParagliderCollisions, updateEntangledParagliders, updateWind } from './physics.js?v=wind-physics-1';
-import { createHud, createRoundState, updateHud, updateRoundState } from './hud.js?v=wind-physics-1';
+import { createBots } from './bot.js?v=realism-2';
+import { initializeThirdPersonCamera, toggleCameraMode, updateFlightCamera, updateStandbyCamera } from './camera.js?v=camera-modes-1';
+import { configureWind, createWindVector, detectParagliderCollisions, updateEntangledParagliders, updateWind } from './physics.js?v=realism-1';
+import { createHud, createRoundState, updateHud, updateRoundState } from './hud.js?v=hud-instrument-1';
 import { findFlightLocation } from './flightLocations.js';
 import { createOrographicLift } from './orographicLift.js';
-import { Player } from './player.js?v=wind-physics-1';
-import { createTerrain } from './terrain.js?v=vector-realism-1';
-import { createThermalField } from './thermal.js?v=thermal-drift-1';
+import { Player } from './player.js?v=realism-2';
+import { createTerrain } from './terrain.js?v=terrain-realism-4';
+import { createThermalField } from './thermal.js?v=realism-1';
 import { createVegetation } from './vegetation.js';
 
 const canvas = document.querySelector('#game');
@@ -122,6 +122,9 @@ const appState = {
   flyers: [],
   round: null,
   starting: false,
+  // Modo realista: esconde colunas/rotulos de termica, marcadores de lift e
+  // setas de vento; a fisica continua identica.
+  assistVisuals: true,
   selectedLocation: getSelectedFlightLocation()
 };
 
@@ -149,6 +152,34 @@ for (const input of locationInputs) {
   });
 }
 setupLayerPanel();
+setupCameraToggle();
+
+// Alternancia de camera estilo jogo de corrida: externa <-> visao do piloto.
+function setupCameraToggle() {
+  const button = document.querySelector('#camera-toggle');
+
+  const applyToggle = () => {
+    if (!appState.started) return;
+    const mode = toggleCameraMode();
+    if (button) {
+      button.classList.toggle('is-first-person', mode === 'first-person');
+      button.title = mode === 'first-person'
+        ? 'Camera: visao do piloto (C alterna)'
+        : 'Camera: externa (C alterna)';
+    }
+  };
+
+  window.addEventListener('keydown', (event) => {
+    if (event.code !== 'KeyC' || event.repeat) return;
+    applyToggle();
+  });
+
+  button?.addEventListener('click', (event) => {
+    event.preventDefault();
+    applyToggle();
+    button.blur();
+  });
+}
 
 // Painel de teste: liga/desliga cada camada vetorial do mapa.
 function setupLayerPanel() {
@@ -179,6 +210,18 @@ function setupLayerPanel() {
     label.append(input, document.createTextNode(toggle.label));
     panel.append(label);
   }
+
+  const realisticLabel = document.createElement('label');
+  const realisticInput = document.createElement('input');
+  realisticInput.type = 'checkbox';
+  realisticInput.checked = false;
+  realisticInput.addEventListener('change', () => {
+    appState.assistVisuals = !realisticInput.checked;
+    thermals.setAssistVisuals(appState.assistVisuals);
+    orographicLift.setAssistVisuals(appState.assistVisuals);
+  });
+  realisticLabel.append(realisticInput, document.createTextNode('Modo realista (sem ajudas)'));
+  panel.append(realisticLabel);
 }
 
 async function startFlight() {
@@ -242,10 +285,13 @@ function applySelectedFlightLocation() {
     latitude: location.latitude,
     longitude: location.longitude
   });
+  terrain.setSeaEnabled(Boolean(location.hasSea));
   vegetation.reset();
   configureWind(wind, location.wind);
   thermals.setEnabled(location.liftMode !== 'orographic');
+  thermals.setCeiling(location.cloudBaseMeters ?? 2200);
   orographicLift.configure(location.orographicLift);
+  orographicLift.setAssistVisuals(appState.assistVisuals);
 }
 
 renderer.setAnimationLoop(() => {
@@ -276,7 +322,7 @@ renderer.setAnimationLoop(() => {
     player.update(delta, { terrain, thermals, orographicLift, wind });
   }
 
-  if (!round.ended || round.endReason === 'landed') {
+  if (!round.ended || round.endReason === 'landed' || round.endReason === 'crashed') {
     for (const bot of bots) {
       bot.update(delta, { terrain, thermals, orographicLift, wind });
     }
@@ -291,7 +337,7 @@ renderer.setAnimationLoop(() => {
   if (round.ended) adventureMusic.stop();
   varioAudio.update(delta, player.verticalSpeed, player.landed || round.ended);
   updateHud(hud, { player, bots, terrain, round, wind });
-  updateThirdPersonCamera(camera, player, delta, { terrain });
+  updateFlightCamera(camera, player, delta, { terrain });
 
   renderer.render(scene, camera);
 });
@@ -485,7 +531,8 @@ function createWindMarker(material) {
 }
 
 function updateWindMarkers(markers, wind, referencePosition, terrain) {
-  markers.visible = Boolean(referencePosition);
+  markers.visible = Boolean(referencePosition) && appState.assistVisuals;
+  if (!markers.visible) return;
 
   for (const marker of markers.children) {
     const offset = marker.userData.offset;

@@ -28,18 +28,14 @@
         touch-action: none;
       }
 
+      /* HUD estilo instrumento de voo (vario/GPS de parapente). */
       .hud {
         position: fixed;
         top: 16px;
         left: 16px;
-        min-width: 188px;
-        padding: 12px;
-        color: #f7fbff;
-        background: rgba(17, 33, 46, 0.72);
-        border: 1px solid rgba(255, 255, 255, 0.18);
-        border-radius: 6px;
-        font-size: 14px;
-        line-height: 1.35;
+        width: 236px;
+        color: #eef6ff;
+        font-family: ui-monospace, "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace;
         pointer-events: none;
         -webkit-user-select: none;
         user-select: none;
@@ -51,33 +47,126 @@
         opacity: 1;
       }
 
-      .hud-title {
+      .hud-instrument {
+        padding: 10px 12px 12px;
+        background: linear-gradient(160deg, rgba(21, 27, 34, 0.93), rgba(8, 12, 17, 0.93));
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 10px;
+        box-shadow: 0 12px 34px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+      }
+
+      .instr-top {
+        display: flex;
+        justify-content: space-between;
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        color: #9fb4c8;
+      }
+
+      .instr-top [data-hud="status"] {
         font-weight: 700;
+        color: #cfe3f4;
       }
 
-      .hud-phase {
-        margin-top: 2px;
-        color: rgba(247, 251, 255, 0.82);
-      }
-
-      .hud-grid {
+      .instr-cell {
         display: grid;
-        grid-template-columns: auto auto;
-        gap: 4px 14px;
-        margin-top: 10px;
+        gap: 1px;
       }
 
-      .flight-metric {
-        display: contents;
+      .instr-cell span {
+        font-size: 9px;
+        letter-spacing: 0.14em;
+        color: #7e93a8;
       }
 
-      .hud-grid span {
-        color: rgba(247, 251, 255, 0.72);
+      .instr-cell strong {
+        font-size: 17px;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        line-height: 1.1;
       }
 
-      .hud-grid strong {
-        justify-self: end;
+      .instr-cell em {
+        font-style: normal;
+        font-size: 9px;
+        color: #7e93a8;
+      }
+
+      .instr-alts {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 8px;
+      }
+
+      .instr-alts .instr-cell:last-child {
+        text-align: right;
+      }
+
+      .instr-vario {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin: 10px 0;
+        padding: 8px 12px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 8px;
+      }
+
+      .vario-bar {
+        position: relative;
+        width: 8px;
+        height: 58px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 4px;
+        overflow: hidden;
+      }
+
+      .vario-bar::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 50%;
+        height: 1px;
+        background: rgba(255, 255, 255, 0.45);
+      }
+
+      .vario-fill {
+        position: absolute;
+        left: 0;
+        right: 0;
+        background: #59d98c;
+        transition: height 120ms linear;
+      }
+
+      .vario-value strong {
+        display: block;
+        font-size: 30px;
         font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        line-height: 1;
+      }
+
+      .vario-value em {
+        font-style: normal;
+        font-size: 10px;
+        letter-spacing: 0.14em;
+        color: #7e93a8;
+      }
+
+      .vario-value.is-climb strong {
+        color: #59d98c;
+      }
+
+      .vario-value.is-sink strong {
+        color: #ff6b66;
+      }
+
+      .instr-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
       }
 
       .wind-readout {
@@ -89,17 +178,92 @@
       [data-hud="windArrow"] {
         display: inline-block;
         transform-origin: 50% 52%;
+        font-size: 14px;
+        color: #ffd166;
+      }
+
+      .instr-compass {
+        position: relative;
+        height: 26px;
+        margin-top: 10px;
+        overflow: hidden;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 6px;
+      }
+
+      .compass-tape {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 50%;
+        will-change: transform;
+      }
+
+      .compass-tick {
+        position: absolute;
+        top: 16px;
+        width: 1px;
+        height: 5px;
+        background: rgba(255, 255, 255, 0.32);
+      }
+
+      .compass-tick--major {
+        top: 14px;
+        height: 8px;
+        background: rgba(255, 255, 255, 0.6);
+      }
+
+      .compass-label {
+        position: absolute;
+        top: 2px;
+        transform: translateX(-50%);
+        font-size: 9px;
+        letter-spacing: 0.05em;
+        color: #c8d8e6;
+      }
+
+      .compass-marker {
+        position: absolute;
+        left: 50%;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        margin-left: -1px;
+        background: #ffd166;
+        box-shadow: 0 0 6px rgba(255, 209, 102, 0.7);
+      }
+
+      .instr-distance {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        margin-top: 8px;
+        font-size: 11px;
+        color: #9fb4c8;
+      }
+
+      .instr-distance strong {
+        font-size: 13px;
+        font-variant-numeric: tabular-nums;
+        color: #eef6ff;
       }
 
       .hud-ranking {
-        margin-top: 12px;
-        padding-top: 10px;
-        border-top: 1px solid rgba(255, 255, 255, 0.16);
+        margin-top: 10px;
+        padding: 10px 12px;
+        background: rgba(13, 19, 25, 0.82);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 10px;
       }
 
       .hud-ranking-title {
         margin-bottom: 6px;
+        font-size: 11px;
         font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: #9fb4c8;
       }
 
       .hud-ranking ol {
@@ -107,6 +271,7 @@
         gap: 5px;
         margin: 0;
         padding-left: 18px;
+        font-size: 12px;
       }
 
       .hud-ranking li {
@@ -168,6 +333,34 @@
         .layer-panel {
           display: none;
         }
+      }
+
+      .camera-toggle {
+        position: fixed;
+        right: max(14px, env(safe-area-inset-right));
+        bottom: calc(max(14px, env(safe-area-inset-bottom)) + 150px);
+        width: 46px;
+        height: 46px;
+        display: none;
+        color: #f7fbff;
+        background: rgba(16, 31, 42, 0.62);
+        border: 1px solid rgba(255, 255, 255, 0.26);
+        border-radius: 50%;
+        font-size: 20px;
+        line-height: 1;
+        cursor: pointer;
+        z-index: 11;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      body.is-flying .camera-toggle {
+        display: block;
+      }
+
+      .camera-toggle.is-first-person {
+        color: #10202a;
+        background: #ffd166;
+        border-color: rgba(255, 255, 255, 0.68);
       }
 
       .touch-controls {
@@ -358,56 +551,63 @@
           top: max(8px, env(safe-area-inset-top));
           left: 8px;
           right: 8px;
-          max-width: none;
-          min-width: 0;
-          padding: 8px;
-          font-size: 11px;
+          width: auto;
         }
 
-        .hud-title,
-        .hud-phase {
+        .hud-instrument {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          justify-content: space-between;
+          gap: 6px 14px;
+          padding: 8px 10px;
+        }
+
+        .instr-top {
+          width: 100%;
+          font-size: 10px;
+        }
+
+        .instr-vario {
+          margin: 0;
+          padding: 4px 8px;
+          gap: 8px;
+        }
+
+        .vario-bar {
+          height: 36px;
+          width: 6px;
+        }
+
+        .vario-value strong {
+          font-size: 20px;
+        }
+
+        .instr-alts {
+          margin: 0;
+          gap: 14px;
+        }
+
+        .instr-cell strong {
+          font-size: 14px;
+        }
+
+        .instr-row {
+          gap: 14px;
+        }
+
+        .instr-row .instr-cell:nth-child(2) {
           display: none;
         }
 
-        .hud-grid {
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 6px;
-          margin-top: 0;
-        }
-
-        .hud-grid span,
-        .hud-grid strong {
-          justify-self: stretch;
-        }
-
-        .hud-grid span {
-          color: rgba(247, 251, 255, 0.68);
-          font-size: 10px;
-          text-transform: uppercase;
-        }
-
-        .hud-grid strong {
-          font-size: 14px;
-          white-space: nowrap;
-        }
-
-        .hud-grid .flight-metric {
-          display: grid;
-          gap: 2px;
-          min-width: 0;
-          padding: 6px;
-          background: rgba(255, 255, 255, 0.08);
-          border-radius: 6px;
-        }
-
-        .hud-grid .flight-metric--secondary strong {
-          font-size: 12px;
+        .instr-compass,
+        .instr-distance {
+          display: none;
         }
 
         .hud-ranking {
           display: none;
           margin-top: 8px;
-          padding-top: 8px;
         }
 
         body.round-ended .hud-ranking {
@@ -470,6 +670,7 @@
     <div id="layer-panel" class="layer-panel" aria-label="Camadas do mapa">
       <div class="layer-panel-title">Camadas</div>
     </div>
+    <button id="camera-toggle" class="camera-toggle" type="button" title="Camera: externa (C alterna)" aria-label="Alternar camera externa/visao do piloto">📷</button>
     <div id="touch-controls" class="touch-controls" aria-label="Controles de voo por toque">
       <div class="touch-cluster touch-cluster--turn">
         <button class="touch-control" type="button" data-control="left" aria-label="Virar para esquerda">‹</button>
@@ -552,6 +753,6 @@
       </div>
       <button id="start-flight" class="start-button" type="button">Iniciar voo</button>
     </div>
-    <script type="module" src="/src/main.js?v=vector-realism-1"></script>
+    <script type="module" src="/src/main.js?v=realism-1"></script>
   </body>
 </html>

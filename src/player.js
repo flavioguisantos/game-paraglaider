@@ -1,17 +1,24 @@
 import * as THREE from 'three';
-import { applyFlightPhysics, updateAltitudeMetrics } from './physics.js?v=wind-physics-1';
-import { createParagliderModel, setParagliderLandedPose } from './paragliderModel.js';
+import { applyFlightPhysics, POLAR_SPEEDS, updateAltitudeMetrics } from './physics.js?v=realism-1';
+import { createParagliderModel, setParagliderLandedPose } from './paragliderModel.js?v=pilot-pose-1';
 
 const PLAYER_CONFIG = {
   launchX: 0,
   launchZ: 0,
   startAltitude: 24,
-  baseSpeedKmh: 40,
-  speedControlRange: 0.2,
+  // Faixa real de um EN-B: S = freios (ate ~26 km/h), W = barra (ate ~55 km/h).
+  minSpeedKmh: 26,
+  trimSpeedKmh: POLAR_SPEEDS.trimSpeedKmh,
+  maxSpeedKmh: POLAR_SPEEDS.maxSpeedKmh,
+  launchStartSpeedKmh: 8,
   maxTurnRate: 0.72,
   turnResponse: 2.1,
-  visualBank: 0.34,
-  visualPitch: 0.14
+  // Visual: rolagem segue o bank real calculado pela fisica; pitch mistura
+  // comando de velocidade com o surge (aceleracao vertical) da vela.
+  visualBankScale: 0.85,
+  visualPitch: 0.14,
+  surgePitchScale: 0.035,
+  surgeSmoothing: 4
 };
 
 export class Player {
@@ -35,10 +42,11 @@ export class Player {
     this.velocity = new THREE.Vector3();
     this.heading = launchHeadingRadians;
     this.turnRate = 0;
-    this.speed = PLAYER_CONFIG.baseSpeedKmh;
-    this.targetSpeed = PLAYER_CONFIG.baseSpeedKmh;
+    // Decola em corrida: a velocidade sobe do passo de rampa ate o trim.
+    this.speed = PLAYER_CONFIG.launchStartSpeedKmh;
+    this.targetSpeed = PLAYER_CONFIG.trimSpeedKmh;
     this.groundSpeedKmh = 0;
-    this.windAdjustedSpeedKmh = PLAYER_CONFIG.baseSpeedKmh;
+    this.windAdjustedSpeedKmh = PLAYER_CONFIG.trimSpeedKmh;
     this.windAngleDegrees = 0;
     this.windAngleStepDegrees = 0;
     this.verticalSpeed = 0;
@@ -48,10 +56,16 @@ export class Player {
     this.distanceTravelled = 0;
     this.distanceFromStart = 0;
     this.landed = false;
+    this.crashed = false;
     this.entangled = false;
     this.entanglementId = null;
     this.entanglementSpin = 0;
     this.landingPoseApplied = false;
+    this.bankAngle = 0;
+    // Reserva unica de flare para arredondar o pouso segurando os freios.
+    this.flareCharge = 1;
+    this.previousVerticalSpeed = 0;
+    this.smoothedSurge = 0;
     this.input = createInputState();
 
     const startY = terrain.getHeightAt(PLAYER_CONFIG.launchX, PLAYER_CONFIG.launchZ) + launchAltitudeMeters;
@@ -84,15 +98,27 @@ export class Player {
       return;
     }
 
+    // Surge (pendulo): variacao brusca do vario balanca a vela para
+    // frente/tras, como ao entrar ou sair de uma termica.
+    const verticalAcceleration = delta > 0
+      ? (this.verticalSpeed - this.previousVerticalSpeed) / delta
+      : 0;
+    this.previousVerticalSpeed = this.verticalSpeed;
+    this.smoothedSurge = THREE.MathUtils.lerp(
+      this.smoothedSurge,
+      THREE.MathUtils.clamp(verticalAcceleration * PLAYER_CONFIG.surgePitchScale, -0.16, 0.16),
+      1 - Math.exp(-delta * PLAYER_CONFIG.surgeSmoothing)
+    );
+
     this.group.rotation.y = this.heading;
     this.group.rotation.z = THREE.MathUtils.lerp(
       this.group.rotation.z,
-      (this.turnRate / PLAYER_CONFIG.maxTurnRate) * PLAYER_CONFIG.visualBank,
+      this.bankAngle * PLAYER_CONFIG.visualBankScale,
       1 - Math.exp(-delta * 3.6)
     );
     this.group.rotation.x = THREE.MathUtils.lerp(
       this.group.rotation.x,
-      -speedInput * PLAYER_CONFIG.visualPitch,
+      -speedInput * PLAYER_CONFIG.visualPitch + this.smoothedSurge,
       1 - Math.exp(-delta * 5)
     );
   }
@@ -111,20 +137,15 @@ export class Player {
   }
 }
 
-function getMinSpeedKmh() {
-  return PLAYER_CONFIG.baseSpeedKmh * (1 - PLAYER_CONFIG.speedControlRange);
-}
-
-function getMaxSpeedKmh() {
-  return PLAYER_CONFIG.baseSpeedKmh * (1 + PLAYER_CONFIG.speedControlRange);
-}
-
+// W acelera rumo a barra cheia; S freia rumo a velocidade minima; solto = trim.
 function getTargetSpeedKmh(speedInput) {
-  return THREE.MathUtils.clamp(
-    PLAYER_CONFIG.baseSpeedKmh * (1 + speedInput * PLAYER_CONFIG.speedControlRange),
-    getMinSpeedKmh(),
-    getMaxSpeedKmh()
-  );
+  if (speedInput > 0) {
+    return THREE.MathUtils.lerp(PLAYER_CONFIG.trimSpeedKmh, PLAYER_CONFIG.maxSpeedKmh, speedInput);
+  }
+  if (speedInput < 0) {
+    return THREE.MathUtils.lerp(PLAYER_CONFIG.trimSpeedKmh, PLAYER_CONFIG.minSpeedKmh, -speedInput);
+  }
+  return PLAYER_CONFIG.trimSpeedKmh;
 }
 
 function createInputState() {

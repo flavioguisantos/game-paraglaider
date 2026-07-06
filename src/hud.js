@@ -13,23 +13,36 @@ export function updateRoundState(round, delta, player) {
 
   if (player.landed) {
     round.ended = true;
-    round.endReason = 'landed';
+    round.endReason = player.crashed ? 'crashed' : 'landed';
   }
 }
 
+// Fita de bussola: pixels por grau de rumo (define quanto do horizonte cabe).
+const COMPASS_PX_PER_DEGREE = 1.6;
+const COMPASS_LABELS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+
 export function createHud(root) {
   root.innerHTML = `
-    <div class="hud-title">Jogo Parapente 3D</div>
-    <div class="hud-phase">Fase 7: polimento</div>
-    <div class="hud-grid">
-      <div class="flight-metric"><span>Tempo</span><strong data-hud="time">00:00</strong></div>
-      <div class="flight-metric"><span>Solo</span><strong data-hud="groundClearance">0 m</strong></div>
-      <div class="flight-metric"><span>Vario</span><strong data-hud="vario">0.0 m/s</strong></div>
-      <div class="flight-metric"><span>Vel.</span><strong data-hud="speed">0 km/h</strong></div>
-      <div class="flight-metric flight-metric--secondary"><span>Vento</span><strong class="wind-readout"><span data-hud="windArrow">↑</span><span data-hud="wind">0 km/h</span></strong></div>
-      <div class="flight-metric flight-metric--secondary"><span>Nivel mar</span><strong data-hud="altitude">0 m</strong></div>
-      <div class="flight-metric flight-metric--secondary"><span>Dist.</span><strong data-hud="distance">0 m</strong></div>
-      <div class="flight-metric flight-metric--secondary"><span>Status</span><strong data-hud="status">Voando</strong></div>
+    <div class="hud-instrument">
+      <div class="instr-top"><span data-hud="time">00:00</span><span data-hud="status">Voando</span></div>
+      <div class="instr-alts">
+        <div class="instr-cell"><span>ALTITUDE</span><strong data-hud="altitude">0</strong><em>m nivel do mar</em></div>
+        <div class="instr-cell"><span>SOLO</span><strong data-hud="groundClearance">0</strong><em>m</em></div>
+      </div>
+      <div class="instr-vario">
+        <div class="vario-bar"><div class="vario-fill" data-hud="varioFill"></div></div>
+        <div class="vario-value" data-hud="varioBox"><strong data-hud="vario">0.0</strong><em>M/S</em></div>
+      </div>
+      <div class="instr-row">
+        <div class="instr-cell"><span>VEL</span><strong data-hud="speed">0</strong><em>km/h solo</em></div>
+        <div class="instr-cell"><span>PLANEIO</span><strong data-hud="glide">--</strong><em>:1</em></div>
+        <div class="instr-cell"><span>VENTO</span><strong class="wind-readout"><span data-hud="windArrow">&#8593;</span><span data-hud="wind">0</span></strong><em>km/h</em></div>
+      </div>
+      <div class="instr-compass">
+        <div class="compass-tape" data-hud="compassTape"></div>
+        <div class="compass-marker"></div>
+      </div>
+      <div class="instr-distance"><span>DIST. DECOLAGEM</span><strong data-hud="distance">0 m</strong></div>
     </div>
     <div class="hud-ranking">
       <div class="hud-ranking-title" data-hud="rankingTitle">Ranking</div>
@@ -37,14 +50,21 @@ export function createHud(root) {
     </div>
   `;
 
+  const compassTape = root.querySelector('[data-hud="compassTape"]');
+  buildCompassTape(compassTape);
+
   return {
     time: root.querySelector('[data-hud="time"]'),
     altitude: root.querySelector('[data-hud="altitude"]'),
     groundClearance: root.querySelector('[data-hud="groundClearance"]'),
     vario: root.querySelector('[data-hud="vario"]'),
+    varioBox: root.querySelector('[data-hud="varioBox"]'),
+    varioFill: root.querySelector('[data-hud="varioFill"]'),
     speed: root.querySelector('[data-hud="speed"]'),
+    glide: root.querySelector('[data-hud="glide"]'),
     wind: root.querySelector('[data-hud="wind"]'),
     windArrow: root.querySelector('[data-hud="windArrow"]'),
+    compassTape,
     distance: root.querySelector('[data-hud="distance"]'),
     status: root.querySelector('[data-hud="status"]'),
     rankingTitle: root.querySelector('[data-hud="rankingTitle"]'),
@@ -52,16 +72,45 @@ export function createHud(root) {
   };
 }
 
+// Constroi tres voltas completas de fita (-360 a 720 graus) para que qualquer
+// rumo centrado tenha vizinhos dos dois lados sem costura visivel.
+function buildCompassTape(container) {
+  for (let degrees = -360; degrees <= 720; degrees += 15) {
+    const normalized = ((degrees % 360) + 360) % 360;
+    const isMajor = normalized % 45 === 0;
+
+    const tick = document.createElement('div');
+    tick.className = isMajor ? 'compass-tick compass-tick--major' : 'compass-tick';
+    tick.style.left = `${degrees * COMPASS_PX_PER_DEGREE}px`;
+    container.append(tick);
+
+    if (isMajor) {
+      const label = document.createElement('div');
+      label.className = 'compass-label';
+      label.textContent = COMPASS_LABELS[normalized / 45];
+      label.style.left = `${degrees * COMPASS_PX_PER_DEGREE}px`;
+      container.append(label);
+    }
+  }
+}
+
 export function updateHud(elements, { player, bots = [], terrain, round, wind }) {
   const playerAltitude = getAltitudeMetrics(player, terrain);
+  const bearingDegrees = getBearingDegrees(player.heading ?? 0);
 
   elements.time.textContent = formatTime(round.elapsedSeconds);
-  elements.altitude.textContent = `${Math.round(playerAltitude.seaLevel)} m`;
-  elements.groundClearance.textContent = `${Math.round(playerAltitude.groundClearance)} m`;
-  elements.vario.textContent = `${formatSigned(player.verticalSpeed, 1)} m/s`;
-  elements.speed.textContent = `${Math.round(player.groundSpeedKmh ?? player.speed)} km/h`;
-  elements.wind.textContent = `${Math.round(wind?.speedKmh ?? 0)} km/h`;
-  elements.windArrow.style.transform = `rotate(${Math.round(wind?.directionDegrees ?? 0)}deg)`;
+  elements.altitude.textContent = Math.round(playerAltitude.seaLevel).toLocaleString('pt-BR');
+  elements.groundClearance.textContent = Math.round(playerAltitude.groundClearance).toLocaleString('pt-BR');
+  elements.vario.textContent = formatSigned(player.verticalSpeed, 1);
+  updateVarioVisuals(elements, player.verticalSpeed);
+  elements.speed.textContent = `${Math.round(player.groundSpeedKmh ?? player.speed)}`;
+  elements.glide.textContent = getGlideRatioText(player);
+  elements.wind.textContent = `${Math.round(wind?.speedKmh ?? 0)}`;
+  // Seta relativa ao rumo (calculada pela fisica): para cima = vento de
+  // cauda, para baixo = de frente, lados = deriva lateral.
+  const relativeWindDegrees = player.windAngleDegrees ?? 0;
+  elements.windArrow.style.transform = `rotate(${Math.round(relativeWindDegrees)}deg)`;
+  elements.compassTape.style.transform = `translateX(${-bearingDegrees * COMPASS_PX_PER_DEGREE}px)`;
   elements.distance.textContent = formatDistance(getStraightLineDistance(player));
   elements.status.textContent = getStatusText(round, player);
   elements.rankingTitle.textContent = round.ended ? 'Ranking final' : 'Ranking';
@@ -69,6 +118,44 @@ export function updateHud(elements, { player, bots = [], terrain, round, wind })
     { name: 'Voce', entity: player },
     ...bots.map((bot) => ({ name: bot.name, entity: bot }))
   ], terrain).join('');
+}
+
+// Rumo bussola a partir do heading interno (0 = -Z = norte; positivo vira a esquerda).
+function getBearingDegrees(headingRadians) {
+  const degrees = -headingRadians * (180 / Math.PI);
+  return ((degrees % 360) + 360) % 360;
+}
+
+function updateVarioVisuals(elements, verticalSpeed) {
+  const clamped = Math.max(-4, Math.min(4, verticalSpeed));
+  const heightPercent = (Math.abs(clamped) / 4) * 50;
+  const fill = elements.varioFill.style;
+
+  if (clamped >= 0) {
+    fill.top = 'auto';
+    fill.bottom = '50%';
+    fill.backgroundColor = '#59d98c';
+  } else {
+    fill.top = '50%';
+    fill.bottom = 'auto';
+    fill.backgroundColor = '#ff6b66';
+  }
+  fill.height = `${heightPercent}%`;
+
+  elements.varioBox.classList.toggle('is-climb', verticalSpeed > 0.1);
+  // Afundamento normal de planeio (~-1 m/s) fica neutro; so alerta em sink forte.
+  elements.varioBox.classList.toggle('is-sink', verticalSpeed < -2);
+}
+
+// Razao de planeio instantanea sobre o solo (velocidade horizontal / descida).
+function getGlideRatioText(player) {
+  if (player.landed) return '--';
+
+  const groundSpeedMs = (player.groundSpeedKmh ?? 0) / 3.6;
+  if (player.verticalSpeed >= -0.05) return '∞';
+
+  const ratio = groundSpeedMs / -player.verticalSpeed;
+  return Math.min(ratio, 99).toFixed(1);
 }
 
 function formatTime(seconds) {
@@ -83,6 +170,7 @@ function formatSigned(value, digits) {
 }
 
 function getStatusText(round, player) {
+  if (player.crashed || round.endReason === 'crashed') return 'Colidiu';
   if (round.endReason === 'landed' || player.landed) return 'Pousou';
   if (player.entangled) return 'Enroscado';
   return 'Voando';
@@ -92,7 +180,7 @@ function getRankingRows(entries, terrain) {
   return [...entries]
     .sort((a, b) => compareRankingEntries(a, b, terrain))
     .map(({ name, entity }) => {
-      const state = entity.landed ? 'pousou' : 'voando';
+      const state = entity.landed ? (entity.crashed ? 'colidiu' : 'pousou') : 'voando';
       const status = entity.entangled ? 'enroscado' : state;
       const altitude = getAltitudeMetrics(entity, terrain);
       return `<li><span>${name}</span><strong>${Math.round(altitude.groundClearance)} m solo / ${Math.round(altitude.seaLevel)} m mar / ${formatDistance(getStraightLineDistance(entity))}</strong><em>${status}</em></li>`;

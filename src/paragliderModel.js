@@ -595,19 +595,22 @@ function setPilotFlightPose(pilot) {
   pilot.position.set(0, 0, 0);
   pilot.rotation.set(0, 0, 0);
 
+  // Pod harness real: pes/casulo apontando para frente (-Z, direcao de voo),
+  // levemente erguidos, com o piloto reclinado e a cabeca atras/acima.
   parts.pod.visible = true;
-  parts.pod.rotation.set(Math.PI / 2 - 0.18, 0, 0);
-  parts.pod.position.set(0, -0.12, 0.28);
+  parts.pod.rotation.set(-(Math.PI / 2 - 0.18), 0, 0);
+  parts.pod.position.set(0, -0.12, -0.28);
 
-  parts.torso.rotation.set(-0.42, 0, 0);
-  parts.torso.position.set(0, 0.22, -0.32);
+  parts.torso.rotation.set(0.42, 0, 0);
+  parts.torso.position.set(0, 0.22, 0.32);
 
-  parts.helmet.position.set(0, 0.52, -0.52);
+  parts.helmet.position.set(0, 0.52, 0.5);
 
-  parts.leftArm.rotation.set(0.32, 0, -0.5);
-  parts.leftArm.position.set(-0.36, 0.42, -0.3);
-  parts.rightArm.rotation.set(0.32, 0, 0.5);
-  parts.rightArm.position.set(0.36, 0.42, -0.3);
+  // Bracos erguidos para tras/acima, segurando os freios junto aos tirantes.
+  parts.leftArm.rotation.set(-0.32, 0, -0.5);
+  parts.leftArm.position.set(-0.36, 0.42, 0.24);
+  parts.rightArm.rotation.set(-0.32, 0, 0.5);
+  parts.rightArm.position.set(0.36, 0.42, 0.24);
 
   parts.harness.rotation.set(0, 0, 0);
   parts.harness.position.set(0, 0.28, 0);

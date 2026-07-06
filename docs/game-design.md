@@ -12,11 +12,12 @@ Antes da rodada, o jogador escolhe o local de voo, escolhe a cor principal do pa
 - Praia de Sao Vicente, Itarare, Sao Vicente - SP (`-23.964517, -46.363531`), com decolagem inicial mais alta, parapente apontado para o mar e vento vindo do mar.
 - Ao selecionar Sao Vicente na tela inicial, a camera de pre-voo tambem deve olhar de frente para o mar.
 
-- `W` ou seta para cima: acelerar o parapente ate 20% acima da velocidade padrao enquanto o comando estiver pressionado.
-- `S` ou seta para baixo: frear o parapente ate 20% abaixo da velocidade padrao enquanto o comando estiver pressionado.
+- `W` ou seta para cima: acionar a barra de velocidade, acelerando do trim (38 km/h) ate ~55 km/h; voar acelerado aumenta o afundamento pela curva polar.
+- `S` ou seta para baixo: frear do trim ate ~26 km/h; segurar o freio perto do chao executa o flare, amortecendo o pouso (reserva unica por voo).
 - `A` ou seta para esquerda: virar para esquerda.
 - `D` ou seta para direita: virar para direita.
 - Em telas touch, botoes sobrepostos no canto inferior replicam os mesmos comandos de acelerar, frear e virar para esquerda/direita.
+- `C` ou o botao de camera (📷) alterna entre a camera externa (terceira pessoa) e a visao do piloto (primeira pessoa). Na visao do piloto, a camera fica presa ao capacete sem atraso de posicao, herda a orientacao do modelo (inclina com a asa na curva e no pendulo) com leve olhar para baixo, e o near plane cai para 0.5 m para nao cortar o casulo (restaurado no modo externo). Apos o pouso, a camera orbital de pouso vale para os dois modos.
 - A interface touch deve bloquear selecao de texto e callout nativo enquanto o jogador segura os botoes de comando.
 
 Os controles podem mudar durante a iteracao se a sensacao de voo pedir outro modelo.
@@ -29,13 +30,13 @@ Quando o jogador pousa, o parapente deixa de voar, mas os comandos continuam ati
 ## Movimento
 - X/Z representam deslocamento horizontal.
 - X/Z/Y passam a representar metros no mundo do jogo.
-- A velocidade padrao do parapente e 40 km/h, convertida internamente para 11,11 m/s ao aplicar deslocamento no mapa.
-- O jogador pode variar a velocidade entre 32 km/h e 48 km/h enquanto mantem o comando pressionado; ao soltar, o parapente retorna suavemente para 40 km/h.
+- A velocidade de trim do parapente e 38 km/h; o jogador varia entre ~26 km/h (freios) e ~55 km/h (barra) e, ao soltar, retorna suavemente ao trim. Na decolagem, a velocidade acelera do passo de rampa (~8 km/h) ate o trim.
 - A distancia no ranking e HUD e medida em linha reta entre o ponto de decolagem de cada participante e sua posicao atual, nao pelo caminho efetivamente percorrido.
 - Y representa altitude absoluta em metros em relacao ao nivel do mar.
 - A altura exibida como valor principal do parapente e a distancia vertical ate o terreno exatamente abaixo da posicao X/Z atual: `position.y - terrain.getHeightAt(position.x, position.z)`.
 - O HUD tambem exibe a altitude absoluta em relacao ao nivel do mar para diferenciar as duas medidas.
-- Fora de sustentacao, a taxa base de descida do parapente e 2 m/s.
+- O afundamento segue uma curva polar de asa EN-B: ~1,45 m/s a 25 km/h, ~1,05 m/s no trim (planeio ~10:1) e ~2,3 m/s com barra cheia.
+- Curvar custa altitude: a inclinacao (bank) derivada da taxa de curva e da velocidade aumenta o afundamento pelo fator de carga (`n^1.5`). A inclinacao visual do parapente segue o bank real.
 - O parapente deve sempre ter algum movimento para frente.
 - Curvas devem ser suaves, progressivas e sem giro instantaneo ao pressionar ou soltar comando.
 - A taxa de curva deve ser mais proxima de um parapente real, priorizando leitura e controle fino em vez de rotacao rapida estilo arcade.
@@ -48,7 +49,10 @@ Quando o jogador pousa, o parapente deixa de voar, mas os comandos continuam ati
 Termicas sao colunas verticais invisiveis para a fisica, mas visiveis para o jogador por particulas, pontos subindo ou cilindros transparentes.
 
 Regras iniciais:
-- Quanto mais perto do centro da termica, maior a sustentacao.
+- Quanto mais perto do centro da termica, maior a sustentacao. O perfil radial e gaussiano (forte no nucleo, ~6% na borda do raio) e existe um anel de descendencia entre 1,0 e ~1,65 raios, onde o ar desce (~30% da forca da termica).
+- A forca cresce com a altura nos primeiros ~150 m acima do solo (termica desorganizada perto do chao) e enfraquece na faixa final antes do teto.
+- Cada termica tem ciclo de vida (4 a 9 minutos): nasce fraca, atinge o auge e decai ate morrer; os visuais (coluna, particulas, nuvem) esmaecem junto. Termicas mortas sao substituidas por novas no corredor a frente do jogador.
+- As forcas medias ficam entre ~1,8 e 3,2 m/s, com termicas "quentes" ocasionais ate ~1,5x mais fortes.
 - Cada rodada sorteia variacao de forca entre as termicas, com uma coluna podendo ficar mais forte que as demais.
 - A sustentacao deve ser claramente mais alta no centro e cair em direcao as extremidades da coluna.
 - Fora da termica, o parapente perde altitude constantemente.
@@ -59,15 +63,23 @@ Regras iniciais:
 - As termicas usam diametros moderados para permitir permanecer enroscado mesmo com vento e taxa de curva realista.
 - Conforme o piloto avanca, o jogo mantem novas termicas surgindo no corredor a frente da direcao de voo, com variacao de raio, forca e afastamento lateral.
 - Termicas que ficam muito para tras podem ser removidas para manter o custo da cena controlado.
-- O topo das termicas fica em 2000 m acima do nivel do mar. Nos ultimos 650 m antes do teto, a sustentacao enfraquece gradualmente ate 2 m/s no centro do topo; acima do teto nao ha sustentacao.
+- O topo das termicas (base de nuvem) e configuravel por local de voo (`cloudBaseMeters`, padrao 2200 m acima do nivel do mar). Nos ultimos 650 m antes do teto, a sustentacao enfraquece gradualmente ate 2 m/s no centro do topo; acima do teto nao ha sustentacao.
 - Cada termica exibe uma nuvem presa ao topo absoluto da coluna, ajudando o jogador a ler visualmente o limite de subida. A nuvem tem diametro aproximado de duas vezes o diametro da termica e usa volumes arredondados irregulares para ficar menos geometrica.
 - A base de cada termica exibe a sustentacao maxima da coluna em m/s, para indicar ao jogador a velocidade de subida esperada no centro.
 
 ## Variometro
 O variometro aparece no HUD em m/s e tambem emite bips quando o jogador esta subindo em uma termica. O som e destravado no primeiro gesto do usuario, incluindo o toque em iniciar voo no mobile, por restricao normal dos navegadores, e fica mais agudo, frequente, intenso e sustentado conforme a taxa de subida aumenta.
 
+## HUD de instrumento
+O HUD imita um instrumento de voo real (vario/GPS de parapente) com fundo escuro fosco e digitos monoespacados tabulares:
+- Variometro em destaque com barra vertical colorida (verde subindo, vermelho em sink forte; afundamento normal de planeio fica neutro).
+- Altitude sobre o nivel do mar e altura sobre o solo lado a lado.
+- Velocidade sobre o solo, razao de planeio instantanea (velocidade horizontal / descida; "∞" quando subindo) e vento com seta relativa ao rumo (para cima = vento de cauda), usando o angulo relativo calculado pela fisica.
+- Fita de bussola com marcas a cada 15 graus e pontos cardeais, deslizando conforme o rumo (marcador central amarelo).
+- Distancia da decolagem e status/tempo em linhas discretas. O ranking fica em um cartao separado abaixo do instrumento.
+
 ## HUD mobile
-Em telas estreitas, os dados de voo sao priorizados em formato compacto: tempo, altura sobre o solo, variometro e velocidade aparecem como metricas principais; altitude em relacao ao nivel do mar, distancia e status ficam como metricas secundarias. O ranking fica oculto durante o voo no mobile e reaparece quando a rodada termina para nao competir com a cena 3D e os controles touch.
+Em telas estreitas o instrumento vira uma faixa compacta no topo: vario com barra, altitudes, velocidade e vento; a fita de bussola, o planeio e a distancia ficam ocultos. O ranking fica oculto durante o voo no mobile e reaparece quando a rodada termina para nao competir com a cena 3D e os controles touch.
 
 ## Musica
 Ao iniciar a rodada, uma trilha procedural de aventura mais animada toca em volume baixo durante o voo e para quando a rodada termina.
@@ -79,11 +91,11 @@ Quando dois parapentes colidem em voo, ambos entram em estado enroscado. Nesse e
 O vento e um vetor horizontal em X/Z.
 
 Regras iniciais:
-- Varia dinamicamente entre 8 km/h e 30 km/h (teto realista para voo de parapente; tambem evita velocidade real exagerada a favor do vento).
-- Afeta a trajetoria do parapente pela soma vetorial entre velocidade propria no ar e vento.
+- Varia dinamicamente entre 8 km/h e 28 km/h por soma de ondas aperiodicas (massa de ar lenta + rajadas curtas), sem padrao repetitivo perceptivel.
+- Gradiente de vento: junto ao solo o vento vale ~50% do vento de altitude, atingindo forca total ~220 m acima do relevo (perfil suave em raiz quadrada).
+- Afeta a trajetoria do parapente pela soma vetorial continua entre velocidade propria no ar e vento (sem discretizacao em passos de angulo). Com vento de cauda, a velocidade sobre o solo aumenta; com vento de frente, diminui; em angulos intermediarios ha deriva lateral.
 - O local escolhido pode definir a direcao base do vento. Em Sao Vicente, o vento inicial vem do quadrante sudeste/mar para o interior, com variacao menor que a configuracao padrao.
 - O parapente deriva com o vento como parte da massa de ar, inclusive com componente lateral quando o vento nao esta alinhado ao rumo.
-- O efeito relativo do vento no parapente e discretizado em passos de 10 graus ao redor do circulo trigonometrico. Com vento de cauda, a velocidade sobre o solo aumenta; com vento de frente, diminui; em angulos intermediarios, o efeito e proporcional ao angulo, incluindo deriva lateral.
 - Em Sao Vicente, o vento do mar gera lift orografico quando encontra terreno ascendente. A faixa util considera a encosta ate cerca de 50 m a frente no sentido do vento e enfraquece ate zerar por volta de 300 m acima da crista local.
 - O lift orografico deve ser marcado visualmente de forma parecida com as termicas em legibilidade, mas como faixa de corrente ascendente, nao como cilindro. A faixa usa uma base alongada, uma parede translucida de ar subindo e rotulo de m/s nos pontos fortes da encosta.
 - Move termicas ao longo do tempo.
@@ -105,6 +117,11 @@ Regras iniciais:
 - A escala horizontal do terreno e calculada a partir do world file do XCM e da latitude central do local escolhido, mantendo o deslocamento proporcional ao mapa real.
 - Cada local pode ajustar a altura inicial do jogador sobre o terreno. Sao Vicente usa 180 m sobre o solo para compensar a largada costeira baixa no relevo.
 - A camada de relevo usa uma paleta naturalista por altitude e inclinação: verdes de vegetação nas áreas suaves, tons oliva/terra nas áreas altas e cinza/bege nas encostas mais íngremes para sugerir solo ou rocha exposta.
+- Sombreamento por curvatura (oclusão ambiente barata): fundos de vale ficam mais escuros e puxam para verde úmido de mata ciliar; cristas ficam levemente mais claras.
+- O material do relevo tem normal map tileável de micro-relevo (copas/ondulação do solo) que reage à luz do sol, visível em voo baixo.
+- Em locais costeiros (`hasSea`), o mar aberto é uma lâmina d'água reflexiva (reflexo do céu via envMap, roughness baixa) com normal map de ondulação animado; o plano acompanha o jogador com as ondas fixas no mundo, mais uma deriva lenta de correnteza. Lagos/represas (`water_area`) também usam material reflexivo.
+- Estradas e ferrovias têm textura procedural mapeada ao longo da fita (UV em metros): rodovias com asfalto, bordas brancas e eixo amarelo tracejado; estradas médias com asfalto e eixo discreto; estradas de terra com barro e trilhas de rodagem; ferrovias com brita, dormentes e dois trilhos.
+- Rótulos de cidades/vilas usam estilo overlay de GPS: texto branco com halo escuro, sem caixa de fundo.
 - O carregamento online OpenStreetMap/Mapzen usado anteriormente esta desativado para nao misturar duas fontes de relevo.
 - Nuvens de horizonte ficam distribuidas longe da origem e acima do relevo para reforcar a impressao de voo durante o enquadramento da camera.
 - Evitar malha densa demais.
@@ -113,6 +130,14 @@ Regras iniciais:
 
 ## Pouso
 Ao tocar o terreno, o participante pousa e sai da rodada. Visualmente, o parapente deve aparecer no chao, com a vela achatada e deitada sobre o terreno, e o piloto deve ficar de pe ao lado da vela.
+
+Regras de qualidade do pouso:
+- Tocar o solo descendo a 3 m/s ou mais rapido, ou voando a 48 km/h ou mais, conta como colisao ("Colidiu" no HUD e ranking).
+- Segurar o freio (`S`) a menos de ~7 m do solo executa o flare: uma reserva unica de energia amortece o afundamento por ~1,4 s, permitindo pouso suave.
+- Cair enroscado apos colisao em voo tambem conta como colisao.
+
+## Modo realista
+No painel de camadas ha o toggle "Modo realista (sem ajudas)": esconde colunas, aneis, particulas e rotulos de m/s das termicas, os marcadores de lift orografico e as setas 3D de vento. Ficam apenas os sinais reais de um voo: nuvens cumulus no topo das termicas, sombras de nuvem, passaros circulando e o variometro. A fisica nao muda.
 
 ## Referencia visual do parapente
 Jogador e bots usam somente o asset 3D `image/nova-vortex.obj`, baixado do configurador publico da NOVA VORTEX para avaliacao local de teste. Ele nao deve ser tratado como asset licenciado para distribuicao ou publicacao sem autorizacao da NOVA. O OBJ atual nao referencia material externo, entao o prototipo aplica material proprio via Three.js. Cada participante usa a mesma escala e configuracao visual, mudando apenas a cor principal da vela. Se o OBJ nao carregar, a vela procedural continua como fallback.
@@ -126,10 +151,11 @@ A pasta `image/` deve manter apenas assets carregados pelo sistema em runtime.
 ## Bots
 Bots sao competidores simples, nao adversarios inteligentes.
 
-Comportamento inicial:
-- Encontrar termica mais proxima.
-- Virar gradualmente na direcao dela.
-- Usar a mesma fisica geral do jogador.
+Comportamento (maquina de estados):
+- **Transicao**: escolher a termica utilizavel mais proxima (viva e abaixo do teto) e voar ate ela a ~42 km/h.
+- **Subida**: dentro do raio, circular em orbita (~45% do raio do nucleo, sentido sorteado por bot) a ~34 km/h ate ~120 m abaixo do teto.
+- **Saida**: perto do teto ou quando a termica esta morrendo, escolher a proxima termica e voltar a transicao.
+- Usar a mesma fisica geral do jogador (polar, sink em curva, gradiente de vento).
 - Ao colidir com o terreno, pousar e sair da rodada.
 - Manter alguns parapentes visiveis voando durante a cena; os bots continuam voando como trafego visual quando o jogador pousa, desde que o tempo da rodada nao tenha encerrado.
 

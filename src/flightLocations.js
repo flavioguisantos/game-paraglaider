@@ -6,7 +6,9 @@ export const FLIGHT_LOCATIONS = [
     latitude: -23.169090319406045,
     longitude: -46.52831806228563,
     launchAltitudeMeters: 24,
-    liftMode: 'thermal'
+    liftMode: 'thermal',
+    // Base de nuvem tipica de um bom dia no interior de SP.
+    cloudBaseMeters: 2200
   },
   {
     id: 'sao-vicente-itarare',
@@ -18,6 +20,8 @@ export const FLIGHT_LOCATIONS = [
     launchHeadingRadians: 0.45 + Math.PI,
     standbyHeadingRadians: 0.45 + Math.PI,
     liftMode: 'orographic',
+    // Liga a lamina d'agua reflexiva do mar aberto.
+    hasSea: true,
     wind: {
       // Vento de mar em Sao Vicente: desloca a massa de ar do quadrante sudeste para o interior.
       directionRadians: 0.45,

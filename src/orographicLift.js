@@ -31,6 +31,8 @@ class OrographicLift {
     this.config = config;
     this.group = new THREE.Group();
     this.group.name = 'OrographicLiftMarkers';
+    // Modo realista esconde os marcadores; o lift fisico continua ativo.
+    this.assistVisualsVisible = true;
     this.markers = [];
 
     for (let index = 0; index < DEFAULT_CONFIG.visualMarkerCount; index += 1) {
@@ -50,9 +52,13 @@ class OrographicLift {
     this.group.visible = this.config.enabled;
   }
 
+  setAssistVisuals(visible) {
+    this.assistVisualsVisible = Boolean(visible);
+  }
+
   update(delta, { referencePosition, terrain, wind } = {}) {
-    this.group.visible = this.config.enabled;
-    if (!this.config.enabled || !referencePosition || !terrain || !wind) {
+    this.group.visible = this.config.enabled && this.assistVisualsVisible;
+    if (!this.group.visible || !referencePosition || !terrain || !wind) {
       this.hideMarkers();
       return;
     }

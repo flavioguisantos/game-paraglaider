@@ -21,6 +21,14 @@ const DEFAULT_OPTIONS = {
 };
 
 const TERRAIN_ASSET_VERSION = 'terrain-rgb-binary-5';
+// A superficie do mar fica no nivel do mar original (y=0), como o relevo.
+const OCEAN_SURFACE_HEIGHT = 0;
+// Tamanho em unidades de mundo de um ciclo da textura de ondas do mar.
+const SEA_WAVE_REPEAT_WORLD_UNITS = 260;
+// O leito do mar e afundado na malha para separar a lamina d'agua do fundo
+// alem da resolucao do depth buffer a distancia (evita z-fighting/piscar);
+// de quebra, a agua translucida ganha leitura de profundidade na costa.
+const SEABED_WORLD_HEIGHT = -6;
 const NO_DATA_ELEVATION_THRESHOLD = -1000;
 const SEA_LEVEL_ELEVATION = 0;
 const COASTAL_SAND_MAX_ELEVATION = 45;
@@ -33,17 +41,20 @@ const tempTile = { x: 0, y: 0 };
 //   (agua com superficie plana; area urbana translucida drapejada).
 // - point: apenas rotulos (sem marcadores geometricos).
 const VECTOR_LAYER_STYLES = {
-  city_area: { type: 'area', color: 0xb5ab9d, opacity: 0.45, flat: false, yOffset: 1.0 },
-  water_area: { type: 'area', color: 0x3a76ad, opacity: 1, flat: true, yOffset: 1.3, roughness: 0.28 },
-  water_line: { type: 'ribbon', color: 0x4181b2, widthMeters: 14, yOffset: 1.2 },
-  roadbig_line: { type: 'ribbon', color: 0xb0b0b6, widthMeters: 26, yOffset: 2.0 },
-  roadmedium_line: { type: 'ribbon', color: 0xa69d8f, widthMeters: 16, yOffset: 1.8 },
-  roadsmall_line: { type: 'ribbon', color: 0xc0a577, widthMeters: 9, yOffset: 1.5 },
-  railway_line: { type: 'ribbon', color: 0x57544e, widthMeters: 6, yOffset: 2.2 },
-  city_point: { type: 'point', color: 0xf4e55c, opacity: 1, yOffset: 3.5 },
-  town_point: { type: 'point', color: 0xf4e55c, opacity: 0.92, yOffset: 3.2 },
-  suburb_point: { type: 'point', color: 0xe9de76, opacity: 0.78, yOffset: 2.8 },
-  village_point: { type: 'point', color: 0xe9de76, opacity: 0.72, yOffset: 2.6 }
+  // Estradas/ferrovias recebem textura procedural (asfalto com faixas, terra
+  // batida, dormentes) mapeada ao longo da fita; texture/metersPerRepeat
+  // controlam o padrao. Agua usa material reflexivo do ceu (roughness baixa).
+  city_area: { type: 'area', color: 0x9d9489, opacity: 0.5, flat: false, yOffset: 1.0 },
+  water_area: { type: 'area', color: 0x2f6795, opacity: 1, flat: true, yOffset: 1.3, roughness: 0.12 },
+  water_line: { type: 'ribbon', color: 0x35719f, widthMeters: 14, yOffset: 1.2, roughness: 0.3 },
+  roadbig_line: { type: 'ribbon', color: 0xffffff, widthMeters: 26, yOffset: 2.0, texture: 'highway', metersPerRepeat: 24 },
+  roadmedium_line: { type: 'ribbon', color: 0xffffff, widthMeters: 16, yOffset: 1.8, texture: 'asphalt', metersPerRepeat: 24 },
+  roadsmall_line: { type: 'ribbon', color: 0xffffff, widthMeters: 9, yOffset: 1.5, texture: 'dirt', metersPerRepeat: 18 },
+  railway_line: { type: 'ribbon', color: 0xffffff, widthMeters: 6, yOffset: 2.2, texture: 'railway', metersPerRepeat: 6 },
+  city_point: { type: 'point', color: 0xffffff, opacity: 1, yOffset: 3.5 },
+  town_point: { type: 'point', color: 0xffffff, opacity: 0.92, yOffset: 3.2 },
+  suburb_point: { type: 'point', color: 0xf0f4f8, opacity: 0.78, yOffset: 2.8 },
+  village_point: { type: 'point', color: 0xf0f4f8, opacity: 0.72, yOffset: 2.6 }
 };
 
 export function createTerrain(options = {}) {
@@ -60,7 +71,16 @@ class LocalXcmTerrain {
     this.vectorGroup = new THREE.Group();
     this.vectorGroup.name = 'XcmVectorOverlayLayer';
     this.urbanScenery = createUrbanScenery({ terrain: this });
-    this.mesh.add(this.reliefGroup, this.vectorGroup, this.urbanScenery.group);
+    // Lamina d'agua do mar aberto: um quad por chunk que contem pixels de
+    // mar (nunca avanca sobre chunks de terra nem alem do raio carregado),
+    // com UVs em coordenadas de mundo para as ondas continuarem entre chunks.
+    // Ligado apenas em locais costeiros (setSeaEnabled).
+    this.seaGroup = new THREE.Group();
+    this.seaGroup.name = 'SeaSurface';
+    this.seaGroup.visible = false;
+    this.seaMaterial = null;
+    this.oceanTime = 0;
+    this.mesh.add(this.reliefGroup, this.vectorGroup, this.urbanScenery.group, this.seaGroup);
     this.size = 0;
     this.segments = config.chunkSegments * (config.loadRadius * 2 + 1);
     this.source = 'xcm-local-loading';
@@ -183,6 +203,118 @@ class LocalXcmTerrain {
     }
 
     this.urbanScenery.update(delta);
+    this.updateSeaWaves(delta);
+  }
+
+  setSeaEnabled(enabled) {
+    this.seaGroup.visible = Boolean(enabled);
+  }
+
+  // As UVs dos quads de mar ja estao em coordenadas de mundo; basta a deriva
+  // lenta de correnteza no offset compartilhado para animar as ondas.
+  updateSeaWaves(delta) {
+    if (!this.seaGroup.visible || !this.seaMaterial?.normalMap) return;
+
+    this.oceanTime += delta;
+    this.seaMaterial.normalMap.offset.set(
+      this.oceanTime * 0.006,
+      this.oceanTime * 0.0042
+    );
+  }
+
+  getSeaMaterial() {
+    if (!this.seaMaterial) {
+      this.seaMaterial = new THREE.MeshStandardMaterial({
+        color: 0x1d4f78,
+        roughness: 0.14,
+        metalness: 0,
+        transparent: true,
+        opacity: 0.92,
+        depthWrite: true,
+        envMapIntensity: 1.15
+      });
+
+      const normalTexture = createWaterNormalTexture();
+      if (normalTexture) {
+        this.seaMaterial.normalMap = normalTexture;
+        this.seaMaterial.normalScale = new THREE.Vector2(0.7, 0.7);
+      }
+    }
+    return this.seaMaterial;
+  }
+
+  // Superficie de mar recortada pela propria grade do chunk: so entram os
+  // quads cujos 4 cantos sao mar (NoData). A agua nunca cobre terra e as
+  // bordas casam entre chunks vizinhos porque a grade e o DEM sao os mesmos.
+  createSeaMeshIfNeeded(tileX, tileY, imageData) {
+    if (!tileHasSeaPixels(imageData)) return null;
+
+    const segments = this.config.chunkSegments;
+    const tileSize = this.manifest.terrain.tileSize;
+    const latticeSize = segments + 1;
+    const seaFlags = new Uint8Array(latticeSize * latticeSize);
+
+    for (let iz = 0; iz < latticeSize; iz += 1) {
+      for (let ix = 0; ix < latticeSize; ix += 1) {
+        const u = (ix / segments) * (tileSize - 1);
+        const v = (iz / segments) * (tileSize - 1);
+        seaFlags[iz * latticeSize + ix] = sampleTileHasNoData(imageData, u, v) ? 1 : 0;
+      }
+    }
+
+    const center = this.getChunkCenterWorld(tileX, tileY);
+    const positions = [];
+    const uvs = [];
+    const indices = [];
+    const vertexIndices = new Int32Array(latticeSize * latticeSize).fill(-1);
+
+    const getVertexIndex = (ix, iz) => {
+      const key = iz * latticeSize + ix;
+      if (vertexIndices[key] !== -1) return vertexIndices[key];
+
+      const localX = (ix / segments - 0.5) * this.chunkWorldWidth;
+      const localZ = (iz / segments - 0.5) * this.chunkWorldDepth;
+      const index = positions.length / 3;
+      positions.push(localX, 0, localZ);
+      uvs.push(
+        (center.x + localX) / SEA_WAVE_REPEAT_WORLD_UNITS,
+        (center.z + localZ) / SEA_WAVE_REPEAT_WORLD_UNITS
+      );
+      vertexIndices[key] = index;
+      return index;
+    };
+
+    for (let iz = 0; iz < segments; iz += 1) {
+      for (let ix = 0; ix < segments; ix += 1) {
+        const isFullSeaQuad = seaFlags[iz * latticeSize + ix]
+          && seaFlags[iz * latticeSize + ix + 1]
+          && seaFlags[(iz + 1) * latticeSize + ix]
+          && seaFlags[(iz + 1) * latticeSize + ix + 1];
+        if (!isFullSeaQuad) continue;
+
+        const a = getVertexIndex(ix, iz);
+        const b = getVertexIndex(ix, iz + 1);
+        const c = getVertexIndex(ix + 1, iz + 1);
+        const d = getVertexIndex(ix + 1, iz);
+        indices.push(a, b, d, b, c, d);
+      }
+    }
+
+    if (indices.length === 0) return null;
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geometry.setIndex(indices);
+    const normals = new Float32Array(positions.length);
+    for (let index = 1; index < normals.length; index += 3) normals[index] = 1;
+    geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+
+    const mesh = new THREE.Mesh(geometry, this.getSeaMaterial());
+    mesh.name = `SeaSurfaceChunk_${tileX}_${tileY}`;
+    mesh.position.set(center.x, OCEAN_SURFACE_HEIGHT, center.z);
+    this.seaGroup.add(mesh);
+    return mesh;
   }
 
   getHeightAt(x, z) {
@@ -336,6 +468,7 @@ class LocalXcmTerrain {
         tileY,
         imageData,
         mesh: this.createChunkMesh(tileX, tileY, imageData),
+        seaMesh: this.createSeaMeshIfNeeded(tileX, tileY, imageData),
         vectors: null
       };
       this.chunks.set(key, chunk);
@@ -362,6 +495,11 @@ class LocalXcmTerrain {
     if (!chunk) return;
 
     this.reliefGroup.remove(chunk.mesh);
+    if (chunk.seaMesh) {
+      this.seaGroup.remove(chunk.seaMesh);
+      // O material do mar e compartilhado; descarta apenas a geometria.
+      chunk.seaMesh.geometry.dispose();
+    }
     if (chunk.vectors) {
       this.vectorGroup.remove(chunk.vectors);
       disposeObject3D(chunk.vectors);
@@ -431,8 +569,9 @@ class LocalXcmTerrain {
       const isSand = !isSea && isCoastalSandSample(imageData, u, v, elevation);
       const worldHeight = this.elevationToWorldHeight(elevation);
       const slope = sampleTileSlope(imageData, u, v, this.worldUnitsPerPixelX, this.worldUnitsPerPixelY);
-      positions.setY(index, worldHeight);
-      addTerrainColor(colors, worldHeight, slope, chunkCenter.x + localX, chunkCenter.z + localZ, isSea, isSand);
+      const curvature = sampleTileCurvature(imageData, u, v, elevation);
+      positions.setY(index, isSea ? SEABED_WORLD_HEIGHT : worldHeight);
+      addTerrainColor(colors, worldHeight, slope, chunkCenter.x + localX, chunkCenter.z + localZ, isSea, isSand, curvature);
     }
 
     positions.needsUpdate = true;
@@ -460,6 +599,15 @@ class LocalXcmTerrain {
         // Repeticao inteira mantem o padrao continuo entre chunks vizinhos.
         detailTexture.repeat.set(64, 64);
         this.terrainMaterial.map = detailTexture;
+      }
+
+      // Micro-relevo (copas de arvore, ondulacao do solo) que reage a luz,
+      // visivel principalmente em voo baixo e com sol rasante.
+      const normalTexture = createTerrainNormalTexture();
+      if (normalTexture) {
+        normalTexture.repeat.set(96, 96);
+        this.terrainMaterial.normalMap = normalTexture;
+        this.terrainMaterial.normalScale = new THREE.Vector2(0.45, 0.45);
       }
     }
 
@@ -532,7 +680,10 @@ class LocalXcmTerrain {
   createVectorRibbons(layerName, lines, chunk, style) {
     const positions = [];
     const indices = [];
+    const uvs = [];
     const halfWidth = (style.widthMeters * this.worldUnitsPerMeter) / 2;
+    // Comprimento em metros que um ciclo da textura cobre ao longo da fita.
+    const metersPerRepeat = style.metersPerRepeat ?? style.widthMeters * 2;
     // Subdivide cada segmento em passos menores que meio quad da malha do terreno,
     // para a fita acompanhar o relevo em vez de atravessar elevacoes no caminho.
     const stepLength = Math.max(20, (this.chunkWorldWidth / this.config.chunkSegments) * 0.5);
@@ -574,11 +725,16 @@ class LocalXcmTerrain {
       const sortedHeights = stepPoints.map((point) => point.height).sort((a, b) => a - b);
       const medianHeight = sortedHeights[Math.floor(sortedHeights.length / 2)];
 
-      for (const point of stepPoints) {
+      const segmentLengthMeters = Math.hypot(endX - startX, endZ - startZ) / this.worldUnitsPerMeter;
+
+      for (let pointIndex = 0; pointIndex < stepPoints.length; pointIndex += 1) {
+        const point = stepPoints[pointIndex];
         if (Math.abs(point.height - medianHeight) > 120) point.height = medianHeight;
         const height = point.height + style.yOffset;
+        const along = (pointIndex / steps) * segmentLengthMeters / metersPerRepeat;
         positions.push(point.x - perpX, height, point.z - perpZ);
         positions.push(point.x + perpX, height, point.z + perpZ);
+        uvs.push(0, along, 1, along);
       }
 
       for (let step = 0; step < steps; step += 1) {
@@ -590,7 +746,7 @@ class LocalXcmTerrain {
     if (positions.length === 0) return null;
 
     const mesh = new THREE.Mesh(
-      this.buildVectorGeometry(positions, indices),
+      this.buildVectorGeometry(positions, indices, uvs),
       this.getVectorMaterial(layerName, style)
     );
     mesh.name = `XcmVectorRibbons_${layerName}`;
@@ -653,10 +809,13 @@ class LocalXcmTerrain {
     return mesh;
   }
 
-  buildVectorGeometry(positions, indices) {
+  buildVectorGeometry(positions, indices, uvs = null) {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geometry.setIndex(indices);
+    if (uvs?.length) {
+      geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    }
 
     const normals = new Float32Array(positions.length);
     for (let index = 1; index < normals.length; index += 3) normals[index] = 1;
@@ -696,7 +855,7 @@ class LocalXcmTerrain {
   getVectorMaterial(layerName, style) {
     if (!this.vectorMaterials.has(layerName)) {
       const transparent = (style.opacity ?? 1) < 1;
-      this.vectorMaterials.set(layerName, new THREE.MeshStandardMaterial({
+      const material = new THREE.MeshStandardMaterial({
         color: style.color,
         roughness: style.roughness ?? 0.92,
         metalness: 0,
@@ -707,7 +866,14 @@ class LocalXcmTerrain {
         polygonOffset: true,
         polygonOffsetFactor: -4,
         polygonOffsetUnits: -4
-      }));
+      });
+
+      if (style.texture) {
+        const texture = createRibbonTexture(style.texture);
+        if (texture) material.map = texture;
+      }
+
+      this.vectorMaterials.set(layerName, material);
     }
     return this.vectorMaterials.get(layerName);
   }
@@ -810,22 +976,25 @@ function chainSegmentsIntoRings(lines) {
   return rings;
 }
 
+// Rotulo estilo overlay de GPS: texto com halo escuro, sem caixa de fundo.
 function createLabelTexture(text, color) {
   const canvas = document.createElement('canvas');
   const context = canvas.getContext('2d');
   const fontSize = 30;
-  context.font = `600 ${fontSize}px Arial, sans-serif`;
+  const font = `700 ${fontSize}px Arial, sans-serif`;
+  context.font = font;
   const metrics = context.measureText(text);
   canvas.width = Math.min(512, Math.ceil(metrics.width + 28));
   canvas.height = 56;
 
-  context.font = `600 ${fontSize}px Arial, sans-serif`;
-  context.fillStyle = 'rgba(12, 18, 14, 0.68)';
-  context.fillRect(0, 0, canvas.width, canvas.height);
-  context.strokeStyle = 'rgba(255, 255, 255, 0.55)';
-  context.strokeRect(0.5, 0.5, canvas.width - 1, canvas.height - 1);
+  context.font = font;
+  context.textBaseline = 'middle';
+  context.lineJoin = 'round';
+  context.strokeStyle = 'rgba(10, 16, 22, 0.85)';
+  context.lineWidth = 7;
+  context.strokeText(text, 14, 30);
   context.fillStyle = `#${new THREE.Color(color).getHexString()}`;
-  context.fillText(text, 14, 38);
+  context.fillText(text, 14, 30);
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
@@ -1184,6 +1353,25 @@ function isNoDataElevation(elevation) {
   return elevation < NO_DATA_ELEVATION_THRESHOLD;
 }
 
+// Curvatura local: media das alturas ao redor menos a altura do ponto.
+// Positiva em fundos de vale (vizinhanca mais alta), negativa em cristas.
+// O efeito e atenuado junto as bordas do tile, onde o clamp das amostras
+// enviesaria o valor e criaria emendas de cor entre chunks vizinhos.
+function sampleTileCurvature(imageData, u, v, centerElevation) {
+  const radiusPixels = 4;
+  const edgeDistance = Math.min(u, v, imageData.width - 1 - u, imageData.height - 1 - v);
+  const edgeFactor = THREE.MathUtils.clamp(edgeDistance / radiusPixels, 0, 1);
+  if (edgeFactor <= 0) return 0;
+
+  const neighborhood = (
+    sampleTileElevation(imageData, u + radiusPixels, v, centerElevation)
+    + sampleTileElevation(imageData, u - radiusPixels, v, centerElevation)
+    + sampleTileElevation(imageData, u, v + radiusPixels, centerElevation)
+    + sampleTileElevation(imageData, u, v - radiusPixels, centerElevation)
+  ) / 4;
+  return (neighborhood - normalizeTerrainElevation(centerElevation)) * edgeFactor;
+}
+
 function sampleTileSlope(imageData, u, v, metersPerPixelX, metersPerPixelY) {
   const center = sampleTileElevation(imageData, u, v);
   const east = sampleTileElevation(imageData, u + 1, v, center);
@@ -1211,7 +1399,7 @@ const TERRAIN_PALETTE = {
 };
 const tempTerrainColor = new THREE.Color();
 
-function addTerrainColor(colors, height, slope, worldX, worldZ, isSea = false, isSand = false) {
+function addTerrainColor(colors, height, slope, worldX, worldZ, isSea = false, isSand = false, curvature = 0) {
   const color = tempTerrainColor;
   const palette = TERRAIN_PALETTE;
 
@@ -1254,6 +1442,14 @@ function addTerrainColor(colors, height, slope, worldX, worldZ, isSea = false, i
   color.lerp(palette.granite, rockFactor * 0.55);
   color.lerp(palette.mountainMist, mountainBlend * 0.24);
 
+  // Oclusao ambiente barata por curvatura: fundos de vale (curvatura positiva)
+  // recebem menos luz do ceu; cristas ficam levemente mais claras. Vales de rio
+  // tambem puxam para verde mais escuro e umido (mata ciliar).
+  const valleyFactor = THREE.MathUtils.clamp(curvature / 55, 0, 1);
+  const ridgeFactor = THREE.MathUtils.clamp(-curvature / 70, 0, 1);
+  color.lerp(palette.lowForest, valleyFactor * 0.3);
+  color.multiplyScalar(1 - valleyFactor * 0.16 + ridgeFactor * 0.08);
+
   colors.push(color.r, color.g, color.b);
 }
 
@@ -1284,6 +1480,83 @@ function smoothstep01(t) {
 
 function waitForNextFrame() {
   return new Promise((resolve) => requestAnimationFrame(resolve));
+}
+
+// Texturas procedurais das fitas vetoriais, mapeadas com u atraves da
+// largura e v ao longo (1 repeticao = metersPerRepeat do estilo).
+const ribbonTextureCache = new Map();
+
+function createRibbonTexture(kind) {
+  if (typeof document === 'undefined') return null;
+  if (ribbonTextureCache.has(kind)) return ribbonTextureCache.get(kind);
+
+  const width = 128;
+  const height = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d');
+
+  if (kind === 'highway') {
+    // Asfalto de rodovia: bordas brancas continuas e eixo amarelo tracejado.
+    fillNoisyBase(context, width, height, [98, 98, 106], 10);
+    drawLaneLine(context, width * 0.055, 0, height, 3, 'rgba(232, 235, 240, 0.8)');
+    drawLaneLine(context, width * 0.945, 0, height, 3, 'rgba(232, 235, 240, 0.8)');
+    // Eixo tracejado: 1/3 do ciclo pintado (ex.: 8 m de faixa a cada 24 m).
+    context.fillStyle = 'rgba(228, 196, 80, 0.85)';
+    context.fillRect(width / 2 - 2, height * 0.33, 4, height * 0.34);
+  } else if (kind === 'asphalt') {
+    // Asfalto simples de pista dupla com eixo discreto.
+    fillNoisyBase(context, width, height, [110, 107, 102], 12);
+    context.fillStyle = 'rgba(226, 198, 96, 0.5)';
+    context.fillRect(width / 2 - 2, height * 0.36, 4, height * 0.28);
+  } else if (kind === 'dirt') {
+    // Estrada de terra: barro claro com duas trilhas de rodagem escurecidas.
+    fillNoisyBase(context, width, height, [179, 152, 108], 22);
+    drawLaneLine(context, width * 0.3, 0, height, 14, 'rgba(122, 99, 66, 0.4)');
+    drawLaneLine(context, width * 0.7, 0, height, 14, 'rgba(122, 99, 66, 0.4)');
+  } else if (kind === 'railway') {
+    // Leito de brita, dormentes transversais e dois trilhos continuos.
+    fillNoisyBase(context, width, height, [111, 107, 100], 16);
+    const sleepersPerRepeat = 2;
+    for (let index = 0; index < sleepersPerRepeat; index += 1) {
+      const y = ((index + 0.25) / sleepersPerRepeat) * height;
+      context.fillStyle = 'rgba(58, 52, 46, 0.85)';
+      context.fillRect(width * 0.12, y, width * 0.76, height * 0.09);
+    }
+    drawLaneLine(context, width * 0.34, 0, height, 5, 'rgba(150, 152, 158, 0.95)');
+    drawLaneLine(context, width * 0.66, 0, height, 5, 'rgba(150, 152, 158, 0.95)');
+  } else {
+    return null;
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.ClampToEdgeWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  ribbonTextureCache.set(kind, texture);
+  return texture;
+}
+
+function fillNoisyBase(context, width, height, [red, green, blue], noiseAmplitude) {
+  const image = context.createImageData(width, height);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const noise = (hash2D(x * 3.7, y * 2.3) - 0.5) * 2 * noiseAmplitude;
+      const index = (y * width + x) * 4;
+      image.data[index] = THREE.MathUtils.clamp(red + noise, 0, 255);
+      image.data[index + 1] = THREE.MathUtils.clamp(green + noise, 0, 255);
+      image.data[index + 2] = THREE.MathUtils.clamp(blue + noise, 0, 255);
+      image.data[index + 3] = 255;
+    }
+  }
+  context.putImageData(image, 0, 0);
+}
+
+function drawLaneLine(context, x, top, bottom, lineWidth, style) {
+  context.fillStyle = style;
+  context.fillRect(x - lineWidth / 2, top, lineWidth, bottom - top);
 }
 
 function createDetailTexture() {
@@ -1318,6 +1591,115 @@ function createDetailTexture() {
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
   texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+// Varre o tile com passo largo procurando pixels NoData (mar aberto).
+function tileHasSeaPixels(imageData) {
+  if (!imageData?.data) return false;
+
+  const stride = 4;
+  for (let y = 0; y < imageData.height; y += stride) {
+    for (let x = 0; x < imageData.width; x += stride) {
+      if (isNoDataElevation(getRawPixelElevation(imageData, x, y))) return true;
+    }
+  }
+  return false;
+}
+
+function createWaterNormalTexture() {
+  if (typeof document === 'undefined') return null;
+
+  const size = 256;
+  const period = 9;
+  const heights = new Float32Array(size * size);
+
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const u = (x / size) * period;
+      const v = (y / size) * period;
+      heights[y * size + x] = tileableValueNoise(u, v, period) * 0.65
+        + tileableValueNoise(u * 3, v * 3, period * 3) * 0.35;
+    }
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const context = canvas.getContext('2d');
+  const image = context.createImageData(size, size);
+  const strength = 3;
+
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const left = heights[y * size + ((x - 1 + size) % size)];
+      const right = heights[y * size + ((x + 1) % size)];
+      const up = heights[((y - 1 + size) % size) * size + x];
+      const down = heights[((y + 1) % size) * size + x];
+      const normalX = (left - right) * strength;
+      const normalY = (up - down) * strength;
+      const invLength = 1 / Math.hypot(normalX, normalY, 1);
+      const index = (y * size + x) * 4;
+      image.data[index] = Math.round((normalX * invLength * 0.5 + 0.5) * 255);
+      image.data[index + 1] = Math.round((normalY * invLength * 0.5 + 0.5) * 255);
+      image.data[index + 2] = Math.round((invLength * 0.5 + 0.5) * 255);
+      image.data[index + 3] = 255;
+    }
+  }
+
+  context.putImageData(image, 0, 0);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  return texture;
+}
+
+// Normal map tileavel de micro-relevo gerado do mesmo ruido do detalhe:
+// gradientes do heightfield viram vetores de normal (estilo copas/ondulacao).
+function createTerrainNormalTexture() {
+  if (typeof document === 'undefined') return null;
+
+  const size = 256;
+  const period = 24;
+  const heights = new Float32Array(size * size);
+
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const u = (x / size) * period;
+      const v = (y / size) * period;
+      heights[y * size + x] = tileableValueNoise(u, v, period) * 0.7
+        + tileableValueNoise(u * 3, v * 3, period * 3) * 0.3;
+    }
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const context = canvas.getContext('2d');
+  const image = context.createImageData(size, size);
+  const strength = 2.2;
+
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const left = heights[y * size + ((x - 1 + size) % size)];
+      const right = heights[y * size + ((x + 1) % size)];
+      const up = heights[((y - 1 + size) % size) * size + x];
+      const down = heights[((y + 1) % size) * size + x];
+      const normalX = (left - right) * strength;
+      const normalY = (up - down) * strength;
+      const invLength = 1 / Math.hypot(normalX, normalY, 1);
+      const index = (y * size + x) * 4;
+      image.data[index] = Math.round((normalX * invLength * 0.5 + 0.5) * 255);
+      image.data[index + 1] = Math.round((normalY * invLength * 0.5 + 0.5) * 255);
+      image.data[index + 2] = Math.round((invLength * 0.5 + 0.5) * 255);
+      image.data[index + 3] = 255;
+    }
+  }
+
+  context.putImageData(image, 0, 0);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
   return texture;
 }
 

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { createCloudBillboard, createCloudShadow } from './clouds.js';
 
 const THERMAL_CONFIG = {
-  topAltitudeAboveSeaLevel: 2000,
+  topAltitudeAboveSeaLevel: 2200,
   // A sustentacao enfraquece gradualmente na faixa final da coluna,
   // chegando a topLiftMetersPerSecond no teto (nada de corte abrupto).
   liftFadeBandMeters: 650,
@@ -10,11 +10,24 @@ const THERMAL_CONFIG = {
   driftScale: 1,
   particleCount: 26,
   particleRiseSpeed: 92,
-  liftFalloffExponent: 1.7,
+  // Nucleo gaussiano: exp(-k * (d/R)^2). Com k=2.8 a borda do raio tem ~6%.
+  gaussianFalloff: 2.8,
+  // Anel de descendencia ao redor do nucleo: o ar que sobe no centro desce
+  // na borda (fracao da forca, entre 1.0R e sinkRingOuterRatio*R).
+  sinkRingOuterRatio: 1.65,
+  sinkRingStrengthRatio: 0.3,
+  // Perfil vertical: termica fraca e estreita perto do solo.
+  lowLevelRampMeters: 150,
+  lowLevelMinFactor: 0.25,
+  // Ciclo de vida: nasce, sustenta e morre.
+  lifetimeMinSeconds: 240,
+  lifetimeMaxSeconds: 540,
+  rampUpSeconds: 40,
+  decaySeconds: 70,
   minStrengthMultiplier: 0.85,
   maxStrengthMultiplier: 1.15,
-  hotStrengthMultiplierMin: 1.35,
-  hotStrengthMultiplierMax: 1.65,
+  hotStrengthMultiplierMin: 1.3,
+  hotStrengthMultiplierMax: 1.5,
   minAheadThermals: 7,
   maxThermals: 15,
   spawnAheadMin: 550,
@@ -25,8 +38,8 @@ const THERMAL_CONFIG = {
   minThermalSpacing: 340,
   dynamicRadiusMin: 125,
   dynamicRadiusMax: 190,
-  dynamicStrengthMin: 3.1,
-  dynamicStrengthMax: 4.3,
+  dynamicStrengthMin: 1.8,
+  dynamicStrengthMax: 3.2,
   dynamicHotChance: 0.18,
   cloudOpacity: 0.78,
   minTiltDegrees: 2.5,
@@ -45,10 +58,10 @@ const tempParticleSide = new THREE.Vector3();
 const tempParticleForward = new THREE.Vector3();
 
 const THERMAL_SEEDS = [
-  { x: -280, z: -220, radius: 125, strength: 3.7 },
-  { x: 360, z: -430, radius: 145, strength: 3.3 },
-  { x: 640, z: 380, radius: 170, strength: 4.1 },
-  { x: -420, z: 520, radius: 135, strength: 3.5 }
+  { x: -280, z: -220, radius: 125, strength: 2.6 },
+  { x: 360, z: -430, radius: 145, strength: 2.2 },
+  { x: 640, z: 380, radius: 170, strength: 3.0 },
+  { x: -420, z: 520, radius: 135, strength: 2.4 }
 ];
 
 const DEFAULT_SUN_DIRECTION = new THREE.Vector3(0, 1, 0);
@@ -66,6 +79,8 @@ class ThermalField {
     this.group = new THREE.Group();
     this.group.name = 'Thermals';
     this.enabled = true;
+    this.assistVisualsVisible = true;
+    this.topAltitude = THERMAL_CONFIG.topAltitudeAboveSeaLevel;
     const hotThermalIndex = Math.floor(Math.random() * THERMAL_SEEDS.length);
     this.nextThermalId = 1;
     this.thermals = THERMAL_SEEDS.map((seed, index) => createThermal(
@@ -73,11 +88,33 @@ class ThermalField {
       this.nextThermalId++,
       terrain,
       index === hotThermalIndex,
-      this.sunDirection
+      this.sunDirection,
+      this.topAltitude
     ));
 
     for (const thermal of this.thermals) {
+      // Termicas iniciais nascem em fases diferentes do ciclo para nao
+      // morrerem todas juntas.
+      thermal.age = Math.random() * thermal.lifetimeSeconds * 0.6;
       this.group.add(thermal.visual);
+    }
+  }
+
+  setCeiling(topAltitudeAboveSeaLevel) {
+    if (!Number.isFinite(topAltitudeAboveSeaLevel)) return;
+
+    this.topAltitude = topAltitudeAboveSeaLevel;
+    for (const thermal of this.thermals) {
+      thermal.topAltitudeAboveSeaLevel = topAltitudeAboveSeaLevel;
+    }
+  }
+
+  // Modo realista: esconde as ajudas visuais (coluna, anel, particulas e
+  // rotulo de forca), mantendo apenas os sinais reais: nuvem, sombra e passaros.
+  setAssistVisuals(visible) {
+    this.assistVisualsVisible = Boolean(visible);
+    for (const thermal of this.thermals) {
+      applyAssistVisibility(thermal, this.assistVisualsVisible);
     }
   }
 
@@ -93,7 +130,21 @@ class ThermalField {
     const halfSize = this.terrain.size / 2;
     const worldUnitsPerMeter = this.terrain.worldUnitsPerMeter ?? 1;
 
-    for (const thermal of this.thermals) {
+    for (let index = this.thermals.length - 1; index >= 0; index -= 1) {
+      const thermal = this.thermals[index];
+      thermal.age += delta;
+      thermal.cycleFactor = getThermalCycleFactor(thermal);
+
+      if (thermal.age >= thermal.lifetimeSeconds) {
+        if (referenceEntity) {
+          // Termica morreu: remove; ensureAheadThermals repõe adiante.
+          this.removeThermal(index);
+          continue;
+        }
+        // Sem rodada em andamento, recicla no lugar com nova forca e ciclo.
+        recycleThermal(thermal);
+      }
+
       thermal.position.x += wind.x * worldUnitsPerMeter * THERMAL_CONFIG.driftScale * delta;
       thermal.position.z += wind.z * worldUnitsPerMeter * THERMAL_CONFIG.driftScale * delta;
 
@@ -106,6 +157,7 @@ class ThermalField {
 
       const groundHeight = this.terrain.getHeightAt(thermal.position.x, thermal.position.z);
       updateThermalVerticalLayout(thermal, groundHeight, wind, this.sunDirection, this.terrain);
+      applyCycleOpacity(thermal);
 
       animateParticles(thermal, delta);
       animateBirds(thermal, delta);
@@ -156,7 +208,15 @@ class ThermalField {
       strength: THREE.MathUtils.randFloat(THERMAL_CONFIG.dynamicStrengthMin, THERMAL_CONFIG.dynamicStrengthMax)
     };
     const isHotThermal = Math.random() < THERMAL_CONFIG.dynamicHotChance;
-    const thermal = createThermal(seed, this.nextThermalId++, this.terrain, isHotThermal, this.sunDirection);
+    const thermal = createThermal(
+      seed,
+      this.nextThermalId++,
+      this.terrain,
+      isHotThermal,
+      this.sunDirection,
+      this.topAltitude
+    );
+    applyAssistVisibility(thermal, this.assistVisualsVisible);
 
     this.thermals.push(thermal);
     this.group.add(thermal.visual);
@@ -207,11 +267,24 @@ class ThermalField {
       if (position.y >= thermal.topAltitudeAboveSeaLevel) continue;
 
       const distance = Math.hypot(position.x - thermal.position.x, position.z - thermal.position.z);
-      if (distance >= thermal.radius) continue;
+      const radiusRatio = distance / thermal.radius;
+      if (radiusRatio >= THERMAL_CONFIG.sinkRingOuterRatio) continue;
 
-      const centerInfluence = 1 - distance / thermal.radius;
-      const radialLift = thermal.strength * Math.pow(centerInfluence, THERMAL_CONFIG.liftFalloffExponent);
-      lift += radialLift * getVerticalLiftFactor(thermal, position.y);
+      const effectiveStrength = thermal.strength
+        * (thermal.cycleFactor ?? 1)
+        * getVerticalLiftFactor(thermal, position.y)
+        * getLowLevelFactor(thermal, position.y);
+
+      if (radiusRatio < 1) {
+        // Nucleo gaussiano: forte no centro, ~6% na borda do raio.
+        lift += effectiveStrength * Math.exp(-THERMAL_CONFIG.gaussianFalloff * radiusRatio * radiusRatio);
+      } else {
+        // Anel de descendencia: o ar que sobe no nucleo desce ao redor.
+        const ringProgress = (radiusRatio - 1) / (THERMAL_CONFIG.sinkRingOuterRatio - 1);
+        lift -= effectiveStrength
+          * THERMAL_CONFIG.sinkRingStrengthRatio
+          * Math.sin(ringProgress * Math.PI);
+      }
     }
 
     return lift;
@@ -240,7 +313,14 @@ class ThermalField {
   }
 }
 
-function createThermal(seed, id, terrain, isHotThermal, sunDirection = DEFAULT_SUN_DIRECTION) {
+function createThermal(
+  seed,
+  id,
+  terrain,
+  isHotThermal,
+  sunDirection = DEFAULT_SUN_DIRECTION,
+  topAltitudeAboveSeaLevel = THERMAL_CONFIG.topAltitudeAboveSeaLevel
+) {
   const position = new THREE.Vector3(seed.x, 0, seed.z);
   const visual = new THREE.Group();
   visual.name = `Thermal_${id}`;
@@ -315,7 +395,13 @@ function createThermal(seed, id, terrain, isHotThermal, sunDirection = DEFAULT_S
     baseStrength: seed.strength,
     strengthMultiplier,
     isHotThermal,
-    topAltitudeAboveSeaLevel: THERMAL_CONFIG.topAltitudeAboveSeaLevel,
+    topAltitudeAboveSeaLevel,
+    age: 0,
+    lifetimeSeconds: THREE.MathUtils.randFloat(
+      THERMAL_CONFIG.lifetimeMinSeconds,
+      THERMAL_CONFIG.lifetimeMaxSeconds
+    ),
+    cycleFactor: 0,
     columnHeight: 0,
     tiltOffset: new THREE.Vector3(),
     birdTime: Math.random() * 10,
@@ -462,6 +548,72 @@ function updateCloudShadow(thermal, groundHeight, sunDirection, terrain) {
 
   shadow.visible = true;
   shadow.position.set(localX, shadowGroundHeight - groundHeight + 2.2, localZ);
+}
+
+// Ciclo de vida: rampa ao nascer, plena no meio, decaimento antes de morrer.
+function getThermalCycleFactor(thermal) {
+  const rampUp = THREE.MathUtils.clamp(thermal.age / THERMAL_CONFIG.rampUpSeconds, 0, 1);
+  const remaining = thermal.lifetimeSeconds - thermal.age;
+  const decay = THREE.MathUtils.clamp(remaining / THERMAL_CONFIG.decaySeconds, 0, 1);
+  return Math.min(rampUp, decay);
+}
+
+function recycleThermal(thermal) {
+  thermal.age = 0;
+  thermal.lifetimeSeconds = THREE.MathUtils.randFloat(
+    THERMAL_CONFIG.lifetimeMinSeconds,
+    THERMAL_CONFIG.lifetimeMaxSeconds
+  );
+  thermal.strengthMultiplier = thermal.isHotThermal
+    ? THREE.MathUtils.randFloat(THERMAL_CONFIG.hotStrengthMultiplierMin, THERMAL_CONFIG.hotStrengthMultiplierMax)
+    : THREE.MathUtils.randFloat(THERMAL_CONFIG.minStrengthMultiplier, THERMAL_CONFIG.maxStrengthMultiplier);
+  thermal.strength = thermal.baseStrength * thermal.strengthMultiplier;
+  thermal.cycleFactor = 0;
+}
+
+// Perto do solo a termica ainda esta se organizando: sobe fraca e turbulenta.
+function getLowLevelFactor(thermal, altitude) {
+  const groundHeight = thermal.visual.position.y;
+  const heightAboveGround = altitude - groundHeight;
+  const ramp = THREE.MathUtils.clamp(heightAboveGround / THERMAL_CONFIG.lowLevelRampMeters, 0, 1);
+  return THREE.MathUtils.lerp(THERMAL_CONFIG.lowLevelMinFactor, 1, ramp);
+}
+
+// A nuvem cumulus e os visuais acompanham a fase da termica: nasce timida,
+// encorpa no auge e dissolve quando o ciclo termina.
+function applyCycleOpacity(thermal) {
+  const cycle = THREE.MathUtils.clamp(thermal.cycleFactor ?? 1, 0, 1);
+
+  setFadedOpacity(thermal.column.material, 0.055, cycle);
+  setFadedOpacity(thermal.ring.material, 0.24, cycle);
+  if (thermal.particles.length > 0) {
+    setFadedOpacity(thermal.particles[0].material, 0.3, cycle);
+  }
+  setFadedOpacity(thermal.label.material, 1, cycle);
+  if (thermal.cloudShadow) {
+    setFadedOpacity(thermal.cloudShadow.material, 0.22, cycle);
+  }
+  thermal.cloud.traverse((child) => {
+    if (!child.isSprite) return;
+    if (child.userData.baseOpacity === undefined) {
+      child.userData.baseOpacity = child.material.opacity;
+    }
+    child.material.opacity = child.userData.baseOpacity * (0.25 + 0.75 * cycle);
+  });
+}
+
+function setFadedOpacity(material, baseOpacity, cycle) {
+  if (!material) return;
+  material.opacity = baseOpacity * cycle;
+}
+
+function applyAssistVisibility(thermal, visible) {
+  thermal.column.visible = visible;
+  thermal.ring.visible = visible;
+  thermal.label.visible = visible;
+  for (const particle of thermal.particles) {
+    particle.visible = visible;
+  }
 }
 
 function getVerticalLiftFactor(thermal, altitude) {

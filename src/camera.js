@@ -18,10 +18,39 @@ const CAMERA_CONFIG = {
   standbyGroundClearance: 420
 };
 
+// Visao do piloto (primeira pessoa): camera no capacete, herdando a
+// orientacao do modelo (banco/pitch), com leve olhar para baixo.
+const FIRST_PERSON_CONFIG = {
+  headOffset: new THREE.Vector3(0, 0.72, 0.1),
+  lookDownPitch: 0.07,
+  orientationSmoothing: 14,
+  // Near plane menor para nao cortar o casulo/linhas perto da cabeca;
+  // restaurado no modo externo para preservar a precisao do depth buffer.
+  nearPlane: 0.5
+};
+const THIRD_PERSON_NEAR_PLANE = 2;
+
+let cameraMode = 'third-person';
+
+export function getCameraMode() {
+  return cameraMode;
+}
+
+export function toggleCameraMode() {
+  cameraMode = cameraMode === 'third-person' ? 'first-person' : 'third-person';
+  return cameraMode;
+}
+
 const desiredPosition = new THREE.Vector3();
 const desiredLookAt = new THREE.Vector3();
 const currentLookAt = new THREE.Vector3();
 const standbyForward = new THREE.Vector3();
+const firstPersonPosition = new THREE.Vector3();
+const firstPersonQuaternion = new THREE.Quaternion();
+const firstPersonPitchAdjust = new THREE.Quaternion().setFromAxisAngle(
+  new THREE.Vector3(1, 0, 0),
+  -FIRST_PERSON_CONFIG.lookDownPitch
+);
 const landedCamera = {
   initialized: false,
   angle: 0,
@@ -39,6 +68,45 @@ export function initializeThirdPersonCamera(camera, target, context = {}) {
   currentLookAt.copy(target.position).addScaledVector(forward, CAMERA_CONFIG.lookAhead);
   currentLookAt.y += CAMERA_CONFIG.lookHeight;
   camera.lookAt(currentLookAt);
+}
+
+// Despacha para o modo de camera ativo (externa ou visao do piloto).
+export function updateFlightCamera(camera, target, delta, context = {}) {
+  if (target.landed) {
+    setCameraNearPlane(camera, THIRD_PERSON_NEAR_PLANE);
+    updateLandedCamera(camera, target, delta, context);
+    return;
+  }
+
+  if (cameraMode === 'first-person') {
+    updateFirstPersonCamera(camera, target, delta);
+    return;
+  }
+
+  setCameraNearPlane(camera, THIRD_PERSON_NEAR_PLANE);
+  updateThirdPersonCamera(camera, target, delta, context);
+}
+
+function updateFirstPersonCamera(camera, target, delta) {
+  setCameraNearPlane(camera, FIRST_PERSON_CONFIG.nearPlane);
+  landedCamera.initialized = false;
+
+  // Posicao presa a cabeca (sem atraso, para nao enjoar) e orientacao do
+  // proprio modelo: a visao inclina junto com a asa na curva e no pendulo.
+  firstPersonPosition
+    .copy(FIRST_PERSON_CONFIG.headOffset)
+    .applyQuaternion(target.group.quaternion)
+    .add(target.position);
+  camera.position.copy(firstPersonPosition);
+
+  firstPersonQuaternion.copy(target.group.quaternion).multiply(firstPersonPitchAdjust);
+  camera.quaternion.slerp(
+    firstPersonQuaternion,
+    1 - Math.exp(-delta * FIRST_PERSON_CONFIG.orientationSmoothing)
+  );
+
+  // Mantem o lookAt suavizado coerente para a troca de volta ao modo externo.
+  currentLookAt.copy(target.position);
 }
 
 export function updateThirdPersonCamera(camera, target, delta, context = {}) {
@@ -121,6 +189,12 @@ function updateLandedCamera(camera, target, delta, context) {
   camera.position.lerp(desiredPosition, followAlpha);
   currentLookAt.lerp(desiredLookAt, lookAlpha);
   camera.lookAt(currentLookAt);
+}
+
+function setCameraNearPlane(camera, nearPlane) {
+  if (Math.abs(camera.near - nearPlane) < 0.001) return;
+  camera.near = nearPlane;
+  camera.updateProjectionMatrix();
 }
 
 function keepCameraAboveTerrain(position, terrain, clearance) {
