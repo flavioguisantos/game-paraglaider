@@ -450,8 +450,8 @@
 
       .restart-button {
         position: fixed;
-        left: 50%;
-        bottom: max(18px, env(safe-area-inset-bottom));
+        top: max(16px, env(safe-area-inset-top));
+        right: max(76px, calc(env(safe-area-inset-right) + 76px));
         display: none;
         place-items: center;
         width: 38px;
@@ -464,7 +464,6 @@
         font: 700 20px/1 Arial, Helvetica, sans-serif;
         cursor: pointer;
         opacity: 0;
-        transform: translateX(-50%);
         transition: opacity 180ms ease, background 120ms ease, color 120ms ease;
         z-index: 11;
         -webkit-tap-highlight-color: transparent;
@@ -804,11 +803,8 @@
 
         .start-panel {
           right: 12px;
-          top: max(12px, env(safe-area-inset-top));
-          bottom: auto;
-          width: min(320px, calc(100vw - 24px));
-          max-height: calc(var(--app-height, 100vh) - 24px);
-          overflow: auto;
+          bottom: 12px;
+          width: calc(100vw - 56px);
         }
 
         .touch-controls {
@@ -816,7 +812,8 @@
         }
 
         .restart-button {
-          bottom: max(18px, env(safe-area-inset-bottom));
+          top: calc(max(8px, env(safe-area-inset-top)) + 76px);
+          right: max(10px, env(safe-area-inset-right));
           width: 34px;
           height: 34px;
           font-size: 18px;
@@ -849,7 +846,8 @@
         }
 
         .restart-button {
-          bottom: max(10px, env(safe-area-inset-bottom));
+          top: max(10px, env(safe-area-inset-top));
+          right: max(10px, env(safe-area-inset-right));
         }
       }
     </style>

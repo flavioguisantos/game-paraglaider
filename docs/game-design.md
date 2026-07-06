@@ -19,7 +19,7 @@ Antes da rodada, o jogador escolhe o local de voo, escolhe a cor principal do pa
 - Em telas touch, botoes sobrepostos no canto inferior replicam os mesmos comandos de acelerar, frear e virar para esquerda/direita.
 - `C` ou o botao de camera (📷) alterna entre a camera externa (terceira pessoa) e a visao do piloto (primeira pessoa). Na visao do piloto, a camera fica presa ao capacete sem atraso de posicao, herda a orientacao do modelo (inclina com a asa na curva e no pendulo) com leve olhar para baixo, e o near plane cai para 0.5 m para nao cortar o casulo (restaurado no modo externo). Apos o pouso, a camera orbital de pouso vale para os dois modos.
 - A interface touch deve bloquear selecao de texto e callout nativo enquanto o jogador segura os botoes de comando.
-- O botao discreto de reinicio (`↻`) aparece durante a rodada e recarrega o prototipo para iniciar uma nova tentativa. Em telas touch, fica no centro inferior para nao cobrir os comandos de virar, acelerar ou frear.
+- O botao discreto de reinicio (`↻`) aparece durante a rodada e recarrega o prototipo para iniciar uma nova tentativa. Em telas touch, fica no canto superior para nao cobrir os comandos de virar, acelerar ou frear.
 
 Os controles podem mudar durante a iteracao se a sensacao de voo pedir outro modelo.
 
