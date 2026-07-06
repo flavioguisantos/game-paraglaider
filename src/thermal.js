@@ -39,7 +39,7 @@ const THERMAL_CONFIG = {
   dynamicRadiusMin: 125,
   dynamicRadiusMax: 190,
   dynamicStrengthMin: 1.8,
-  dynamicStrengthMax: 3.2,
+  dynamicStrengthMax: 6,
   dynamicHotChance: 0.18,
   cloudOpacity: 0.78,
   minTiltDegrees: 2.5,
