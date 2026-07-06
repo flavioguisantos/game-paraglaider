@@ -1,0 +1,69 @@
+import * as THREE from 'three';
+
+// Edificacao de referencia fixa numa coordenada especifica de uma rampa
+// (ex.: rancho/sede no ponto de decolagem). Mesmo estilo visual das casas de
+// urbanScenery.js (caixa + telhado extrudado de duas aguas), mas um pouco
+// maior para ler como um marco, e posicionada por lat/long em vez de
+// distribuida proceduralmente por chunk.
+const BODY_WIDTH = 18;
+const BODY_HEIGHT = 9.5;
+const BODY_DEPTH = 15;
+const ROOF_OVERHANG = 1.6;
+const ROOF_HEIGHT = 5.6;
+
+export function createLocationBuilding() {
+  const group = new THREE.Group();
+  group.name = 'LocationBuilding';
+  group.visible = false;
+
+  const bodyGeometry = new THREE.BoxGeometry(BODY_WIDTH, BODY_HEIGHT, BODY_DEPTH);
+  bodyGeometry.translate(0, BODY_HEIGHT / 2, 0);
+  const bodyMaterial = new THREE.MeshStandardMaterial({
+    color: 0xd6c3b4,
+    roughness: 0.85,
+    metalness: 0
+  });
+  const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+  group.add(body);
+
+  const halfWidth = BODY_WIDTH / 2 + ROOF_OVERHANG;
+  const roofProfile = new THREE.Shape([
+    new THREE.Vector2(-halfWidth, 0),
+    new THREE.Vector2(halfWidth, 0),
+    new THREE.Vector2(0, ROOF_HEIGHT)
+  ]);
+  const roofGeometry = new THREE.ExtrudeGeometry(roofProfile, {
+    depth: BODY_DEPTH + ROOF_OVERHANG * 2,
+    bevelEnabled: false
+  });
+  roofGeometry.translate(0, BODY_HEIGHT, -(BODY_DEPTH / 2 + ROOF_OVERHANG));
+  const roofMaterial = new THREE.MeshStandardMaterial({
+    color: 0x7b5940,
+    roughness: 0.9,
+    metalness: 0
+  });
+  const roof = new THREE.Mesh(roofGeometry, roofMaterial);
+  group.add(roof);
+
+  return group;
+}
+
+export function updateLocationBuilding(building, location, terrain) {
+  if (!building) return;
+
+  const buildingConfig = location?.building;
+  if (!buildingConfig) {
+    building.visible = false;
+    return;
+  }
+
+  const worldXZ = terrain.latLongToWorldXZ(buildingConfig.latitude, buildingConfig.longitude);
+  if (!worldXZ) {
+    building.visible = false;
+    return;
+  }
+
+  const groundHeight = terrain.getHeightAt(worldXZ.x, worldXZ.z);
+  building.position.set(worldXZ.x, groundHeight, worldXZ.z);
+  building.visible = true;
+}

@@ -786,6 +786,12 @@ class LocalXcmTerrain {
     };
   }
 
+  latLongToWorldXZ(latitude, longitude) {
+    if (!this.manifest || !this.centerPixel) return null;
+    const pixel = lonLatToPixel(longitude, latitude, this.manifest.source.worldFile);
+    return this.pixelToWorldXZ(pixel.x, pixel.y);
+  }
+
   createVectorRibbons(layerName, lines, chunk, style) {
     const positions = [];
     const indices = [];

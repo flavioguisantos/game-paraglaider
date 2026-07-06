@@ -19,7 +19,11 @@ export const FLIGHT_LOCATIONS = [
     launchAltitudeMeters: 24,
     liftMode: 'thermal',
     // Mesma dinamica termica de Atibaia.
-    cloudBaseMeters: 2200
+    cloudBaseMeters: 2200,
+    building: {
+      latitude: -22.505244,
+      longitude: -47.898473
+    }
   },
   {
     id: 'pico-do-gaviao',
@@ -30,7 +34,11 @@ export const FLIGHT_LOCATIONS = [
     launchAltitudeMeters: 24,
     liftMode: 'thermal',
     // Mesma dinamica termica de Atibaia.
-    cloudBaseMeters: 2200
+    cloudBaseMeters: 2200,
+    building: {
+      latitude: -22.015178,
+      longitude: -46.626851
+    }
   },
   {
     id: 'serra-negra',
@@ -41,7 +49,11 @@ export const FLIGHT_LOCATIONS = [
     launchAltitudeMeters: 24,
     liftMode: 'thermal',
     // Mesma dinamica termica de Atibaia.
-    cloudBaseMeters: 2200
+    cloudBaseMeters: 2200,
+    building: {
+      latitude: -22.619054,
+      longitude: -46.677261
+    }
   },
   {
     id: 'sao-vicente-itarare',

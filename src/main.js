@@ -13,6 +13,7 @@ import { createScoringState, initializeScoringForEntities, updateScoring } from 
 import { createTerrain } from './terrain.js?v=terrain-realism-4';
 import { createThermalField } from './thermal.js?v=realism-1';
 import { createVegetation } from './vegetation.js';
+import { createLocationBuilding, updateLocationBuilding } from './buildings.js';
 
 const canvas = document.querySelector('#game');
 const startButton = document.querySelector('#start-flight');
@@ -105,6 +106,8 @@ const terrain = createTerrain();
 scene.add(terrain.mesh);
 const vegetation = createVegetation({ terrain });
 scene.add(vegetation.group);
+const locationBuilding = createLocationBuilding();
+scene.add(locationBuilding);
 scene.add(createHorizonClouds());
 
 const wind = createWindVector();
@@ -318,6 +321,7 @@ renderer.setAnimationLoop(() => {
   const referencePosition = appState.player?.position ?? standbyPosition;
   terrain.update(referencePosition, delta);
   vegetation.update(referencePosition);
+  updateLocationBuilding(locationBuilding, appState.selectedLocation, terrain);
   updateSunLight(referencePosition);
   updateWind(wind, delta);
   updateWindMarkers(windMarkers, wind, referencePosition, terrain);
