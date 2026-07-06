@@ -249,6 +249,42 @@
         color: #eef6ff;
       }
 
+      .instr-score {
+        display: grid;
+        grid-template-columns: 1.4fr 0.8fr 0.8fr;
+        gap: 6px;
+        margin-top: 9px;
+        padding-top: 8px;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      .instr-score div {
+        display: grid;
+        gap: 1px;
+      }
+
+      .instr-score span {
+        font-size: 9px;
+        letter-spacing: 0.14em;
+        color: #7e93a8;
+      }
+
+      .instr-score strong {
+        font-size: 15px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        color: #ffd166;
+      }
+
+      .instr-event {
+        min-height: 16px;
+        margin-top: 4px;
+        font-size: 11px;
+        font-weight: 700;
+        color: #59d98c;
+        text-align: right;
+      }
+
       .hud-ranking {
         margin-top: 10px;
         padding: 10px 12px;
@@ -292,6 +328,55 @@
         color: rgba(247, 251, 255, 0.65);
         font-size: 11px;
         font-style: normal;
+      }
+
+      .score-pop {
+        position: fixed;
+        top: 24px;
+        left: 50%;
+        display: grid;
+        min-width: 190px;
+        padding: 12px 18px 14px;
+        text-align: center;
+        color: #f7fbff;
+        background: linear-gradient(155deg, rgba(16, 31, 42, 0.94), rgba(40, 56, 50, 0.94));
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        border-radius: 8px;
+        box-shadow: 0 14px 34px rgba(0, 0, 0, 0.34), 0 0 30px rgba(255, 209, 102, 0.18);
+        opacity: 0;
+        pointer-events: none;
+        transform: translate(-50%, -14px) scale(0.96);
+        transition: opacity 160ms ease, transform 220ms ease;
+        z-index: 14;
+      }
+
+      .score-pop.is-visible {
+        opacity: 1;
+        transform: translate(-50%, 0) scale(1);
+      }
+
+      .score-pop span {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: #9fb4c8;
+      }
+
+      .score-pop strong {
+        margin-top: 2px;
+        font-size: 28px;
+        line-height: 1;
+        font-variant-numeric: tabular-nums;
+        color: #ffd166;
+      }
+
+      .score-pop em {
+        margin-top: 5px;
+        font-size: 12px;
+        font-style: normal;
+        font-weight: 700;
+        color: #59d98c;
       }
 
       .layer-panel {
@@ -361,6 +446,41 @@
         color: #10202a;
         background: #ffd166;
         border-color: rgba(255, 255, 255, 0.68);
+      }
+
+      .restart-button {
+        position: fixed;
+        left: 50%;
+        bottom: max(18px, env(safe-area-inset-bottom));
+        display: none;
+        place-items: center;
+        width: 38px;
+        height: 38px;
+        color: rgba(247, 251, 255, 0.86);
+        background: rgba(16, 31, 42, 0.5);
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        border-radius: 50%;
+        box-shadow: 0 8px 22px rgba(0, 0, 0, 0.18);
+        font: 700 20px/1 Arial, Helvetica, sans-serif;
+        cursor: pointer;
+        opacity: 0;
+        transform: translateX(-50%);
+        transition: opacity 180ms ease, background 120ms ease, color 120ms ease;
+        z-index: 11;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      body.is-flying .restart-button {
+        display: grid;
+        opacity: 0.72;
+      }
+
+      .restart-button:hover,
+      .restart-button:focus-visible {
+        color: #10202a;
+        background: #ffd166;
+        opacity: 1;
+        outline: none;
       }
 
       .touch-controls {
@@ -605,6 +725,22 @@
           display: none;
         }
 
+        .instr-score {
+          order: 4;
+          width: 100%;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          margin-top: 0;
+          padding-top: 6px;
+        }
+
+        .instr-score strong {
+          font-size: 13px;
+        }
+
+        .instr-event {
+          display: none;
+        }
+
         .hud-ranking {
           display: none;
           margin-top: 8px;
@@ -618,6 +754,16 @@
           gap: 3px;
         }
 
+        .score-pop {
+          top: calc(max(8px, env(safe-area-inset-top)) + 132px);
+          min-width: 168px;
+          padding: 10px 14px 12px;
+        }
+
+        .score-pop strong {
+          font-size: 23px;
+        }
+
         .start-panel {
           right: 12px;
           bottom: 12px;
@@ -626,6 +772,14 @@
 
         .touch-controls {
           display: flex;
+        }
+
+        .restart-button {
+          bottom: max(18px, env(safe-area-inset-bottom));
+          width: 34px;
+          height: 34px;
+          font-size: 18px;
+          opacity: 0.52;
         }
       }
 
@@ -652,6 +806,10 @@
         .touch-cluster--speed {
           grid-template-rows: repeat(2, 52px);
         }
+
+        .restart-button {
+          bottom: max(10px, env(safe-area-inset-bottom));
+        }
       }
     </style>
     <script type="importmap">
@@ -671,6 +829,7 @@
       <div class="layer-panel-title">Camadas</div>
     </div>
     <button id="camera-toggle" class="camera-toggle" type="button" title="Camera: externa (C alterna)" aria-label="Alternar camera externa/visao do piloto">📷</button>
+    <button id="restart-game" class="restart-button" type="button" title="Reiniciar jogo" aria-label="Reiniciar jogo">↻</button>
     <div id="touch-controls" class="touch-controls" aria-label="Controles de voo por toque">
       <div class="touch-cluster touch-cluster--turn">
         <button class="touch-control" type="button" data-control="left" aria-label="Virar para esquerda">‹</button>

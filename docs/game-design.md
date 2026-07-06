@@ -19,6 +19,7 @@ Antes da rodada, o jogador escolhe o local de voo, escolhe a cor principal do pa
 - Em telas touch, botoes sobrepostos no canto inferior replicam os mesmos comandos de acelerar, frear e virar para esquerda/direita.
 - `C` ou o botao de camera (📷) alterna entre a camera externa (terceira pessoa) e a visao do piloto (primeira pessoa). Na visao do piloto, a camera fica presa ao capacete sem atraso de posicao, herda a orientacao do modelo (inclina com a asa na curva e no pendulo) com leve olhar para baixo, e o near plane cai para 0.5 m para nao cortar o casulo (restaurado no modo externo). Apos o pouso, a camera orbital de pouso vale para os dois modos.
 - A interface touch deve bloquear selecao de texto e callout nativo enquanto o jogador segura os botoes de comando.
+- O botao discreto de reinicio (`↻`) aparece durante a rodada e recarrega o prototipo para iniciar uma nova tentativa. Em telas touch, fica no centro inferior para nao cobrir os comandos de virar, acelerar ou frear.
 
 Os controles podem mudar durante a iteracao se a sensacao de voo pedir outro modelo.
 
@@ -70,13 +71,22 @@ Regras iniciais:
 ## Variometro
 O variometro aparece no HUD em m/s e tambem emite bips quando o jogador esta subindo em uma termica. O som e destravado no primeiro gesto do usuario, incluindo o toque em iniciar voo no mobile, por restricao normal dos navegadores, e fica mais agudo, frequente, intenso e sustentado conforme a taxa de subida aumenta.
 
+## Pontuacao e gamificacao
+O MVP passa a usar uma pontuacao estilo cross-country simplificada:
+- Pontos crescem com a distancia horizontal efetivamente voada e recebem bonus continuo pela velocidade sobre o solo acima do voo lento, recompensando quem avanca rapido sem transformar a fisica em arcade.
+- A rota tem waypoints visiveis no mapa (`TP1`, `TP2` e `GOL`). Ao cruzar o raio do checkpoint em ordem, o participante recebe bonus fixo mais bonus de tempo; completar a rota sinaliza `GOL` no HUD.
+- Termicas fortes ou "quentes" pagam multiplicador de risco maior. Termicas normais pagam 1x, fortes pagam 1,5x e termicas raras/quentes pagam 2x nos pontos de subida.
+- Entrar em uma nova termica valida sem pousar aumenta o combo de altitude (`2x`, `3x`, ate `5x`). O combo multiplica distancia, subida e waypoints, e zera para `1x` ao pousar ou colidir.
+- O HUD mostra pontos, combo atual, proximo waypoint e o ultimo evento de pontuacao relevante.
+- Ao ganhar um pacote relevante de pontos, o jogador recebe um card temporario com o valor ganho e uma fanfarra curta sintetizada ("tarantaran tara"). Pontos continuos de voo sao agrupados em blocos de 1000 pontos para evitar spam visual/sonoro; waypoints disparam feedback imediato.
+
 ## HUD de instrumento
 O HUD imita um instrumento de voo real (vario/GPS de parapente) com fundo escuro fosco e digitos monoespacados tabulares:
 - Variometro em destaque com barra vertical colorida (verde subindo, vermelho em sink forte; afundamento normal de planeio fica neutro).
 - Altitude sobre o nivel do mar e altura sobre o solo lado a lado.
 - Velocidade sobre o solo, razao de planeio instantanea (velocidade horizontal / descida; "∞" quando subindo) e vento com seta relativa ao rumo (para cima = vento de cauda), usando o angulo relativo calculado pela fisica.
 - Fita de bussola com marcas a cada 15 graus e pontos cardeais, deslizando conforme o rumo (marcador central amarelo).
-- Distancia da decolagem e status/tempo em linhas discretas. O ranking fica em um cartao separado abaixo do instrumento.
+- Distancia da decolagem, pontuacao, combo, proximo waypoint e status/tempo em linhas discretas. O ranking fica em um cartao separado abaixo do instrumento.
 
 ## HUD mobile
 Em telas estreitas o instrumento vira uma faixa compacta no topo: vario com barra, altitudes, velocidade e vento; a fita de bussola, o planeio e a distancia ficam ocultos. O ranking fica oculto durante o voo no mobile e reaparece quando a rodada termina para nao competir com a cena 3D e os controles touch.
@@ -162,9 +172,10 @@ Comportamento (maquina de estados):
 ## Ranking
 O ranking final deve ser simples e legivel.
 
-Ordem inicial sugerida:
-1. Participantes ainda voando ficam acima dos pousados.
-2. Maior altura sobre o terreno exatamente abaixo do participante.
-3. Maior distancia percorrida.
+Ordem atual:
+1. Maior pontuacao total.
+2. Participantes ainda voando ficam acima dos pousados em caso de empate.
+3. Maior altura sobre o terreno exatamente abaixo do participante.
+4. Maior distancia percorrida.
 
 Essa regra pode ser ajustada depois que o loop estiver jogavel.

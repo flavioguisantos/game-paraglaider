@@ -290,6 +290,25 @@ class ThermalField {
     return lift;
   }
 
+  getInteractionAt(position) {
+    if (!this.enabled) return null;
+
+    let bestInteraction = null;
+    let bestLift = -Infinity;
+
+    for (const thermal of this.thermals) {
+      const interaction = getThermalInteraction(thermal, position);
+      if (!interaction) continue;
+
+      if (interaction.lift > bestLift) {
+        bestLift = interaction.lift;
+        bestInteraction = interaction;
+      }
+    }
+
+    return bestInteraction;
+  }
+
   getNearestThermal(position) {
     if (!this.enabled || this.thermals.length === 0) return null;
 
@@ -389,6 +408,7 @@ function createThermal(
 
   const groundHeight = terrain.getHeightAt(position.x, position.z);
   const thermal = {
+    id,
     position,
     radius: seed.radius,
     strength,
@@ -425,6 +445,43 @@ function createThermal(
   }
 
   return thermal;
+}
+
+function getThermalInteraction(thermal, position) {
+  if (position.y >= thermal.topAltitudeAboveSeaLevel) return null;
+
+  const distance = Math.hypot(position.x - thermal.position.x, position.z - thermal.position.z);
+  const radiusRatio = distance / thermal.radius;
+  if (radiusRatio >= THERMAL_CONFIG.sinkRingOuterRatio) return null;
+
+  const effectiveStrength = thermal.strength
+    * (thermal.cycleFactor ?? 1)
+    * getVerticalLiftFactor(thermal, position.y)
+    * getLowLevelFactor(thermal, position.y);
+  let lift = 0;
+
+  if (radiusRatio < 1) {
+    lift = effectiveStrength * Math.exp(-THERMAL_CONFIG.gaussianFalloff * radiusRatio * radiusRatio);
+  } else {
+    const ringProgress = (radiusRatio - 1) / (THERMAL_CONFIG.sinkRingOuterRatio - 1);
+    lift = -effectiveStrength
+      * THERMAL_CONFIG.sinkRingStrengthRatio
+      * Math.sin(ringProgress * Math.PI);
+  }
+
+  return {
+    thermal,
+    lift,
+    radiusRatio,
+    riskMultiplier: getThermalRiskMultiplier(thermal),
+    isRisky: thermal.isHotThermal || thermal.strength >= 4
+  };
+}
+
+function getThermalRiskMultiplier(thermal) {
+  if (thermal.isHotThermal || thermal.strength >= 4) return 2;
+  if (thermal.strength >= 3.2) return 1.5;
+  return 1;
 }
 
 function createThermalLabel(strength) {

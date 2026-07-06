@@ -74,6 +74,9 @@ Representa o parapente do jogador, controles, estado de voo, posicao, direcao, a
 ### `src/bot.js`
 Representa bots simples que escolhem a termica mais proxima e voam em sua direcao usando taxa de curva suavizada. O conjunto inicial inclui quatro parapentes coloridos para manter trafego visual durante a rodada.
 
+### `src/scoring.js`
+Mantem a gamificacao de cross-country: pontuacao por distancia voada, bonus por velocidade, bonus de subida em termicas com multiplicador de risco, combo de altitude por encadear termicas sem pousar e waypoints (`TP1`, `TP2`, `GOL`) com marcadores 3D. O modulo inicializa os campos de pontuacao de jogador e bots, agrupa pontos continuos em eventos de feedback e atualiza todos no loop principal.
+
 ### `src/paragliderModel.js`
 Cria o modelo visual compartilhado de parapente, incluindo vela, linhas de suspensao, piloto e poses de voo/pouso. O piloto tem casulo (pod harness), tronco, capacete e bracos erguidos aos tirantes em voo; vela e piloto projetam sombras. Jogador e bots carregam a vela OBJ `image/nova-vortex.obj` via `OBJLoader`, usando a mesma escala e configuracao visual, com cores diferentes por participante. O modulo remapeia os eixos do OBJ para o padrao da cena, centraliza, escala e aplica material proprio. O carregamento do OBJ usa cache por URL para evitar requisicoes duplicadas entre jogador e bots, e pula a tentativa quando o navegador esta offline. Apos o OBJ carregar, as ancoragens das linhas sao recalculadas a partir dos vertices transformados da area inferior da vela, conectando as linhas a pontos reais da malha. Se o asset falhar, o modelo usa a vela procedural como fallback. Na pose de pouso, `player.js` e `bot.js` passam a altura do terreno para o modelo, que achata a vela visualmente e a posiciona deitada perto do solo.
 
@@ -84,13 +87,13 @@ Espalha arvores low-poly (tronco + copa em duas `InstancedMesh` com matrizes com
 Cria nuvens billboard compartilhadas por `main.js` (horizonte) e `thermal.js` (cumulus no topo das termicas). Cada nuvem combina tres sprites com texturas de nuvem desenhadas em canvas (gradientes radiais com base achatada e sombreamento inferior), cacheadas por variante e marcadas como compartilhadas para nao serem descartadas junto com nuvens individuais. Tambem exporta `createCloudShadow`, a mancha translucida usada por `thermal.js` para projetar a sombra da cumulus no terreno ao longo da direcao do sol.
 
 ### `src/audio.js`
-Controla feedback sonoro local com Web Audio API. O variometro sonoro e a musica usam um `AudioContext` compartilhado, destravado explicitamente no gesto de iniciar voo e preparado com um pulso curto para melhorar compatibilidade mobile. O variometro emite bips apenas quando o jogador esta com velocidade vertical positiva suficiente, aumentando frequencia, ritmo, intensidade e sustentacao conforme a subida fica mais forte. Tambem gera uma trilha procedural de aventura mais animada durante a rodada, e agora pode trocar para uma trilha externa em MP3, OGG ou WAV quando `trackUrl` e informado. Quando a URL contem `audioDebug=1`, registra eventos em `window.__audioDebug` e mostra um overlay com suporte, estado do contexto, unlock, musica e bips do variometro.
+Controla feedback sonoro local com Web Audio API. O variometro sonoro, a fanfarra de pontuacao e a musica usam um `AudioContext` compartilhado, destravado explicitamente no gesto de iniciar voo e preparado com um pulso curto para melhorar compatibilidade mobile. O variometro emite bips apenas quando o jogador esta com velocidade vertical positiva suficiente, aumentando frequencia, ritmo, intensidade e sustentacao conforme a subida fica mais forte. A fanfarra de pontuacao toca uma frase curta quando o jogador recebe um novo evento de pontos. Tambem gera uma trilha procedural de aventura mais animada durante a rodada, e agora pode trocar para uma trilha externa em MP3, OGG ou WAV quando `trackUrl` e informado. Quando a URL contem `audioDebug=1`, registra eventos em `window.__audioDebug` e mostra um overlay com suporte, estado do contexto, unlock, musica e bips do variometro.
 
 ### `src/camera.js`
 Controla camera em terceira pessoa com suavizacao. Mantem a camera acima do terreno consultando `terrain.getHeightAt()` para evitar que o relevo oclua mapa e termicas, especialmente em telas estreitas e regioes montanhosas. Tambem posiciona a camera de pre-voo sobre o terreno real carregado. Apos pouso do jogador, os mesmos comandos de direcao passam a orbitar e aproximar/afastar a camera ao redor do local de pouso.
 
 ### `src/hud.js`
-Atualiza elementos 2D de interface: altura sobre o solo, altitude em relacao ao nivel do mar, variometro, velocidade real sobre o solo, distancia radial desde a decolagem, cronometro sem limite, vento, estado de rodada e ranking. A marcacao do HUD separa metricas principais e secundarias para permitir layout compacto em telas de celular.
+Atualiza elementos 2D de interface: altura sobre o solo, altitude em relacao ao nivel do mar, variometro, velocidade real sobre o solo, distancia radial desde a decolagem, pontuacao, combo, proximo waypoint, card temporario de pontos, cronometro sem limite, vento, estado de rodada e ranking por pontos. A marcacao do HUD separa metricas principais e secundarias para permitir layout compacto em telas de celular.
 
 ## Loop principal
 1. Ler input do jogador.
@@ -98,10 +101,11 @@ Atualiza elementos 2D de interface: altura sobre o solo, altitude em relacao ao 
 3. Atualizar jogador.
 4. Atualizar bots.
 5. Checar colisao com terreno.
-6. Atualizar audio do variometro.
-7. Atualizar camera.
-8. Atualizar HUD.
-9. Renderizar cena.
+6. Atualizar pontuacao e waypoints.
+7. Atualizar audio do variometro.
+8. Atualizar camera.
+9. Atualizar HUD.
+10. Renderizar cena.
 
 ## Estado minimo de uma entidade voadora
 - `position`: coordenadas X/Y/Z.
@@ -116,5 +120,8 @@ Atualiza elementos 2D de interface: altura sobre o solo, altitude em relacao ao 
 - `distanceTravelled`: distancia horizontal acumulada em metros, mantida para diagnostico.
 - `distanceFromStart`: distancia horizontal em linha reta desde a decolagem, usada no HUD e ranking.
 - `groundSpeedKmh`: velocidade real sobre o solo apos efeito do vento.
+- `score`: pontuacao total atual usada pelo ranking.
+- `thermalCombo`: multiplicador atual por encadear termicas sem pousar.
+- `nextWaypointIndex`: indice do proximo checkpoint da rota.
 - `entangled`: se esta enroscado com outro parapente apos colisao.
 - `landed`: se ja pousou.

@@ -43,10 +43,21 @@ export function createHud(root) {
         <div class="compass-marker"></div>
       </div>
       <div class="instr-distance"><span>DIST. DECOLAGEM</span><strong data-hud="distance">0 m</strong></div>
+      <div class="instr-score">
+        <div><span>PONTOS</span><strong data-hud="score">0</strong></div>
+        <div><span>COMBO</span><strong data-hud="combo">1x</strong></div>
+        <div><span>ROTA</span><strong data-hud="waypoint">TP1</strong></div>
+      </div>
+      <div class="instr-event" data-hud="scoreEvent"></div>
     </div>
     <div class="hud-ranking">
       <div class="hud-ranking-title" data-hud="rankingTitle">Ranking</div>
       <ol data-hud="ranking"></ol>
+    </div>
+    <div class="score-pop" data-hud="scorePop" aria-live="polite">
+      <span data-hud="scorePopLabel">Pontuacao</span>
+      <strong data-hud="scorePopPoints">+0 pts</strong>
+      <em data-hud="scorePopDetail">Voo XC</em>
     </div>
   `;
 
@@ -66,6 +77,14 @@ export function createHud(root) {
     windArrow: root.querySelector('[data-hud="windArrow"]'),
     compassTape,
     distance: root.querySelector('[data-hud="distance"]'),
+    score: root.querySelector('[data-hud="score"]'),
+    combo: root.querySelector('[data-hud="combo"]'),
+    waypoint: root.querySelector('[data-hud="waypoint"]'),
+    scoreEvent: root.querySelector('[data-hud="scoreEvent"]'),
+    scorePop: root.querySelector('[data-hud="scorePop"]'),
+    scorePopLabel: root.querySelector('[data-hud="scorePopLabel"]'),
+    scorePopPoints: root.querySelector('[data-hud="scorePopPoints"]'),
+    scorePopDetail: root.querySelector('[data-hud="scorePopDetail"]'),
     status: root.querySelector('[data-hud="status"]'),
     rankingTitle: root.querySelector('[data-hud="rankingTitle"]'),
     ranking: root.querySelector('[data-hud="ranking"]')
@@ -94,7 +113,7 @@ function buildCompassTape(container) {
   }
 }
 
-export function updateHud(elements, { player, bots = [], terrain, round, wind }) {
+export function updateHud(elements, { player, bots = [], terrain, round, wind, scoring }) {
   const playerAltitude = getAltitudeMetrics(player, terrain);
   const bearingDegrees = getBearingDegrees(player.heading ?? 0);
 
@@ -112,12 +131,31 @@ export function updateHud(elements, { player, bots = [], terrain, round, wind })
   elements.windArrow.style.transform = `rotate(${Math.round(relativeWindDegrees)}deg)`;
   elements.compassTape.style.transform = `translateX(${-bearingDegrees * COMPASS_PX_PER_DEGREE}px)`;
   elements.distance.textContent = formatDistance(getStraightLineDistance(player));
+  elements.score.textContent = formatScore(player.score ?? 0);
+  elements.combo.textContent = `${player.thermalCombo ?? 1}x`;
+  elements.waypoint.textContent = getWaypointText(player, scoring);
+  elements.scoreEvent.textContent = player.lastScoringEvent ?? '';
+  updateScorePop(elements, player, scoring);
   elements.status.textContent = getStatusText(round, player);
   elements.rankingTitle.textContent = round.ended ? 'Ranking final' : 'Ranking';
   elements.ranking.innerHTML = getRankingRows([
     { name: 'Voce', entity: player },
     ...bots.map((bot) => ({ name: bot.name, entity: bot }))
   ], terrain).join('');
+}
+
+function updateScorePop(elements, player, scoring) {
+  const feedback = player.scoreFeedback;
+  const elapsedSeconds = scoring?.elapsedSeconds ?? 0;
+  const isVisible = feedback
+    && elapsedSeconds - feedback.createdAtSeconds <= feedback.durationSeconds;
+
+  elements.scorePop.classList.toggle('is-visible', Boolean(isVisible));
+  if (!isVisible) return;
+
+  elements.scorePopLabel.textContent = feedback.label;
+  elements.scorePopPoints.textContent = `+${formatScore(feedback.points)} pts`;
+  elements.scorePopDetail.textContent = feedback.detail ?? '';
 }
 
 // Rumo bussola a partir do heading interno (0 = -Z = norte; positivo vira a esquerda).
@@ -183,7 +221,10 @@ function getRankingRows(entries, terrain) {
       const state = entity.landed ? (entity.crashed ? 'colidiu' : 'pousou') : 'voando';
       const status = entity.entangled ? 'enroscado' : state;
       const altitude = getAltitudeMetrics(entity, terrain);
-      return `<li><span>${name}</span><strong>${Math.round(altitude.groundClearance)} m solo / ${Math.round(altitude.seaLevel)} m mar / ${formatDistance(getStraightLineDistance(entity))}</strong><em>${status}</em></li>`;
+      const waypointText = entity.routeFinished
+        ? 'rota completa'
+        : `${entity.completedWaypoints ?? 0} TP`;
+      return `<li><span>${name}</span><strong>${formatScore(entity.score ?? 0)} pts / ${formatDistance(getStraightLineDistance(entity))} / ${Math.round(altitude.groundClearance)} m solo</strong><em>${status} / combo ${entity.thermalCombo ?? 1}x / ${waypointText}</em></li>`;
     });
 }
 
@@ -193,6 +234,9 @@ function formatDistance(meters) {
 }
 
 function compareRankingEntries(a, b, terrain) {
+  const scoreDelta = (b.entity.score ?? 0) - (a.entity.score ?? 0);
+  if (Math.abs(scoreDelta) > 0.5) return scoreDelta;
+
   if (a.entity.landed !== b.entity.landed) {
     return a.entity.landed ? 1 : -1;
   }
@@ -202,6 +246,17 @@ function compareRankingEntries(a, b, terrain) {
   if (Math.abs(altitudeDelta) > 0.5) return altitudeDelta;
 
   return getStraightLineDistance(b.entity) - getStraightLineDistance(a.entity);
+}
+
+function formatScore(score) {
+  return Math.round(score).toLocaleString('pt-BR');
+}
+
+function getWaypointText(player, scoring) {
+  if (player.routeFinished) return 'GOL';
+
+  const waypoint = scoring?.route?.[player.nextWaypointIndex ?? 0];
+  return waypoint?.name ?? '--';
 }
 
 function getStraightLineDistance(entity) {

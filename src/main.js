@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { createCloudBillboard } from './clouds.js';
-import { createAdventureMusic, createVarioAudio, unlockGameAudio } from './audio.js';
+import { createAdventureMusic, createScoreAudio, createVarioAudio, unlockGameAudio } from './audio.js';
 import { createBots } from './bot.js?v=realism-2';
 import { initializeThirdPersonCamera, toggleCameraMode, updateFlightCamera, updateStandbyCamera } from './camera.js?v=camera-modes-1';
 import { configureWind, createWindVector, detectParagliderCollisions, updateEntangledParagliders, updateWind } from './physics.js?v=realism-1';
@@ -9,12 +9,14 @@ import { createHud, createRoundState, updateHud, updateRoundState } from './hud.
 import { findFlightLocation } from './flightLocations.js';
 import { createOrographicLift } from './orographicLift.js';
 import { Player } from './player.js?v=realism-2';
+import { createScoringState, initializeScoringForEntities, updateScoring } from './scoring.js';
 import { createTerrain } from './terrain.js?v=terrain-realism-4';
 import { createThermalField } from './thermal.js?v=realism-1';
 import { createVegetation } from './vegetation.js';
 
 const canvas = document.querySelector('#game');
 const startButton = document.querySelector('#start-flight');
+const restartButton = document.querySelector('#restart-game');
 const colorInputs = [...document.querySelectorAll('input[name="canopy-color"]')];
 const locationInputs = [...document.querySelectorAll('input[name="flight-location"]')];
 const scene = new THREE.Scene();
@@ -111,6 +113,7 @@ const orographicLift = createOrographicLift();
 scene.add(orographicLift.group);
 const hud = createHud(document.querySelector('#hud'));
 const varioAudio = createVarioAudio();
+const scoreAudio = createScoreAudio();
 const adventureMusic = createAdventureMusic({ trackUrl: '/assets/audio/adventure-track.mp3' });
 
 const clock = new THREE.Clock();
@@ -121,6 +124,8 @@ const appState = {
   bots: [],
   flyers: [],
   round: null,
+  scoring: null,
+  lastScoreFeedbackAudioId: null,
   starting: false,
   // Modo realista: esconde colunas/rotulos de termica, marcadores de lift e
   // setas de vento; a fisica continua identica.
@@ -144,6 +149,7 @@ function handleResize() {
 window.addEventListener('resize', handleResize);
 window.visualViewport?.addEventListener('resize', handleResize);
 startButton.addEventListener('click', startFlight);
+restartButton?.addEventListener('click', restartGame);
 for (const input of locationInputs) {
   input.addEventListener('change', () => {
     if (input.checked && !appState.started) {
@@ -153,6 +159,10 @@ for (const input of locationInputs) {
 }
 setupLayerPanel();
 setupCameraToggle();
+
+function restartGame() {
+  window.location.reload();
+}
 
 // Alternancia de camera estilo jogo de corrida: externa <-> visao do piloto.
 function setupCameraToggle() {
@@ -263,6 +273,9 @@ async function startFlight() {
   }
 
   appState.flyers = [appState.player, ...appState.bots];
+  appState.scoring = createScoringState({ scene, terrain });
+  initializeScoringForEntities(appState.flyers);
+  appState.lastScoreFeedbackAudioId = null;
   appState.round = createRoundState();
   appState.started = true;
   document.body.classList.add('is-flying');
@@ -331,16 +344,28 @@ renderer.setAnimationLoop(() => {
   }
 
   updateEntangledParagliders(flyers, delta, { terrain, wind });
+  if (!round.ended) {
+    updateScoring(appState.scoring, delta, flyers, { thermals, terrain });
+  }
 
   updateRoundState(round, delta, player);
   document.body.classList.toggle('round-ended', round.ended);
   if (round.ended) adventureMusic.stop();
+  playScoreFeedbackAudio(player);
   varioAudio.update(delta, player.verticalSpeed, player.landed || round.ended);
-  updateHud(hud, { player, bots, terrain, round, wind });
+  updateHud(hud, { player, bots, terrain, round, wind, scoring: appState.scoring });
   updateFlightCamera(camera, player, delta, { terrain });
 
   renderer.render(scene, camera);
 });
+
+function playScoreFeedbackAudio(player) {
+  const feedback = player.scoreFeedback;
+  if (!feedback || feedback.id === appState.lastScoreFeedbackAudioId) return;
+
+  appState.lastScoreFeedbackAudioId = feedback.id;
+  scoreAudio.play();
+}
 
 function getRendererPixelRatio() {
   const { width } = getViewportSize();

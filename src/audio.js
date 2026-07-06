@@ -29,12 +29,23 @@ const MUSIC_CONFIG = {
   ]
 };
 
+const SCORE_AUDIO_CONFIG = {
+  volume: 0.14,
+  notes: [67, 71, 74, 79, 74, 79],
+  offsets: [0, 0.08, 0.16, 0.29, 0.43, 0.54],
+  durations: [0.11, 0.1, 0.13, 0.15, 0.12, 0.28]
+};
+
 export function createVarioAudio() {
   return new VarioAudio();
 }
 
 export function createAdventureMusic(options = {}) {
   return new AdventureMusic(options);
+}
+
+export function createScoreAudio() {
+  return new ScoreAudio();
 }
 
 export function unlockGameAudio() {
@@ -158,6 +169,71 @@ class VarioAudio {
     harmonic.start(now + 0.004);
     oscillator.stop(stopTime + 0.01);
     harmonic.stop(stopTime + 0.012);
+  }
+}
+
+class ScoreAudio {
+  constructor() {
+    this.context = null;
+    this.masterGain = null;
+    this.masterConnected = false;
+  }
+
+  play() {
+    this.context = this.context || unlockGameAudio();
+    if (!this.context) return;
+
+    this.masterGain = this.masterGain || this.context.createGain();
+    this.masterGain.gain.setValueAtTime(SCORE_AUDIO_CONFIG.volume, this.context.currentTime);
+    if (!this.masterConnected) {
+      this.masterGain.connect(this.context.destination);
+      this.masterConnected = true;
+    }
+
+    const startTime = this.context.currentTime + 0.015;
+    for (let index = 0; index < SCORE_AUDIO_CONFIG.notes.length; index += 1) {
+      this.playNote({
+        note: SCORE_AUDIO_CONFIG.notes[index],
+        startTime: startTime + SCORE_AUDIO_CONFIG.offsets[index],
+        duration: SCORE_AUDIO_CONFIG.durations[index],
+        gain: index === SCORE_AUDIO_CONFIG.notes.length - 1 ? 0.9 : 0.62
+      });
+    }
+
+    recordAudioDebug('scoreFanfare', { state: this.context.state });
+  }
+
+  playNote({ note, startTime, duration, gain }) {
+    const oscillator = this.context.createOscillator();
+    const harmonic = this.context.createOscillator();
+    const envelope = this.context.createGain();
+    const harmonicEnvelope = this.context.createGain();
+    const releaseStart = startTime + duration;
+    const stopTime = releaseStart + 0.1;
+    const frequency = noteToFrequency(note);
+
+    oscillator.type = 'triangle';
+    harmonic.type = 'sine';
+    oscillator.frequency.setValueAtTime(frequency, startTime);
+    harmonic.frequency.setValueAtTime(frequency * 2, startTime);
+
+    envelope.gain.setValueAtTime(0.0001, startTime);
+    envelope.gain.exponentialRampToValueAtTime(gain, startTime + 0.018);
+    envelope.gain.exponentialRampToValueAtTime(gain * 0.38, releaseStart);
+    envelope.gain.exponentialRampToValueAtTime(0.0001, stopTime);
+
+    harmonicEnvelope.gain.setValueAtTime(0.0001, startTime);
+    harmonicEnvelope.gain.exponentialRampToValueAtTime(gain * 0.18, startTime + 0.02);
+    harmonicEnvelope.gain.exponentialRampToValueAtTime(0.0001, stopTime);
+
+    oscillator.connect(envelope);
+    harmonic.connect(harmonicEnvelope);
+    envelope.connect(this.masterGain);
+    harmonicEnvelope.connect(this.masterGain);
+    oscillator.start(startTime);
+    harmonic.start(startTime + 0.004);
+    oscillator.stop(stopTime + 0.02);
+    harmonic.stop(stopTime + 0.02);
   }
 }
 
