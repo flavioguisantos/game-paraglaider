@@ -89,7 +89,7 @@ O HUD imita um instrumento de voo real (vario/GPS de parapente) com fundo escuro
 - Distancia da decolagem, pontuacao, combo, proximo waypoint e status/tempo em linhas discretas. O ranking fica em um cartao separado abaixo do instrumento.
 
 ## HUD mobile
-Em telas estreitas o instrumento vira uma faixa compacta no topo: vario com barra, altitudes, velocidade e vento; a fita de bussola, o planeio e a distancia ficam ocultos. O ranking fica oculto durante o voo no mobile e reaparece quando a rodada termina para nao competir com a cena 3D e os controles touch.
+Em telas estreitas o instrumento vira uma faixa compacta no topo: vario com barra, altura sobre o solo, velocidade, pontuacao, combo e proximo waypoint; a altitude sobre o nivel do mar, o vento, a fita de bussola, o planeio e a distancia ficam ocultos. O ranking fica oculto durante o voo no mobile e reaparece quando a rodada termina para nao competir com a cena 3D e os controles touch. O painel inicial fica no canto superior da tela no mobile, afastado dos controles touch inferiores.
 
 ## Musica
 Ao iniciar a rodada, uma trilha procedural de aventura mais animada toca em volume baixo durante o voo e para quando a rodada termina.
