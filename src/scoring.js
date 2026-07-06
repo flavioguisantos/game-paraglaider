@@ -1,10 +1,13 @@
 import * as THREE from 'three';
+import { Line2 } from 'three/addons/lines/Line2.js';
+import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 
 const SCORING_CONFIG = {
   distancePointsPerMeter: 1.1,
   speedBonusPerKmhPerSecond: 0.08,
   thermalLiftPointsPerSecond: 8,
-  feedbackThresholdPoints: 1000,
+  feedbackThresholdPoints: 5000,
   feedbackMinIntervalSeconds: 1.25,
   feedbackDurationSeconds: 2.1,
   waypointRadiusMeters: 100,
@@ -135,28 +138,41 @@ function updateRouteGuidance(state, player, terrain) {
   }
 
   const groundHeight = terrain.getHeightAt(waypoint.x, waypoint.z);
-  const positions = line.geometry.attributes.position;
   // Parte um pouco abaixo do piloto para nao atravessar a tela em primeira pessoa.
-  positions.setXYZ(0, player.position.x, player.position.y - 6, player.position.z);
-  positions.setXYZ(1, waypoint.x, groundHeight + 18, waypoint.z);
-  positions.needsUpdate = true;
+  line.geometry.setPositions([
+    player.position.x, player.position.y - 6, player.position.z,
+    waypoint.x, groundHeight + 18, waypoint.z
+  ]);
+  line.computeLineDistances();
   line.visible = true;
 }
 
 function createRouteLine() {
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(6), 3));
+  const geometry = new LineGeometry();
+  geometry.setPositions(new Array(6).fill(0));
 
-  const line = new THREE.Line(geometry, new THREE.LineBasicMaterial({
-    color: 0xffd166,
+  // Line2/LineMaterial (fat line) usada porque LineBasicMaterial ignora
+  // linewidth no WebGL e a guia ficava fina/apagada demais para ser notada.
+  // Magenta contrasta bem tanto com o ceu quanto com o terreno verde/marrom.
+  const material = new LineMaterial({
+    color: 0xff2f8f,
+    linewidth: 5,
     transparent: true,
-    opacity: 0.32,
+    opacity: 0.95,
     depthWrite: false,
     // Sempre visivel (mesmo com relevo no caminho): e uma guia, nao um objeto do mundo.
-    depthTest: false
-  }));
+    depthTest: false,
+    worldUnits: false,
+    dashed: false
+  });
+  material.resolution.set(window.innerWidth, window.innerHeight);
+  window.addEventListener('resize', () => {
+    material.resolution.set(window.innerWidth, window.innerHeight);
+  });
+
+  const line = new Line2(geometry, material);
   line.name = 'RouteGuidanceLine';
-  line.renderOrder = 2;
+  line.renderOrder = 999;
   line.frustumCulled = false;
   line.visible = false;
   return line;

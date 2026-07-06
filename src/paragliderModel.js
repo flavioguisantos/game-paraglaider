@@ -472,9 +472,9 @@ function createSuspensionLines() {
     new THREE.LineBasicMaterial({ color: 0x6aa9ff, transparent: true, opacity: 0.46 })
   ];
   const riserMaterial = new THREE.LineBasicMaterial({
-    color: 0xf4f7f2,
+    color: 0x000000,
     transparent: true,
-    opacity: 0.72
+    opacity: 1
   });
   const harnessPoints = [
     new THREE.Vector3(-0.52, 0.26, -0.08),
