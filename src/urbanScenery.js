@@ -3,12 +3,26 @@ import * as THREE from 'three';
 const URBAN_CONFIG = {
   maxHousesPerChunk: 280,
   maxVehiclesPerChunk: 120,
-  houseSpacingMeters: 58,
+  houseSpacingMeters: 46,
   houseInsetMeters: 24,
   localStreetWidthMeters: 7,
   localStreetSpacingMeters: 190,
   vehicleYOffset: 0.15
 };
+
+// Vias que bloqueiam vegetacao, com a mesma largura usada nas fitas de
+// VECTOR_LAYER_STYLES (terrain.js), mais margem para a copa nao pender
+// sobre a pista.
+const VEGETATION_BLOCK_ROADS = [
+  { layer: 'roadbig_line', widthMeters: 26 },
+  { layer: 'roadmedium_line', widthMeters: 16 },
+  { layer: 'roadsmall_line', widthMeters: 9 },
+  { layer: 'railway_line', widthMeters: 6 }
+];
+const VEGETATION_ROAD_MARGIN_METERS = 7;
+
+// Mascara de bloqueio derivada do vectorTile de cada chunk (cache por chunk).
+const blockMaskCache = new WeakMap();
 
 const HOUSE_COLORS = [
   new THREE.Color(0xd8d1c5),
@@ -37,12 +51,21 @@ class UrbanScenery {
     this.chunks = new Map();
     this.vehicles = [];
 
-    this.houseGeometry = new THREE.BoxGeometry(20, 13, 17);
-    this.houseGeometry.translate(0, 6.5, 0);
+    // Casa em escala residencial real (~13 m de fachada) com telhado de duas
+    // aguas: triangulo extrudado ao longo da cumeeira, com beiral sobrando da parede.
+    this.houseGeometry = new THREE.BoxGeometry(13, 8.5, 11);
+    this.houseGeometry.translate(0, 4.25, 0);
     this.houseGeometry.userData.shared = true;
-    this.roofGeometry = new THREE.ConeGeometry(16, 7.5, 4);
-    this.roofGeometry.rotateY(Math.PI / 4);
-    this.roofGeometry.translate(0, 16.75, 0);
+    const roofProfile = new THREE.Shape([
+      new THREE.Vector2(-7.6, 0),
+      new THREE.Vector2(7.6, 0),
+      new THREE.Vector2(0, 4.4)
+    ]);
+    this.roofGeometry = new THREE.ExtrudeGeometry(roofProfile, {
+      depth: 12.6,
+      bevelEnabled: false
+    });
+    this.roofGeometry.translate(0, 8.5, -6.3);
     this.roofGeometry.userData.shared = true;
     this.streetMaterial = new THREE.MeshStandardMaterial({
       color: 0x8b8580,
@@ -146,6 +169,70 @@ class UrbanScenery {
       vehicle.group.position.set(x, y, z);
       vehicle.group.rotation.y = vehicle.heading;
     }
+  }
+
+  // Vegetacao nao pode nascer sobre area urbana (casas/ruas locais) nem
+  // sobre/perto de estradas e ferrovias vetoriais.
+  isBlockedAt(x, z, chunk) {
+    const mask = this.getBlockMask(chunk);
+    if (!mask) return false;
+
+    if (mask.rings.length > 0) {
+      const px = this.terrain.centerPixel.x + x / this.terrain.worldUnitsPerPixelX;
+      const py = this.terrain.centerPixel.y + z / this.terrain.worldUnitsPerPixelY;
+      for (const ring of mask.rings) {
+        const bounds = ring.bounds;
+        if (px >= bounds.minX && px <= bounds.maxX
+          && py >= bounds.minY && py <= bounds.maxY
+          && pointInPolygon(px, py, ring.points)) {
+          return true;
+        }
+      }
+    }
+
+    for (const segment of mask.roads) {
+      if (x < segment.minX || x > segment.maxX || z < segment.minZ || z > segment.maxZ) continue;
+      if (distanceToSegment(x, z, segment.ax, segment.az, segment.bx, segment.bz) < segment.margin) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  getBlockMask(chunk) {
+    if (blockMaskCache.has(chunk)) return blockMaskCache.get(chunk);
+
+    const layers = chunk.vectorTile?.layers;
+    if (!layers) return null;
+
+    const rings = chainSegmentsIntoRings(layers.city_area?.lines ?? [])
+      .filter((ring) => ring.length >= 3)
+      .map((points) => ({ points, bounds: getRingBounds(points) }));
+
+    const roads = [];
+    for (const { layer, widthMeters } of VEGETATION_BLOCK_ROADS) {
+      const margin = (widthMeters / 2 + VEGETATION_ROAD_MARGIN_METERS) * this.terrain.worldUnitsPerMeter;
+      for (const line of layers[layer]?.lines ?? []) {
+        const start = this.terrain.pixelToWorldXZ(line[0], line[1]);
+        const end = this.terrain.pixelToWorldXZ(line[2], line[3]);
+        roads.push({
+          ax: start.x,
+          az: start.z,
+          bx: end.x,
+          bz: end.z,
+          margin,
+          // Caixa expandida pela margem para rejeitar barato a maioria dos pontos.
+          minX: Math.min(start.x, end.x) - margin,
+          maxX: Math.max(start.x, end.x) + margin,
+          minZ: Math.min(start.z, end.z) - margin,
+          maxZ: Math.max(start.z, end.z) + margin
+        });
+      }
+    }
+
+    const mask = rings.length === 0 && roads.length === 0 ? null : { rings, roads };
+    blockMaskCache.set(chunk, mask);
+    return mask;
   }
 
   addHouses(group, cityRings, chunk) {
@@ -333,6 +420,9 @@ function createVehicleMesh({
   type
 }) {
   const group = new THREE.Group();
+  // As pecas foram modeladas superdimensionadas; 0.5 traz o carro para ~9 m,
+  // coerente com as casas em escala real (ainda um pouco maior para leitura aerea).
+  group.scale.setScalar(0.5);
 
   if (type === 'truck') {
     addBox(group, new THREE.BoxGeometry(10, 5.4, 13), bodyMaterial, [0, 3.1, -11], true);

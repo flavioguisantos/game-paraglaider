@@ -253,7 +253,7 @@ function formatScore(score) {
 }
 
 function getWaypointText(player, scoring) {
-  if (player.routeFinished) return 'GOL';
+  if (player.routeFinished) return 'Completa';
 
   const waypoint = scoring?.route?.[player.nextWaypointIndex ?? 0];
   return waypoint?.name ?? '--';

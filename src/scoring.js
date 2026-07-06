@@ -7,7 +7,10 @@ const SCORING_CONFIG = {
   feedbackThresholdPoints: 1000,
   feedbackMinIntervalSeconds: 1.25,
   feedbackDurationSeconds: 2.1,
-  waypointRadiusMeters: 85,
+  waypointRadiusMeters: 100,
+  // Meia envergadura da asa: encostar a ponta na borda do cilindro ja valida
+  // o TP/GOL, sem precisar levar o piloto ate o centro.
+  waypointWingMarginMeters: 6,
   waypointBonusPoints: 900,
   waypointTimeBonusPoints: 260,
   maxComboMultiplier: 5,
@@ -21,11 +24,16 @@ const SCORING_CONFIG = {
 
 export function createScoringState({ scene, terrain }) {
   const markers = createWaypointMarkers();
-  if (scene) scene.add(markers);
+  const routeLine = createRouteLine();
+  if (scene) {
+    scene.add(markers);
+    scene.add(routeLine);
+  }
 
   return {
     route: SCORING_CONFIG.route.map((waypoint) => ({ ...waypoint })),
     markers,
+    routeLine,
     terrain,
     elapsedSeconds: 0
   };
@@ -64,6 +72,55 @@ export function updateScoring(state, delta, entities, { thermals, terrain }) {
   for (const entity of entities) {
     updateEntityScoring(entity, delta, state, { thermals, terrain });
   }
+
+  // A guia visual da rota (linha e marcadores restantes) segue o progresso do
+  // jogador; os bots pontuam na mesma sequencia, mas sem interferir no visual.
+  const player = entities.find((entity) => entity.isPlayer) ?? entities[0];
+  if (player) updateRouteGuidance(state, player, terrain);
+}
+
+// Linha discreta do parapente ate o proximo waypoint obrigatorio. Os TPs ja
+// concluidos pelo jogador somem; ao fechar a rota, a guia inteira desaparece.
+function updateRouteGuidance(state, player, terrain) {
+  for (const marker of state.markers?.children ?? []) {
+    marker.visible = marker.userData.waypointIndex >= (player.nextWaypointIndex ?? 0);
+  }
+
+  const line = state.routeLine;
+  if (!line) return;
+
+  const waypoint = state.route[player.nextWaypointIndex ?? 0];
+  if (!waypoint || player.routeFinished || player.landed || player.crashed) {
+    line.visible = false;
+    return;
+  }
+
+  const groundHeight = terrain.getHeightAt(waypoint.x, waypoint.z);
+  const positions = line.geometry.attributes.position;
+  // Parte um pouco abaixo do piloto para nao atravessar a tela em primeira pessoa.
+  positions.setXYZ(0, player.position.x, player.position.y - 6, player.position.z);
+  positions.setXYZ(1, waypoint.x, groundHeight + 18, waypoint.z);
+  positions.needsUpdate = true;
+  line.visible = true;
+}
+
+function createRouteLine() {
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(6), 3));
+
+  const line = new THREE.Line(geometry, new THREE.LineBasicMaterial({
+    color: 0xffd166,
+    transparent: true,
+    opacity: 0.32,
+    depthWrite: false,
+    // Sempre visivel (mesmo com relevo no caminho): e uma guia, nao um objeto do mundo.
+    depthTest: false
+  }));
+  line.name = 'RouteGuidanceLine';
+  line.renderOrder = 2;
+  line.frustumCulled = false;
+  line.visible = false;
+  return line;
 }
 
 function updateEntityScoring(entity, delta, state, { thermals, terrain }) {
@@ -81,7 +138,6 @@ function updateEntityScoring(entity, delta, state, { thermals, terrain }) {
     entity.position.x - entity.previousScoringPosition.x,
     entity.position.z - entity.previousScoringPosition.z
   ) / worldUnitsPerMeter;
-  entity.previousScoringPosition.copy(entity.position);
 
   const averageSpeedBonus = Math.max(0, (entity.groundSpeedKmh ?? 0) - 26)
     * SCORING_CONFIG.speedBonusPerKmhPerSecond
@@ -93,7 +149,10 @@ function updateEntityScoring(entity, delta, state, { thermals, terrain }) {
   addScore(entity, distancePoints, 'distance');
   addScore(entity, averageSpeedBonus, 'speed');
   updateThermalComboAndRiskScore(entity, delta, thermals);
+  // Waypoint testa o trajeto do frame (previousScoringPosition -> position),
+  // entao a posicao anterior so pode ser atualizada depois dele.
   updateWaypointScore(entity, state, terrain);
+  entity.previousScoringPosition.copy(entity.position);
   maybeCreateScoreFeedback(entity, state);
 }
 
@@ -134,12 +193,18 @@ function updateWaypointScore(entity, state, terrain) {
   }
 
   const worldUnitsPerMeter = terrain.worldUnitsPerMeter ?? 1;
-  const distanceMeters = Math.hypot(
-    entity.position.x - waypoint.x,
-    entity.position.z - waypoint.z
+  // Distancia do centro do cilindro ao trajeto percorrido neste frame, para
+  // uma passada rapida de raspao na borda nao escapar entre dois frames.
+  const distanceMeters = distanceToSegment2D(
+    waypoint.x, waypoint.z,
+    entity.previousScoringPosition.x, entity.previousScoringPosition.z,
+    entity.position.x, entity.position.z
   ) / worldUnitsPerMeter;
 
-  if (distanceMeters > SCORING_CONFIG.waypointRadiusMeters) return;
+  // Tocar a borda com a asa conta: raio do cilindro + meia envergadura.
+  const touchRadiusMeters = SCORING_CONFIG.waypointRadiusMeters
+    + SCORING_CONFIG.waypointWingMarginMeters;
+  if (distanceMeters > touchRadiusMeters) return;
 
   const timeBonus = Math.max(0, SCORING_CONFIG.waypointTimeBonusPoints - state.elapsedSeconds * 0.35);
   const comboMultiplier = Math.max(1, entity.thermalCombo ?? 1);
@@ -153,9 +218,22 @@ function updateWaypointScore(entity, state, terrain) {
   entity.lastScoringEvent = `${waypoint.name} +${Math.round(waypointPoints)} pts`;
   createScoreFeedback(entity, state, {
     points: waypointPoints,
-    label: waypoint.name,
-    detail: entity.routeFinished ? 'Rota completa' : 'Checkpoint'
+    label: entity.routeFinished ? 'GOL' : `${waypoint.name} concluido`,
+    detail: entity.routeFinished
+      ? 'Etapa concluida com sucesso!'
+      : `Proximo: ${state.route[entity.nextWaypointIndex].name}`,
+    // O informe do GOL merece ficar mais tempo na tela.
+    durationSeconds: entity.routeFinished ? 5 : undefined
   });
+}
+
+function distanceToSegment2D(px, pz, ax, az, bx, bz) {
+  const dx = bx - ax;
+  const dz = bz - az;
+  const lengthSq = dx * dx + dz * dz;
+  if (lengthSq === 0) return Math.hypot(px - ax, pz - az);
+  const t = THREE.MathUtils.clamp(((px - ax) * dx + (pz - az) * dz) / lengthSq, 0, 1);
+  return Math.hypot(px - (ax + dx * t), pz - (az + dz * t));
 }
 
 function addScore(entity, points, bucket) {
@@ -183,7 +261,7 @@ function maybeCreateScoreFeedback(entity, state) {
   });
 }
 
-function createScoreFeedback(entity, state, { points, label, detail }) {
+function createScoreFeedback(entity, state, { points, label, detail, durationSeconds }) {
   if (!Number.isFinite(points) || points <= 0) return;
 
   entity.scoreFeedbackSequence = (entity.scoreFeedbackSequence ?? 0) + 1;
@@ -194,7 +272,7 @@ function createScoreFeedback(entity, state, { points, label, detail }) {
     label,
     detail,
     createdAtSeconds: state.elapsedSeconds,
-    durationSeconds: SCORING_CONFIG.feedbackDurationSeconds
+    durationSeconds: durationSeconds ?? SCORING_CONFIG.feedbackDurationSeconds
   };
   entity.lastScoringEvent = `${label} +${Math.round(points)} pts`;
 }

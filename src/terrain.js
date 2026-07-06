@@ -11,6 +11,10 @@ const DEFAULT_OPTIONS = {
   chunkSegments: 96,
   loadRadius: 1,
   unloadRadius: 2,
+  // Anel de relevo distante (apenas visual): tiles reais em malha grossa entre
+  // loadRadius e distantLoadRadius, sem vetores/mar/urbano e fora da fisica.
+  distantLoadRadius: 2,
+  distantChunkSegments: 24,
   horizontalScale: 1,
   heightScale: 1,
   referenceElevation: 0,
@@ -94,6 +98,11 @@ class LocalXcmTerrain {
     this.chunks = new Map();
     this.loadingChunks = new Set();
     this.failedChunks = new Set();
+    // Chunks distantes ficam fora de this.chunks de proposito: getHeightAt e
+    // getRenderedHeightAt (fisica/plantio) so enxergam os chunks de alta resolucao.
+    this.distantChunks = new Map();
+    this.loadingDistantChunks = new Set();
+    this.failedDistantChunks = new Set();
     this.availableVectorTiles = new Set();
     this.vectorMaterials = new Map();
     this.labelTextureCache = new Map();
@@ -149,9 +158,14 @@ class LocalXcmTerrain {
     for (const key of [...this.chunks.keys()]) {
       this.unloadChunk(key);
     }
+    for (const key of [...this.distantChunks.keys()]) {
+      this.unloadDistantChunk(key);
+    }
 
     this.loadingChunks.clear();
     this.failedChunks.clear();
+    this.loadingDistantChunks.clear();
+    this.failedDistantChunks.clear();
 
     if (this.manifest) {
       this.applyCenterCoordinates(latitude, longitude);
@@ -202,8 +216,83 @@ class LocalXcmTerrain {
       }
     }
 
+    this.updateDistantChunks(centerTile);
     this.urbanScenery.update(delta);
     this.updateSeaWaves(delta);
+  }
+
+  // Mantem o anel de relevo distante em volta dos chunks completos. Um tile so
+  // vira chunk distante enquanto nao existe (nem esta carregando) em alta
+  // resolucao; quando o jogador se aproxima, o load normal assume e a versao
+  // grossa e removida so depois que a malha completa chega (sem buracos).
+  updateDistantChunks(centerTile) {
+    const inner = this.config.loadRadius;
+    const outer = this.config.distantLoadRadius;
+    if (!(outer > inner)) return;
+
+    for (let y = centerTile.y - outer; y <= centerTile.y + outer; y += 1) {
+      for (let x = centerTile.x - outer; x <= centerTile.x + outer; x += 1) {
+        const ring = Math.max(Math.abs(x - centerTile.x), Math.abs(y - centerTile.y));
+        if (ring <= inner || !this.isValidTile(x, y)) continue;
+
+        const key = getChunkKey(x, y);
+        if (this.distantChunks.has(key) || this.loadingDistantChunks.has(key) || this.failedDistantChunks.has(key)) continue;
+        if (this.chunks.has(key) || this.loadingChunks.has(key)) continue;
+        this.loadDistantChunk(x, y);
+      }
+    }
+
+    for (const [key, chunk] of this.distantChunks) {
+      const distance = Math.max(
+        Math.abs(chunk.tileX - centerTile.x),
+        Math.abs(chunk.tileY - centerTile.y)
+      );
+      if (distance > outer + 1 || this.chunks.has(key)) {
+        this.unloadDistantChunk(key);
+      }
+    }
+  }
+
+  async loadDistantChunk(tileX, tileY) {
+    const key = getChunkKey(tileX, tileY);
+    const revision = this.centerRevision;
+    this.loadingDistantChunks.add(key);
+
+    try {
+      const imageData = await loadImageData(this.getTileUrl(tileX, tileY));
+      if (revision !== this.centerRevision || this.chunks.has(key) || this.distantChunks.has(key)) return;
+
+      const mesh = this.createChunkMesh(tileX, tileY, imageData, this.config.distantChunkSegments);
+      // Longe demais para o frustum de sombra; economiza o custo do shadow pass.
+      mesh.castShadow = false;
+      mesh.receiveShadow = false;
+      // Lamina d'agua tambem no anel distante, para o mar continuar reflexivo
+      // (a grade grossa so alarga a faixa de costa sem agua, ja encoberta pela nevoa).
+      const seaMesh = this.createSeaMeshIfNeeded(tileX, tileY, imageData, this.config.distantChunkSegments);
+      this.distantChunks.set(key, { tileX, tileY, imageData, mesh, seaMesh });
+      this.reliefGroup.add(mesh);
+    } catch (error) {
+      if (revision === this.centerRevision) {
+        this.failedDistantChunks.add(key);
+        console.warn(`Nao foi possivel carregar chunk distante XCM ${key}`, error);
+      }
+    } finally {
+      this.loadingDistantChunks.delete(key);
+    }
+  }
+
+  unloadDistantChunk(key) {
+    const chunk = this.distantChunks.get(key);
+    if (!chunk) return;
+
+    this.reliefGroup.remove(chunk.mesh);
+    chunk.mesh.geometry.dispose();
+    if (chunk.seaMesh) {
+      this.seaGroup.remove(chunk.seaMesh);
+      // O material do mar e compartilhado; descarta apenas a geometria.
+      chunk.seaMesh.geometry.dispose();
+    }
+    this.distantChunks.delete(key);
   }
 
   setSeaEnabled(enabled) {
@@ -246,10 +335,9 @@ class LocalXcmTerrain {
   // Superficie de mar recortada pela propria grade do chunk: so entram os
   // quads cujos 4 cantos sao mar (NoData). A agua nunca cobre terra e as
   // bordas casam entre chunks vizinhos porque a grade e o DEM sao os mesmos.
-  createSeaMeshIfNeeded(tileX, tileY, imageData) {
+  createSeaMeshIfNeeded(tileX, tileY, imageData, segments = this.config.chunkSegments) {
     if (!tileHasSeaPixels(imageData)) return null;
 
-    const segments = this.config.chunkSegments;
     const tileSize = this.manifest.terrain.tileSize;
     const latticeSize = segments + 1;
     const seaFlags = new Uint8Array(latticeSize * latticeSize);
@@ -375,6 +463,21 @@ class LocalXcmTerrain {
       && isCoastalSandSample(chunk.imageData, sample.u, sample.v, elevation);
   }
 
+  // Area urbana ou faixa de estrada/ferrovia do chunk carregado em (x, z).
+  // Usado pela vegetacao para nao plantar sobre ruas, rodovias e casas.
+  isUrbanBlockedAt(x, z) {
+    if (!this.manifest || !this.centerPixel || !Number.isFinite(x) || !Number.isFinite(z)) {
+      return false;
+    }
+
+    const tile = this.getTileForWorld(x, z);
+    if (!this.isValidTile(tile.x, tile.y)) return false;
+
+    const chunk = this.chunks.get(getChunkKey(tile.x, tile.y));
+    if (!chunk?.vectorTile) return false;
+    return this.urbanScenery.isBlockedAt(x, z, chunk);
+  }
+
   async ensureHeightAt(x, z, timeoutMs = 6000) {
     await this.ready;
 
@@ -460,7 +563,9 @@ class LocalXcmTerrain {
     this.loadingChunks.add(key);
 
     try {
-      const imageData = await loadImageData(this.getTileUrl(tileX, tileY));
+      // Reaproveita o DEM ja baixado pela versao distante do mesmo tile.
+      const imageData = this.distantChunks.get(key)?.imageData
+        ?? await loadImageData(this.getTileUrl(tileX, tileY));
       if (revision !== this.centerRevision) return;
 
       const chunk = {
@@ -534,6 +639,8 @@ class LocalXcmTerrain {
       if (revision !== this.centerRevision || !this.chunks.has(key)) return;
 
       chunk.vectorTile = vectorTile;
+      // Sinaliza consumidores (ex.: vegetacao) que novas mascaras urbanas chegaram.
+      this.vectorRevision = (this.vectorRevision ?? 0) + 1;
       const group = this.createVectorGroup(vectorTile, chunk);
       this.urbanScenery.addChunk(key, vectorTile, chunk);
       if (group.children.length === 0) return;
@@ -546,12 +653,12 @@ class LocalXcmTerrain {
     }
   }
 
-  createChunkMesh(tileX, tileY, imageData) {
+  createChunkMesh(tileX, tileY, imageData, segments = this.config.chunkSegments) {
     const geometry = new THREE.PlaneGeometry(
       this.chunkWorldWidth,
       this.chunkWorldDepth,
-      this.config.chunkSegments,
-      this.config.chunkSegments
+      segments,
+      segments
     );
     geometry.rotateX(-Math.PI / 2);
 
@@ -609,6 +716,8 @@ class LocalXcmTerrain {
         this.terrainMaterial.normalMap = normalTexture;
         this.terrainMaterial.normalScale = new THREE.Vector2(0.45, 0.45);
       }
+
+      applyTerrainSplatting(this.terrainMaterial);
     }
 
     return this.terrainMaterial;
@@ -1453,7 +1562,9 @@ function addTerrainColor(colors, height, slope, worldX, worldZ, isSea = false, i
   colors.push(color.r, color.g, color.b);
 }
 
-function terrainValueNoise(x, z) {
+// Exportado para a vegetacao plantar arvores exatamente onde addTerrainColor
+// pinta mata (e poupar as clareiras), usando o mesmo campo de ruido.
+export function terrainValueNoise(x, z) {
   const x0 = Math.floor(x);
   const z0 = Math.floor(z);
   const tx = smoothstep01(x - x0);
@@ -1557,6 +1668,87 @@ function fillNoisyBase(context, width, height, [red, green, blue], noiseAmplitud
 function drawLaneLine(context, x, top, bottom, lineWidth, style) {
   context.fillStyle = style;
   context.fillRect(x - lineWidth / 2, top, lineWidth, bottom - top);
+}
+
+// Splatting por pixel: as cores por vertice (resolucao ~230 m) viram apenas a
+// base macro; o fragment shader adiciona, em coordenadas de mundo (continuas
+// entre chunks), clareamento/sombreado de copas em areas verdes, afloramento
+// de rocha/solo por inclinacao real da encosta e granulacao fina — os detalhes
+// metricos que a malha nao tem como carregar.
+function applyTerrainSplatting(material) {
+  const toGlslColor = (hex) => {
+    const color = new THREE.Color(hex);
+    return `vec3(${color.r.toFixed(5)}, ${color.g.toFixed(5)}, ${color.b.toFixed(5)})`;
+  };
+  const soil = toGlslColor(0x7a6b5b);
+  const granite = toGlslColor(0x8f9395);
+  const darkGranite = toGlslColor(0x6d7276);
+
+  material.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', [
+        '#include <common>',
+        'varying vec3 vSplatWorld;',
+        'varying vec3 vSplatNormal;'
+      ].join('\n'))
+      .replace('#include <begin_vertex>', [
+        '#include <begin_vertex>',
+        'vSplatWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;',
+        // Chunks de terreno nao tem rotacao/escala: a normal do objeto ja e a de mundo.
+        'vSplatNormal = normal;'
+      ].join('\n'));
+
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', [
+        '#include <common>',
+        'varying vec3 vSplatWorld;',
+        'varying vec3 vSplatNormal;',
+        // Lattice com modulo mantem o seno do hash em faixa segura de precisao
+        // mesmo a dezenas de km da origem (o padrao repete a cada 1024 celulas).
+        'float splatHash(vec2 p) {',
+        '  p = mod(p, 1024.0);',
+        '  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);',
+        '}',
+        'float splatNoise(vec2 p) {',
+        '  vec2 i = floor(p);',
+        '  vec2 f = fract(p);',
+        '  vec2 u = f * f * (3.0 - 2.0 * f);',
+        '  return mix(',
+        '    mix(splatHash(i), splatHash(i + vec2(1.0, 0.0)), u.x),',
+        '    mix(splatHash(i + vec2(0.0, 1.0)), splatHash(i + vec2(1.0, 1.0)), u.x),',
+        '    u.y);',
+        '}'
+      ].join('\n'))
+      .replace('#include <color_fragment>', [
+        '#include <color_fragment>',
+        '{',
+        '  vec2 wxz = vSplatWorld.xz;',
+        '  vec3 geoNormal = normalize(vSplatNormal);',
+        // Inclinacao como tangente (rise/run), mesma medida do sombreamento por vertice.
+        '  float tanSlope = length(geoNormal.xz) / max(geoNormal.y, 0.05);',
+        '  float clumpNoise = splatNoise(wxz * 0.048);',
+        '  float grainNoise = splatNoise(wxz * 0.17 + 37.7);',
+        '  float macroNoise = splatNoise(wxz * 0.011 + 91.3);',
+        // Verde = vegetacao; areia/rocha/mar tem g <= r e ficam de fora das copas.
+        // Medida relativa: mantem sensibilidade tambem nos verdes escuros de altitude.
+        '  float greenness = clamp((diffuseColor.g - diffuseColor.r) / max(diffuseColor.g, 0.001) * 2.5, 0.0, 1.0);',
+        // Copas: aglomerados claros (topo iluminado) e vaos escuros (sub-bosque).
+        '  float canopy = clumpNoise * 0.65 + grainNoise * 0.35;',
+        '  diffuseColor.rgb *= 1.0 + (canopy - 0.5) * 0.62 * greenness;',
+        // Afloramento de rocha/solo exposto onde a encosta e ingreme (a partir
+        // de ~23 graus), com a borda quebrada por noise para nao virar faixa.
+        '  float rockMask = smoothstep(0.42, 0.85, tanSlope + (macroNoise - 0.5) * 0.25 + (grainNoise - 0.5) * 0.1);',
+        `  float strata = clamp(sin(vSplatWorld.y * 0.045 + clumpNoise * 3.2) * 0.5 + 0.5, 0.0, 1.0);`,
+        `  vec3 rockColor = mix(mix(${soil}, ${granite}, strata), ${darkGranite}, grainNoise * 0.45);`,
+        '  diffuseColor.rgb = mix(diffuseColor.rgb, rockColor * (0.82 + grainNoise * 0.36), rockMask * 0.72);',
+        // Granulacao fina geral (folhagem, pedrisco, textura de pasto), com um
+        // leve desvio de matiz para amarelado nos pontos altos do ruido.
+        '  float grainMix = clumpNoise * 0.4 + grainNoise * 0.6;',
+        '  diffuseColor.rgb *= (0.9 + grainMix * 0.2) * mix(vec3(0.985, 1.0, 1.01), vec3(1.02, 1.01, 0.975), grainMix);',
+        '}'
+      ].join('\n'));
+  };
+  material.customProgramCacheKey = () => 'terrain-splatting-1';
 }
 
 function createDetailTexture() {
