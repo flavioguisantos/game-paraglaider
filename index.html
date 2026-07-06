@@ -574,6 +574,25 @@
       .location-options {
         display: grid;
         gap: 8px;
+        max-height: 260px;
+        overflow-y: auto;
+        padding-right: 4px;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(255, 209, 102, 0.55) rgba(255, 255, 255, 0.08);
+      }
+
+      .location-options::-webkit-scrollbar {
+        width: 8px;
+      }
+
+      .location-options::-webkit-scrollbar-track {
+        background: rgba(255, 255, 255, 0.08);
+        border-radius: 4px;
+      }
+
+      .location-options::-webkit-scrollbar-thumb {
+        background: rgba(255, 209, 102, 0.55);
+        border-radius: 4px;
       }
 
       .location-option {
@@ -888,6 +907,21 @@
             <input type="radio" name="flight-location" value="atibaia-pedra-grande" checked>
             <strong>Atibaia / Pedra Grande</strong>
             <span>Atibaia - SP</span>
+          </label>
+          <label class="location-option">
+            <input type="radio" name="flight-location" value="sao-pedro">
+            <strong>Sao Pedro</strong>
+            <span>Sao Pedro - SP · -22.504721, -47.898368</span>
+          </label>
+          <label class="location-option">
+            <input type="radio" name="flight-location" value="pico-do-gaviao">
+            <strong>Pico do Gaviao</strong>
+            <span>Socorro - SP · -22.015356, -46.626470</span>
+          </label>
+          <label class="location-option">
+            <input type="radio" name="flight-location" value="serra-negra">
+            <strong>Serra Negra</strong>
+            <span>Serra Negra - SP · -22.619223, -46.677644</span>
           </label>
           <label class="location-option">
             <input type="radio" name="flight-location" value="sao-vicente-itarare">

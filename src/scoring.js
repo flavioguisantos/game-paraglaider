@@ -15,15 +15,17 @@ const SCORING_CONFIG = {
   waypointTimeBonusPoints: 260,
   maxComboMultiplier: 5,
   comboStep: 1,
-  route: [
-    { name: 'TP1', x: -420, z: -1350 },
-    { name: 'TP2', x: 760, z: -2750 },
-    { name: 'GOL', x: -260, z: -4050 }
-  ]
+  // Percurso sorteado a cada partida: numero de TPs e distancia entre eles
+  // variam para o jogador nao decorar sempre o mesmo trajeto.
+  routeMinWaypoints: 4,
+  routeMaxWaypoints: 10,
+  routeMinLegMeters: 5000,
+  routeMaxLegMeters: 10000
 };
 
 export function createScoringState({ scene, terrain }) {
-  const markers = createWaypointMarkers();
+  const route = generateRoute(terrain);
+  const markers = createWaypointMarkers(route);
   const routeLine = createRouteLine();
   if (scene) {
     scene.add(markers);
@@ -31,12 +33,49 @@ export function createScoringState({ scene, terrain }) {
   }
 
   return {
-    route: SCORING_CONFIG.route.map((waypoint) => ({ ...waypoint })),
+    route,
     markers,
     routeLine,
     terrain,
     elapsedSeconds: 0
   };
+}
+
+// Sorteia um percurso novo a partir do ponto de decolagem (origem): cada TP
+// fica de 5 a 10 km do anterior, em uma direcao aleatoria. O ultimo ponto e
+// sempre o GOL. O total de TPs (incluindo o GOL) varia entre 4 e 10.
+function generateRoute(terrain) {
+  const worldUnitsPerMeter = terrain?.worldUnitsPerMeter ?? 1;
+  const waypointCount = THREE.MathUtils.randInt(
+    SCORING_CONFIG.routeMinWaypoints,
+    SCORING_CONFIG.routeMaxWaypoints
+  );
+
+  const route = [];
+  let originX = 0;
+  let originZ = 0;
+
+  for (let index = 0; index < waypointCount; index += 1) {
+    const legMeters = THREE.MathUtils.lerp(
+      SCORING_CONFIG.routeMinLegMeters,
+      SCORING_CONFIG.routeMaxLegMeters,
+      Math.random()
+    );
+    const angle = Math.random() * Math.PI * 2;
+    const legWorldUnits = legMeters * worldUnitsPerMeter;
+
+    originX += Math.cos(angle) * legWorldUnits;
+    originZ += Math.sin(angle) * legWorldUnits;
+
+    const isLast = index === waypointCount - 1;
+    route.push({
+      name: isLast ? 'GOL' : `TP${index + 1}`,
+      x: originX,
+      z: originZ
+    });
+  }
+
+  return route;
 }
 
 export function initializeScoringForEntities(entities) {
@@ -285,12 +324,12 @@ function getFeedbackDetail(entity) {
   return 'Voo XC';
 }
 
-function createWaypointMarkers() {
+function createWaypointMarkers(route) {
   const group = new THREE.Group();
   group.name = 'ScoringWaypoints';
 
-  for (let index = 0; index < SCORING_CONFIG.route.length; index += 1) {
-    const waypoint = SCORING_CONFIG.route[index];
+  for (let index = 0; index < route.length; index += 1) {
+    const waypoint = route[index];
     const marker = new THREE.Group();
     marker.name = `Waypoint_${waypoint.name}`;
     marker.userData.waypointIndex = index;
@@ -298,7 +337,7 @@ function createWaypointMarkers() {
     const ring = new THREE.Mesh(
       new THREE.TorusGeometry(SCORING_CONFIG.waypointRadiusMeters, 3.5, 8, 72),
       new THREE.MeshBasicMaterial({
-        color: index === SCORING_CONFIG.route.length - 1 ? 0x59d98c : 0xffd166,
+        color: index === route.length - 1 ? 0x59d98c : 0xffd166,
         transparent: true,
         opacity: 0.65,
         depthWrite: false
