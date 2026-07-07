@@ -37,7 +37,7 @@ Quando o jogador pousa, o parapente deixa de voar, mas os comandos continuam ati
 - A altura exibida como valor principal do parapente e a distancia vertical ate o terreno exatamente abaixo da posicao X/Z atual: `position.y - terrain.getHeightAt(position.x, position.z)`.
 - O HUD tambem exibe a altitude absoluta em relacao ao nivel do mar para diferenciar as duas medidas.
 - O afundamento segue uma curva polar de asa EN-B: ~1,45 m/s a 25 km/h, ~1,05 m/s no trim (planeio ~10:1) e ~2,3 m/s com barra cheia.
-- Curvar custa altitude: a inclinacao (bank) derivada da taxa de curva e da velocidade aumenta o afundamento pelo fator de carga (`n^1.5`). A inclinacao visual do parapente segue o bank real.
+- Curvar custa altitude: a inclinacao (bank) derivada da taxa de curva e da velocidade aumenta o afundamento pelo fator de carga, calibrado para uma vela EN-B hot sem punir demais a subida em giro moderado dentro da termica. A inclinacao visual do parapente segue o bank real.
 - O parapente deve sempre ter algum movimento para frente.
 - Curvas devem ser suaves, progressivas e sem giro instantaneo ao pressionar ou soltar comando.
 - A taxa de curva deve ser mais proxima de um parapente real, priorizando leitura e controle fino em vez de rotacao rapida estilo arcade.

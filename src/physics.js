@@ -18,6 +18,7 @@ const FLIGHT_PHYSICS = {
 };
 
 const GRAVITY = 9.81;
+const TURN_SINK_LOAD_EXPONENT = 1.25;
 
 // Curva polar de um parapente classe EN-B:
 // - freios fundos (~25 km/h): afunda ~1.45 m/s
@@ -152,7 +153,7 @@ export function applyFlightPhysics(entity, delta, { terrain, thermals, orographi
   );
   entity.bankAngle = bankAngle;
   const loadFactor = 1 / Math.max(Math.cos(bankAngle), 0.4);
-  const polarSink = getPolarSinkRate(entity.speed) * Math.pow(loadFactor, 1.5);
+  const polarSink = getPolarSinkRate(entity.speed) * Math.pow(loadFactor, TURN_SINK_LOAD_EXPONENT);
 
   const thermalLift = thermals?.getLiftAt(entity.position) ?? 0;
   const ridgeLift = orographicLift?.getLiftAt(entity.position, { terrain, wind }) ?? 0;

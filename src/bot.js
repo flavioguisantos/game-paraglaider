@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { applyFlightPhysics, updateAltitudeMetrics } from './physics.js?v=realism-1';
+import { applyFlightPhysics, updateAltitudeMetrics } from './physics.js?v=hot-b-1';
 import { createParagliderModel, setParagliderLandedPose } from './paragliderModel.js?v=pilot-pose-5';
 
 const BOT_CONFIG = {
@@ -7,8 +7,8 @@ const BOT_CONFIG = {
   // mais rapido nas transicoes entre termicas.
   climbSpeedKmh: 34,
   glideSpeedKmh: 42,
-  maxTurnRate: 0.58,
-  turnResponse: 1.8,
+  maxTurnRate: 0.44,
+  turnResponse: 1.45,
   startAltitude: 26,
   // Orbita de subida dentro da termica (fracao do raio do nucleo).
   orbitRadiusRatio: 0.45,
@@ -74,7 +74,7 @@ export class Bot {
 
     const desiredHeading = this.updateStrategy(flightContext);
     const turnDelta = normalizeAngle(desiredHeading - this.heading);
-    const targetTurnRate = THREE.MathUtils.clamp(turnDelta * 0.9, -BOT_CONFIG.maxTurnRate, BOT_CONFIG.maxTurnRate);
+    const targetTurnRate = THREE.MathUtils.clamp(turnDelta * 0.65, -BOT_CONFIG.maxTurnRate, BOT_CONFIG.maxTurnRate);
 
     this.turnRate = THREE.MathUtils.lerp(
       this.turnRate,

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { applyFlightPhysics, POLAR_SPEEDS, updateAltitudeMetrics } from './physics.js?v=realism-1';
+import { applyFlightPhysics, POLAR_SPEEDS, updateAltitudeMetrics } from './physics.js?v=hot-b-1';
 import { createParagliderModel, setParagliderLandedPose } from './paragliderModel.js?v=pilot-pose-5';
 import { createFirstPersonRig, updateFirstPersonRig } from './firstPersonRig.js?v=8';
 import { getCameraMode } from './camera.js?v=camera-modes-3';
@@ -13,8 +13,9 @@ const PLAYER_CONFIG = {
   trimSpeedKmh: POLAR_SPEEDS.trimSpeedKmh,
   maxSpeedKmh: POLAR_SPEEDS.maxSpeedKmh,
   launchStartSpeedKmh: 8,
-  maxTurnRate: 0.72,
-  turnResponse: 2.1,
+  // Vela EN-B hot: curva ainda eficiente para enroscar, mas sem giro arcade.
+  maxTurnRate: 0.48,
+  turnResponse: 1.55,
   // Visual: rolagem segue o bank real calculado pela fisica; pitch mistura
   // comando de velocidade com o surge (aceleracao vertical) da vela.
   visualBankScale: 0.85,
