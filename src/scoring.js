@@ -23,11 +23,13 @@ const SCORING_CONFIG = {
   routeMinWaypoints: 4,
   routeMaxWaypoints: 10,
   routeMinLegMeters: 5000,
-  routeMaxLegMeters: 10000
+  routeMaxLegMeters: 10000,
+  routeCandidateAttempts: 18,
+  waypointSeaClearanceMeters: 140
 };
 
-export function createScoringState({ scene, terrain }) {
-  const route = generateRoute(terrain);
+export async function createScoringState({ scene, terrain }) {
+  const route = await generateRoute(terrain);
   const markers = createWaypointMarkers(route);
   const routeLine = createRouteLine();
   if (scene) {
@@ -47,7 +49,7 @@ export function createScoringState({ scene, terrain }) {
 // Sorteia um percurso novo a partir do ponto de decolagem (origem): cada TP
 // fica de 5 a 10 km do anterior, em uma direcao aleatoria. O ultimo ponto e
 // sempre o GOL. O total de TPs (incluindo o GOL) varia entre 4 e 10.
-function generateRoute(terrain) {
+async function generateRoute(terrain) {
   const worldUnitsPerMeter = terrain?.worldUnitsPerMeter ?? 1;
   const waypointCount = THREE.MathUtils.randInt(
     SCORING_CONFIG.routeMinWaypoints,
@@ -59,17 +61,14 @@ function generateRoute(terrain) {
   let originZ = 0;
 
   for (let index = 0; index < waypointCount; index += 1) {
-    const legMeters = THREE.MathUtils.lerp(
-      SCORING_CONFIG.routeMinLegMeters,
-      SCORING_CONFIG.routeMaxLegMeters,
-      Math.random()
-    );
-    const angle = Math.random() * Math.PI * 2;
-    const legWorldUnits = legMeters * worldUnitsPerMeter;
-
-    originX += Math.cos(angle) * legWorldUnits;
-    originZ += Math.sin(angle) * legWorldUnits;
-
+    const candidate = await findWaypointCandidate({
+      terrain,
+      originX,
+      originZ,
+      worldUnitsPerMeter
+    });
+    originX = candidate.x;
+    originZ = candidate.z;
     const isLast = index === waypointCount - 1;
     route.push({
       name: isLast ? 'GOL' : `TP${index + 1}`,
@@ -79,6 +78,62 @@ function generateRoute(terrain) {
   }
 
   return route;
+}
+
+async function findWaypointCandidate({ terrain, originX, originZ, worldUnitsPerMeter }) {
+  const attempts = SCORING_CONFIG.routeCandidateAttempts;
+  let fallbackCandidate = null;
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const legMeters = THREE.MathUtils.lerp(
+      SCORING_CONFIG.routeMinLegMeters,
+      SCORING_CONFIG.routeMaxLegMeters,
+      Math.random()
+    );
+    const angle = Math.random() * Math.PI * 2;
+    const legWorldUnits = legMeters * worldUnitsPerMeter;
+    const candidate = {
+      x: originX + Math.cos(angle) * legWorldUnits,
+      z: originZ + Math.sin(angle) * legWorldUnits
+    };
+
+    if (!terrain || typeof terrain.isSeaAt !== 'function' || typeof terrain.ensureHeightAt !== 'function') {
+      return candidate;
+    }
+
+    fallbackCandidate ??= candidate;
+    if (await isWaypointPlacementValid(candidate, terrain, worldUnitsPerMeter)) {
+      return candidate;
+    }
+  }
+
+  return fallbackCandidate ?? { x: originX, z: originZ };
+}
+
+async function isWaypointPlacementValid(candidate, terrain, worldUnitsPerMeter) {
+  const loaded = await terrain.ensureHeightAt(candidate.x, candidate.z, 1200);
+  if (!loaded) return true;
+
+  const radiusWorldUnits = SCORING_CONFIG.waypointSeaClearanceMeters * worldUnitsPerMeter;
+  const samplePoints = [
+    { x: candidate.x, z: candidate.z },
+    { x: candidate.x + radiusWorldUnits, z: candidate.z },
+    { x: candidate.x - radiusWorldUnits, z: candidate.z },
+    { x: candidate.x, z: candidate.z + radiusWorldUnits },
+    { x: candidate.x, z: candidate.z - radiusWorldUnits },
+    { x: candidate.x + radiusWorldUnits * 0.7, z: candidate.z + radiusWorldUnits * 0.7 },
+    { x: candidate.x + radiusWorldUnits * 0.7, z: candidate.z - radiusWorldUnits * 0.7 },
+    { x: candidate.x - radiusWorldUnits * 0.7, z: candidate.z + radiusWorldUnits * 0.7 },
+    { x: candidate.x - radiusWorldUnits * 0.7, z: candidate.z - radiusWorldUnits * 0.7 }
+  ];
+
+  for (const point of samplePoints) {
+    if (terrain.isSeaAt(point.x, point.z)) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 export function initializeScoringForEntities(entities) {

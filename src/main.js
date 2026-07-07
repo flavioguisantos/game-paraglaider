@@ -307,7 +307,7 @@ async function startFlight() {
   }
 
   appState.flyers = [appState.player, ...appState.bots];
-  appState.scoring = createScoringState({ scene, terrain });
+  appState.scoring = await createScoringState({ scene, terrain });
   initializeScoringForEntities(appState.flyers);
   appState.lastScoreFeedbackAudioId = null;
   appState.round = createRoundState();

@@ -83,6 +83,7 @@ O variometro aparece no HUD em m/s e tambem emite bips quando o jogador esta sub
 O MVP passa a usar uma pontuacao estilo cross-country simplificada:
 - Pontos crescem com a distancia horizontal efetivamente voada e recebem bonus continuo pela velocidade sobre o solo acima do voo lento, recompensando quem avanca rapido sem transformar a fisica em arcade.
 - A rota tem waypoints visiveis no mapa (`TP1`, `TP2` e `GOL`). Ao cruzar o raio do checkpoint em ordem, o participante recebe bonus fixo mais bonus de tempo; completar a rota sinaliza `GOL` no HUD.
+- Em locais costeiros, a geracao da rota deve rejeitar waypoints cujo centro ou area util do cilindro caiam sobre o mar aberto; o sorteio tenta novos pontos em terra antes de aceitar a perna.
 - Termicas fortes ou "quentes" pagam multiplicador de risco maior. Termicas normais pagam 1x, fortes pagam 1,5x e termicas raras/quentes pagam 2x nos pontos de subida.
 - Entrar em uma nova termica valida sem pousar aumenta o combo de altitude (`2x`, `3x`, ate `5x`). O combo multiplica distancia, subida e waypoints, e zera para `1x` ao pousar ou colidir.
 - O HUD mostra pontos, combo atual, proximo waypoint e o ultimo evento de pontuacao relevante.
