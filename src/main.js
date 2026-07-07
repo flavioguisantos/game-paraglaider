@@ -352,9 +352,9 @@ function updateVehicleSelectionUi() {
   const colorTitle = document.querySelector('[data-start-field="color-title"]');
   const colorOptions = document.querySelector('.color-options');
   const cameraToggle = document.querySelector('#camera-toggle');
-  const ascendButton = document.querySelector('[data-control="ascend"]');
-  const descendButton = document.querySelector('[data-control="descend"]');
   const boostButton = document.querySelector('[data-control="boost"]');
+  const touchLabelUp = document.querySelector('[data-touch-label="up"]');
+  const touchLabelDown = document.querySelector('[data-touch-label="down"]');
   const shouldHideDroneCameraToggle = vehicleType === 'drone';
 
   if (colorTitle) {
@@ -376,15 +376,11 @@ function updateVehicleSelectionUi() {
       firstPersonOnly ? 'Drone com camera fixa em primeira pessoa' : 'Alternar camera externa/visao do piloto'
     );
   }
-  if (ascendButton) {
-    ascendButton.textContent = vehicleType === 'drone' ? '↓' : '⌃';
-    ascendButton.setAttribute('aria-label', vehicleType === 'drone' ? 'Descer' : 'Acelerar');
-    ascendButton.title = vehicleType === 'drone' ? 'Descer' : 'Acelerar';
+  if (touchLabelUp) {
+    touchLabelUp.textContent = vehicleType === 'drone' ? 'Desce' : 'Acel.';
   }
-  if (descendButton) {
-    descendButton.textContent = vehicleType === 'drone' ? '↑' : '⌄';
-    descendButton.setAttribute('aria-label', vehicleType === 'drone' ? 'Subir' : 'Frear');
-    descendButton.title = vehicleType === 'drone' ? 'Subir' : 'Frear';
+  if (touchLabelDown) {
+    touchLabelDown.textContent = vehicleType === 'drone' ? 'Sobe' : 'Freia';
   }
   if (boostButton) {
     boostButton.hidden = vehicleType !== 'drone';

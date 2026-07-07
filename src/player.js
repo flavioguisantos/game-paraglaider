@@ -10,6 +10,11 @@ const PLAYER_CONFIG = {
   startAltitude: 24
 };
 
+const TOUCH_JOYSTICK_CONFIG = {
+  deadzone: 0.12,
+  knobTravelPx: 34
+};
+
 const VEHICLE_PROFILES = {
   paraglider: {
     id: 'paraglider',
@@ -148,7 +153,7 @@ export class Player {
     this.syncFirstPersonView(delta);
     if (this.landed || this.entangled) return;
 
-    const turnInput = Number(this.input.left) - Number(this.input.right);
+    const turnInput = getTurnInput(this.input);
     const altitudeInput = getAltitudeInput(this.vehicleProfile, this.input);
     const speedInput = getSpeedInput(this.vehicleProfile, this.input);
     const pitchInput = getPitchInput(this.vehicleProfile, this.input);
@@ -257,30 +262,44 @@ function getVisualGroundHeight(terrain, x, z) {
     : terrain.getHeightAt(x, z);
 }
 
+function getTurnInput(input) {
+  return clampSignedUnit((Number(input.left) || 0) - (Number(input.right) || 0));
+}
+
 function getAltitudeInput(profile, input) {
   if (profile.flightModel === 'drone') {
-    return Number(input.descend) - Number(input.ascend);
+    return clampSignedUnit((Number(input.descend) || 0) - (Number(input.ascend) || 0));
   }
 
-  return Number(input.forward || input.ascend) - Number(input.backward || input.descend);
+  return getSignedSpeedAxis(input);
 }
 
 function getSpeedInput(profile, input) {
   if (profile.flightModel === 'drone') {
-    return Number(input.boost);
+    return THREE.MathUtils.clamp(Number(input.boost) || 0, 0, 1);
   }
 
-  return Number(input.forward || input.ascend) - Number(input.backward || input.descend);
+  return getSignedSpeedAxis(input);
 }
 
 function getPitchInput(profile, input) {
   if (profile.flightModel === 'drone') {
-    const stickPitch = Number(input.forward) - Number(input.backward);
-    const verticalPitch = Number(input.descend) - Number(input.ascend);
-    return Math.max(-1, Math.min(1, stickPitch + verticalPitch));
+    const stickPitch = (Number(input.forward) || 0) - (Number(input.backward) || 0);
+    const verticalPitch = (Number(input.descend) || 0) - (Number(input.ascend) || 0);
+    return clampSignedUnit(stickPitch + verticalPitch);
   }
 
   return 0;
+}
+
+function getSignedSpeedAxis(input) {
+  const positive = Math.max(Number(input.forward) || 0, Number(input.ascend) || 0);
+  const negative = Math.max(Number(input.backward) || 0, Number(input.descend) || 0);
+  return clampSignedUnit(positive - negative);
+}
+
+function clampSignedUnit(value) {
+  return THREE.MathUtils.clamp(value, -1, 1);
 }
 
 function getVisualPitch(profile, altitudeInput, smoothedSurge) {
@@ -381,13 +400,13 @@ function createDroneModel(accentColor) {
 
 function createInputState() {
   const state = {
-    forward: false,
-    backward: false,
-    left: false,
-    right: false,
-    ascend: false,
-    descend: false,
-    boost: false
+    forward: 0,
+    backward: 0,
+    left: 0,
+    right: 0,
+    ascend: 0,
+    descend: 0,
+    boost: 0
   };
 
   const keyMap = new Map([
@@ -406,14 +425,14 @@ function createInputState() {
     const key = keyMap.get(event.code);
     if (!key) return;
     event.preventDefault();
-    state[key] = true;
+    state[key] = 1;
   });
 
   window.addEventListener('keyup', (event) => {
     const key = keyMap.get(event.code);
     if (!key) return;
     event.preventDefault();
-    state[key] = false;
+    state[key] = 0;
   });
 
   bindTouchControls(state);
@@ -424,13 +443,14 @@ function createInputState() {
 function bindTouchControls(state) {
   const buttons = [...document.querySelectorAll('[data-control]')];
   const validControls = new Set(Object.keys(state));
+  const touchResetters = [];
 
   for (const button of buttons) {
     const control = button.dataset.control;
     if (!validControls.has(control)) continue;
 
     const setPressed = (pressed) => {
-      state[control] = pressed;
+      state[control] = pressed ? 1 : 0;
       button.classList.toggle('is-active', pressed);
     };
 
@@ -448,10 +468,76 @@ function bindTouchControls(state) {
     button.addEventListener('pointercancel', () => setPressed(false));
     button.addEventListener('lostpointercapture', () => setPressed(false));
     button.addEventListener('contextmenu', (event) => event.preventDefault());
+    touchResetters.push(() => setPressed(false));
+  }
+
+  const joystick = document.querySelector('[data-touch-joystick]');
+  const knob = document.querySelector('[data-touch-joystick-knob]');
+  if (joystick && knob) {
+    let activePointerId = null;
+
+    const setStick = (x, y) => {
+      const deadzone = TOUCH_JOYSTICK_CONFIG.deadzone;
+      const signedX = Math.abs(x) < deadzone ? 0 : x;
+      const signedY = Math.abs(y) < deadzone ? 0 : y;
+
+      state.left = Math.max(0, -signedX);
+      state.right = Math.max(0, signedX);
+      state.ascend = Math.max(0, -signedY);
+      state.descend = Math.max(0, signedY);
+
+      knob.style.setProperty('--stick-x', `${(signedX * TOUCH_JOYSTICK_CONFIG.knobTravelPx).toFixed(2)}px`);
+      knob.style.setProperty('--stick-y', `${(signedY * TOUCH_JOYSTICK_CONFIG.knobTravelPx).toFixed(2)}px`);
+      joystick.classList.toggle('is-active', signedX !== 0 || signedY !== 0);
+    };
+
+    const resetStick = () => {
+      activePointerId = null;
+      setStick(0, 0);
+    };
+
+    const updateFromPointer = (event) => {
+      const rect = joystick.getBoundingClientRect();
+      const radius = Math.max(1, Math.min(rect.width, rect.height) * 0.5);
+      const centerX = rect.left + rect.width * 0.5;
+      const centerY = rect.top + rect.height * 0.5;
+      const offsetX = event.clientX - centerX;
+      const offsetY = event.clientY - centerY;
+      const distance = Math.hypot(offsetX, offsetY);
+      const normalized = distance > radius ? radius / distance : 1;
+      setStick(
+        THREE.MathUtils.clamp((offsetX * normalized) / radius, -1, 1),
+        THREE.MathUtils.clamp((offsetY * normalized) / radius, -1, 1)
+      );
+    };
+
+    joystick.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      activePointerId = event.pointerId;
+      joystick.setPointerCapture?.(event.pointerId);
+      updateFromPointer(event);
+    });
+
+    joystick.addEventListener('pointermove', (event) => {
+      if (event.pointerId !== activePointerId) return;
+      event.preventDefault();
+      updateFromPointer(event);
+    });
+
+    joystick.addEventListener('pointerup', (event) => {
+      if (event.pointerId !== activePointerId) return;
+      event.preventDefault();
+      resetStick();
+    });
+
+    joystick.addEventListener('pointercancel', resetStick);
+    joystick.addEventListener('lostpointercapture', resetStick);
+    joystick.addEventListener('contextmenu', (event) => event.preventDefault());
+    touchResetters.push(resetStick);
   }
 
   window.addEventListener('blur', () => {
-    for (const control of validControls) state[control] = false;
-    for (const button of buttons) button.classList.remove('is-active');
+    for (const control of validControls) state[control] = 0;
+    for (const resetTouchControl of touchResetters) resetTouchControl();
   });
 }

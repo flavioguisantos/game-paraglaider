@@ -203,11 +203,11 @@ export function updateFirstPersonRig(rig, input, delta) {
   data.time += delta;
 
   // Freio simetrico (S) puxa os dois batoques; curva puxa so o lado dela.
-  const flarePull = input.backward ? ARM_CONFIG.flarePull : 0;
+  const flarePull = Math.max(Number(input.backward) || 0, Number(input.descend) || 0) * ARM_CONFIG.flarePull;
   const pullAlpha = 1 - Math.exp(-delta * ARM_CONFIG.pullResponse);
 
   for (const arm of data.arms) {
-    const turnPull = (arm.side < 0 ? input.left : input.right) ? 1 : 0;
+    const turnPull = Math.max(0, Number(arm.side < 0 ? input.left : input.right) || 0);
     const targetPull = Math.max(turnPull, flarePull);
     arm.pull += (targetPull - arm.pull) * pullAlpha;
     solveArm(arm, data.time);

@@ -579,18 +579,129 @@
         opacity: 1;
       }
 
-      .touch-cluster {
-        display: grid;
-        gap: 10px;
+      .touch-joystick-shell {
+        position: relative;
+        width: 156px;
+        height: 156px;
         pointer-events: auto;
       }
 
-      .touch-cluster--turn {
-        grid-template-columns: repeat(2, 58px);
+      .touch-joystick {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        border-radius: 50%;
+        background:
+          radial-gradient(circle at 50% 50%, rgba(255, 209, 102, 0.12), rgba(255, 209, 102, 0) 45%),
+          radial-gradient(circle at 50% 50%, rgba(16, 31, 42, 0.86), rgba(8, 15, 22, 0.74));
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        box-shadow:
+          0 16px 32px rgba(0, 0, 0, 0.24),
+          inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+        touch-action: none;
+        -webkit-touch-callout: none;
+        overflow: hidden;
       }
 
-      .touch-cluster--speed {
-        grid-template-rows: repeat(3, 58px);
+      .touch-joystick::before,
+      .touch-joystick::after {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        background: rgba(255, 255, 255, 0.08);
+        transform: translate(-50%, -50%);
+        pointer-events: none;
+      }
+
+      .touch-joystick::before {
+        width: 1px;
+        height: calc(100% - 32px);
+      }
+
+      .touch-joystick::after {
+        width: calc(100% - 32px);
+        height: 1px;
+      }
+
+      .touch-joystick-ring {
+        position: absolute;
+        inset: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 50%;
+        pointer-events: none;
+      }
+
+      .touch-joystick-ring--inner {
+        inset: 42px;
+      }
+
+      .touch-joystick-label {
+        position: absolute;
+        color: #f7fbff;
+        font: 700 11px/1 Arial, Helvetica, sans-serif;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        opacity: 0.72;
+        pointer-events: none;
+      }
+
+      .touch-joystick-label--up {
+        top: 14px;
+        left: 50%;
+        transform: translateX(-50%);
+      }
+
+      .touch-joystick-label--down {
+        bottom: 14px;
+        left: 50%;
+        transform: translateX(-50%);
+      }
+
+      .touch-joystick-label--left {
+        left: 18px;
+        top: 50%;
+        transform: translateY(-50%);
+      }
+
+      .touch-joystick-label--right {
+        right: 18px;
+        top: 50%;
+        transform: translateY(-50%);
+      }
+
+      .touch-joystick-knob {
+        --stick-x: 0px;
+        --stick-y: 0px;
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 64px;
+        height: 64px;
+        border-radius: 50%;
+        background:
+          radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.38), rgba(255, 255, 255, 0.06) 45%),
+          linear-gradient(180deg, rgba(255, 209, 102, 0.92), rgba(223, 162, 53, 0.94));
+        border: 1px solid rgba(255, 255, 255, 0.42);
+        box-shadow:
+          0 14px 26px rgba(0, 0, 0, 0.28),
+          inset 0 2px 6px rgba(255, 255, 255, 0.28);
+        transform: translate(calc(-50% + var(--stick-x)), calc(-50% + var(--stick-y)));
+        transition: transform 60ms linear, box-shadow 120ms ease;
+        pointer-events: none;
+      }
+
+      .touch-joystick.is-active .touch-joystick-knob {
+        box-shadow:
+          0 18px 30px rgba(0, 0, 0, 0.3),
+          inset 0 2px 6px rgba(255, 255, 255, 0.32);
+      }
+
+      .touch-actions {
+        display: grid;
+        align-items: end;
+        gap: 10px;
+        pointer-events: auto;
       }
 
       .touch-control {
@@ -601,7 +712,7 @@
         border: 1px solid rgba(255, 255, 255, 0.26);
         border-radius: 50%;
         box-shadow: 0 10px 26px rgba(0, 0, 0, 0.22);
-        font: 700 26px/1 Arial, Helvetica, sans-serif;
+        font: 700 18px/1 Arial, Helvetica, sans-serif;
         touch-action: none;
         -webkit-touch-callout: none;
         -webkit-user-select: none;
@@ -974,7 +1085,7 @@
         }
 
         body.mobile-paraglider .camera-toggle {
-          bottom: calc(max(14px, env(safe-area-inset-bottom)) + 214px);
+          bottom: calc(max(14px, env(safe-area-inset-bottom)) + 182px);
         }
 
         .touch-controls {
@@ -1001,18 +1112,20 @@
           display: flex;
         }
 
+        .touch-joystick-shell {
+          width: 138px;
+          height: 138px;
+        }
+
+        .touch-joystick-knob {
+          width: 58px;
+          height: 58px;
+        }
+
         .touch-control {
           width: 52px;
           height: 52px;
-          font-size: 24px;
-        }
-
-        .touch-cluster--turn {
-          grid-template-columns: repeat(2, 52px);
-        }
-
-        .touch-cluster--speed {
-          grid-template-rows: repeat(3, 52px);
+          font-size: 17px;
         }
 
         .restart-button {
@@ -1040,14 +1153,19 @@
     <button id="camera-toggle" class="camera-toggle" type="button" title="Camera: externa (C alterna)" aria-label="Alternar camera externa/visao do piloto">📷</button>
     <button id="restart-game" class="restart-button" type="button" title="Reiniciar jogo" aria-label="Reiniciar jogo">↻</button>
     <div id="touch-controls" class="touch-controls" aria-label="Controles de voo por toque">
-      <div class="touch-cluster touch-cluster--turn">
-        <button class="touch-control" type="button" data-control="left" aria-label="Virar para esquerda">‹</button>
-        <button class="touch-control" type="button" data-control="right" aria-label="Virar para direita">›</button>
+      <div class="touch-joystick-shell">
+        <div class="touch-joystick" data-touch-joystick aria-label="Joystick de voo por arrasto">
+          <div class="touch-joystick-ring"></div>
+          <div class="touch-joystick-ring touch-joystick-ring--inner"></div>
+          <span class="touch-joystick-label touch-joystick-label--up" data-touch-label="up">Acel.</span>
+          <span class="touch-joystick-label touch-joystick-label--down" data-touch-label="down">Freia</span>
+          <span class="touch-joystick-label touch-joystick-label--left">‹</span>
+          <span class="touch-joystick-label touch-joystick-label--right">›</span>
+          <div class="touch-joystick-knob" data-touch-joystick-knob></div>
+        </div>
       </div>
-      <div class="touch-cluster touch-cluster--speed">
-        <button class="touch-control" type="button" data-control="ascend" aria-label="Acelerar">⌃</button>
+      <div class="touch-actions">
         <button class="touch-control" type="button" data-control="boost" aria-label="Boost de velocidade">⏭</button>
-        <button class="touch-control" type="button" data-control="descend" aria-label="Frear">⌄</button>
       </div>
     </div>
     <div id="start-panel" class="start-panel">
