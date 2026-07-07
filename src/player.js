@@ -483,8 +483,10 @@ function bindTouchControls(state) {
 
       state.left = Math.max(0, -signedX);
       state.right = Math.max(0, signedX);
-      state.ascend = Math.max(0, -signedY);
-      state.descend = Math.max(0, signedY);
+      // No touch mobile, a leitura segue a direcao visual do gesto:
+      // arrastar para cima = subir; arrastar para baixo = descer.
+      state.ascend = Math.max(0, signedY);
+      state.descend = Math.max(0, -signedY);
 
       knob.style.setProperty('--stick-x', `${(signedX * TOUCH_JOYSTICK_CONFIG.knobTravelPx).toFixed(2)}px`);
       knob.style.setProperty('--stick-y', `${(signedY * TOUCH_JOYSTICK_CONFIG.knobTravelPx).toFixed(2)}px`);

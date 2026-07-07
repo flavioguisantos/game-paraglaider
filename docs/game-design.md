@@ -20,8 +20,8 @@ Antes da rodada, o jogador escolhe o local de voo, escolhe entre `Parapente` e `
 - No `Drone FPV`, a camera em primeira pessoa acompanha imediatamente a inclinacao vertical do drone: ao descer olha para baixo; ao subir olha para cima.
 - No `Drone FPV`, os comandos de subir/descer tambem empurram o pitch no mesmo sentido visual: segurar `subir` aponta o nariz para cima e permite continuar o giro ate fechar um loop vertical.
 - No `Drone FPV`, ao virar para a direita/esquerda a camera deve inclinar para o mesmo lado da curva, sem herdar a leitura visual do parapente.
-- Em telas touch, os comandos principais usam um joystick circular por arrasto no canto inferior: esquerda/direita controlam curva, cima acelera e baixo freia; diagonais combinam os dois eixos no mesmo gesto.
-- No `Drone FPV`, o mesmo joystick circular continua ativo, mas o eixo vertical troca para `descer`/`subir`, enquanto o `boost` permanece em um botao separado ao lado.
+- Em telas touch, os comandos principais usam um joystick circular por arrasto no canto inferior: esquerda/direita controlam curva, cima sobe e baixo desce; diagonais combinam os dois eixos no mesmo gesto.
+- No `Drone FPV`, o mesmo joystick circular continua ativo com a mesma leitura visual (`cima = subir`, `baixo = descer`), enquanto o `boost` permanece em um botao separado ao lado.
 - `C` ou o botao de camera (📷) alterna entre a camera externa (terceira pessoa) e a visao do piloto (primeira pessoa). Na visao do piloto, a camera fica presa ao capacete sem atraso de posicao, herda a orientacao do modelo (inclina com a asa na curva e no pendulo) com leve olhar para baixo, e o near plane cai para 0.06 m para nao cortar as maos/batoques quando o freio e puxado perto do corpo (restaurado no modo externo). Apos o pouso, a camera orbital de pouso vale para os dois modos.
 - No `Drone FPV`, a camera fica sempre em primeira pessoa e o toggle/botao de camera nao deve aparecer na interface.
 - No mobile, quando `Parapente` estiver selecionado, o botao de camera deve subir e ficar acima dos controles touch para nao conflitar com os botoes de voo.
