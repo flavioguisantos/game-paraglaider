@@ -155,6 +155,7 @@ function handleResize() {
   camera.updateProjectionMatrix();
   renderer.setPixelRatio(getRendererPixelRatio());
   renderer.setSize(viewport.width, viewport.height);
+  updateVehicleSelectionUi();
 }
 
 window.addEventListener('resize', handleResize);
@@ -354,6 +355,7 @@ function updateVehicleSelectionUi() {
   const ascendButton = document.querySelector('[data-control="ascend"]');
   const descendButton = document.querySelector('[data-control="descend"]');
   const boostButton = document.querySelector('[data-control="boost"]');
+  const shouldHideDroneCameraToggle = vehicleType === 'drone';
 
   if (colorTitle) {
     colorTitle.textContent = vehicleType === 'drone' ? 'Cor do drone' : 'Cor do parapente';
@@ -361,10 +363,11 @@ function updateVehicleSelectionUi() {
   if (colorOptions) {
     colorOptions.setAttribute('aria-label', vehicleType === 'drone' ? 'Cor do drone' : 'Cor do parapente');
   }
+  document.body.classList.toggle('mobile-paraglider', vehicleType === 'paraglider' && isMobileViewport());
   if (cameraToggle) {
     const firstPersonOnly = vehicleProfile.cameraPreference === 'first-person-only';
     cameraToggle.disabled = firstPersonOnly;
-    cameraToggle.hidden = firstPersonOnly && appState.started;
+    cameraToggle.hidden = shouldHideDroneCameraToggle;
     cameraToggle.title = firstPersonOnly
       ? 'Drone com camera fixa em primeira pessoa'
       : 'Camera: externa (C alterna)';
@@ -474,6 +477,10 @@ function getRendererPixelRatio() {
   const isCompactScreen = width <= 760;
   const maxPixelRatio = isCompactScreen ? 1.35 : 2;
   return Math.min(window.devicePixelRatio || 1, maxPixelRatio);
+}
+
+function isMobileViewport() {
+  return getViewportSize().width <= 640;
 }
 
 function setAppHeight() {

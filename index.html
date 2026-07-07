@@ -517,6 +517,11 @@
         display: block;
       }
 
+      .camera-toggle[hidden],
+      body.is-flying .camera-toggle[hidden] {
+        display: none !important;
+      }
+
       .camera-toggle.is-first-person {
         color: #10202a;
         background: #ffd166;
@@ -637,6 +642,10 @@
         display: grid;
         gap: 8px;
         margin-bottom: 14px;
+      }
+
+      .start-field--vehicle .location-options {
+        max-height: none;
       }
 
       .start-field-title {
@@ -897,9 +906,75 @@
         }
 
         .start-panel {
+          left: 12px;
           right: 12px;
-          bottom: 12px;
-          width: calc(100vw - 56px);
+          bottom: max(12px, env(safe-area-inset-bottom));
+          width: auto;
+          padding: 14px;
+        }
+
+        .start-title {
+          display: none;
+        }
+
+        .start-panel {
+          max-height: calc(var(--app-height, 100vh) - 24px - max(14px, env(safe-area-inset-bottom)));
+          overflow-y: auto;
+        }
+
+        .start-field {
+          margin-bottom: 12px;
+        }
+
+        .start-field-title {
+          font-size: 11px;
+        }
+
+        .location-options {
+          max-height: 152px;
+        }
+
+        .color-options {
+          grid-template-columns: repeat(6, 32px);
+          gap: 6px;
+          margin-bottom: 0;
+        }
+
+        .color-option {
+          width: 32px;
+          height: 32px;
+        }
+
+        .start-field--vehicle {
+          margin-bottom: 10px;
+        }
+
+        .start-field--vehicle .start-field-title {
+          display: none;
+        }
+
+        .start-field--vehicle .location-options {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          max-height: none;
+          overflow: visible;
+          padding-right: 0;
+        }
+
+        .start-field--vehicle .location-option {
+          min-height: 76px;
+          align-content: center;
+          justify-items: center;
+          gap: 4px;
+          padding: 12px 10px;
+          text-align: center;
+        }
+
+        .start-field--vehicle .location-option span {
+          display: none;
+        }
+
+        body.mobile-paraglider .camera-toggle {
+          bottom: calc(max(14px, env(safe-area-inset-bottom)) + 214px);
         }
 
         .touch-controls {
@@ -1007,7 +1082,7 @@
           </label>
         </div>
       </div>
-      <div class="start-field">
+      <div class="start-field start-field--vehicle">
         <div class="start-field-title">Veiculo</div>
         <div class="location-options" aria-label="Veiculo">
           <label class="location-option">

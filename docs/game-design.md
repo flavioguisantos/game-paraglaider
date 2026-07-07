@@ -7,7 +7,7 @@ O jogador pilota um parapente em terreno montanhoso, buscando colunas de ar quen
 Ganhar altitude e afastar-se do ponto de decolagem. A rodada nao tem limite de tempo; ao final, o ranking compara jogador e bots por desempenho.
 
 ## Controles iniciais
-Antes da rodada, o jogador escolhe o local de voo, escolhe entre `Parapente` e `Drone FPV`, define a cor principal do veiculo em uma paleta ampliada e inicia o voo por um botao de tela. Locais iniciais disponiveis:
+Antes da rodada, o jogador escolhe o local de voo, escolhe entre `Parapente` e `Drone FPV`, define a cor principal do veiculo em uma paleta ampliada e inicia o voo por um botao de tela. No layout mobile da tela inicial, o painel continua exibindo a escolha de rampa/local, a escolha entre `Parapente` e `Drone FPV`, a paleta de cor e o botao de iniciar, com layout mais compacto e rolavel. Locais iniciais disponiveis:
 - Atibaia / Pedra Grande, Atibaia - SP.
 - Praia de Sao Vicente, Itarare, Sao Vicente - SP (`-23.964517, -46.363531`), com decolagem inicial mais alta, parapente apontado para o mar e vento vindo do mar.
 - Ao selecionar Sao Vicente na tela inicial, a camera de pre-voo tambem deve olhar de frente para o mar.
@@ -22,7 +22,8 @@ Antes da rodada, o jogador escolhe o local de voo, escolhe entre `Parapente` e `
 - No `Drone FPV`, ao virar para a direita/esquerda a camera deve inclinar para o mesmo lado da curva, sem herdar a leitura visual do parapente.
 - Em telas touch, botoes sobrepostos no canto inferior replicam os comandos principais; no drone, o cluster de velocidade troca para `descer`, `boost` e `subir`.
 - `C` ou o botao de camera (📷) alterna entre a camera externa (terceira pessoa) e a visao do piloto (primeira pessoa). Na visao do piloto, a camera fica presa ao capacete sem atraso de posicao, herda a orientacao do modelo (inclina com a asa na curva e no pendulo) com leve olhar para baixo, e o near plane cai para 0.06 m para nao cortar as maos/batoques quando o freio e puxado perto do corpo (restaurado no modo externo). Apos o pouso, a camera orbital de pouso vale para os dois modos.
-- No `Drone FPV`, a camera fica sempre em primeira pessoa e o toggle de camera e desativado.
+- No `Drone FPV`, a camera fica sempre em primeira pessoa e o toggle/botao de camera nao deve aparecer na interface.
+- No mobile, quando `Parapente` estiver selecionado, o botao de camera deve subir e ficar acima dos controles touch para nao conflitar com os botoes de voo.
 - A interface touch deve bloquear selecao de texto e callout nativo enquanto o jogador segura os botoes de comando.
 - O botao discreto de reinicio (`↻`) aparece durante a rodada e recarrega o prototipo para iniciar uma nova tentativa. Em telas touch, fica no canto superior para nao cobrir os comandos de virar, acelerar ou frear.
 
@@ -37,7 +38,7 @@ Quando o jogador pousa, o parapente deixa de voar, mas os comandos continuam ati
 - X/Z representam deslocamento horizontal.
 - X/Z/Y passam a representar metros no mundo do jogo.
 - A velocidade de trim do parapente e 38 km/h; o jogador varia entre ~26 km/h (freios) e ~55 km/h (barra) e, ao soltar, retorna suavemente ao trim. Na decolagem, a velocidade acelera do passo de rampa (~8 km/h) ate o trim.
-- O drone usa um perfil separado de alto desempenho: cruzeiro rapido, pico de ate ~700 km/h, resposta de yaw bem mais agressiva, pitch continuo sem auto-level e subida/descida diretas nas setas verticais invertidas.
+- O drone usa um perfil separado de alto desempenho: nasce parado no ar (`0 km/h`), permanece em hover quando o jogador nao aciona `boost`, pode acelerar ate ~700 km/h com resposta de yaw bem mais agressiva, pitch continuo sem auto-level e subida/descida diretas nas setas verticais invertidas.
 - A distancia no ranking e HUD e medida em linha reta entre o ponto de decolagem de cada participante e sua posicao atual, nao pelo caminho efetivamente percorrido.
 - Y representa altitude absoluta em metros em relacao ao nivel do mar.
 - A altura exibida como valor principal do parapente e a distancia vertical ate o terreno exatamente abaixo da posicao X/Z atual: `position.y - terrain.getHeightAt(position.x, position.z)`.

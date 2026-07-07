@@ -53,7 +53,7 @@ const VEHICLE_PROFILES = {
     id: 'drone',
     label: 'Drone FPV',
     flightModel: 'drone',
-    startSpeedKmh: 120,
+    startSpeedKmh: 0,
     trimSpeedKmh: 180,
     minSpeedKmh: 80,
     maxSpeedKmh: 700,
@@ -293,6 +293,13 @@ function getVisualPitch(profile, altitudeInput, smoothedSurge) {
 
 // Cada veiculo interpreta o eixo de velocidade no proprio perfil.
 function getTargetSpeedKmh(profile, speedInput) {
+  if (profile.flightModel === 'drone') {
+    if (speedInput > 0) {
+      return THREE.MathUtils.lerp(0, profile.maxSpeedKmh, speedInput);
+    }
+    return 0;
+  }
+
   if (speedInput > 0) {
     return THREE.MathUtils.lerp(profile.trimSpeedKmh, profile.maxSpeedKmh, speedInput);
   }
