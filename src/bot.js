@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { applyFlightPhysics, updateAltitudeMetrics } from './physics.js?v=realism-1';
-import { createParagliderModel, setParagliderLandedPose } from './paragliderModel.js?v=pilot-pose-1';
+import { createParagliderModel, setParagliderLandedPose } from './paragliderModel.js?v=pilot-pose-5';
 
 const BOT_CONFIG = {
   // Como pilotos reais: mais devagar circulando (minimo afundamento),
@@ -195,11 +195,17 @@ export class Bot {
   applyLandingPose() {
     if (this.landingPoseApplied) return;
 
-    const groundHeight = this.terrain.getHeightAt(this.position.x, this.position.z);
+    const groundHeight = getVisualGroundHeight(this.terrain, this.position.x, this.position.z);
     this.group.rotation.set(0, this.heading, 0);
     setParagliderLandedPose(this.group, { groundHeight });
     this.landingPoseApplied = true;
   }
+}
+
+function getVisualGroundHeight(terrain, x, z) {
+  return terrain.getRenderedHeightAt
+    ? terrain.getRenderedHeightAt(x, z)
+    : terrain.getHeightAt(x, z);
 }
 
 function createBotModel(color) {

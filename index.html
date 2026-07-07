@@ -163,6 +163,81 @@
         color: #ff6b66;
       }
 
+      .instr-thermal {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin: 0 0 10px;
+        padding: 8px 12px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 8px;
+        opacity: 0.45;
+        transition: opacity 200ms ease;
+      }
+
+      .instr-thermal.is-active {
+        opacity: 1;
+      }
+
+      .thermal-ring {
+        position: relative;
+        width: 60px;
+        height: 60px;
+        flex: none;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+      }
+
+      .thermal-sector {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 6px;
+        height: 6px;
+        margin: -3px 0 0 -3px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.15);
+        will-change: transform;
+      }
+
+      .thermal-arrow {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform-origin: 50% 50%;
+        margin: -11px 0 0 -6px;
+        font-size: 20px;
+        line-height: 1;
+        color: #ffd166;
+        will-change: transform;
+        transition: opacity 200ms ease;
+      }
+
+      .thermal-core {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 5px;
+        height: 5px;
+        margin: -2.5px 0 0 -2.5px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.4);
+      }
+
+      .thermal-label {
+        font-size: 12px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        color: #c8d8e6;
+      }
+
+      .instr-thermal.is-active .thermal-label {
+        color: #ffd166;
+      }
+
       .instr-row {
         display: flex;
         justify-content: space-between;
@@ -775,7 +850,8 @@
         }
 
         .instr-compass,
-        .instr-distance {
+        .instr-distance,
+        .instr-thermal {
           display: none;
         }
 
@@ -985,6 +1061,6 @@
       </div>
       <button id="start-flight" class="start-button" type="button">Iniciar voo</button>
     </div>
-    <script type="module" src="/src/main.js?v=realism-1"></script>
+    <script type="module" src="/src/main.js?v=fp-rig-1"></script>
   </body>
 </html>

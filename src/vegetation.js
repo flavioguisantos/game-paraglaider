@@ -22,6 +22,12 @@ const VEGETATION_CONFIG = {
   patchNoiseScale: 0.004
 };
 
+const TREE_COLLISION_CONFIG = {
+  gliderRadius: 5.8,
+  gliderBottomOffset: -0.8,
+  gliderTopOffset: 10.5
+};
+
 const treeColors = [
   new THREE.Color(0x2d5130),
   new THREE.Color(0x35673b),
@@ -64,6 +70,7 @@ class Vegetation {
     this.treeMesh.count = 0;
     this.group.add(this.treeMesh);
     this.dummy = new THREE.Object3D();
+    this.collisionTrees = [];
   }
 
   update(position) {
@@ -90,7 +97,26 @@ class Vegetation {
     this.lastCenter = null;
     this.retryAt = 0;
     this.treeMesh.count = 0;
+    this.collisionTrees = [];
     this.treeMesh.instanceMatrix.needsUpdate = true;
+  }
+
+  getCollisionAt(position) {
+    if (!position || this.collisionTrees.length === 0) return null;
+
+    const gliderBottom = position.y + TREE_COLLISION_CONFIG.gliderBottomOffset;
+    const gliderTop = position.y + TREE_COLLISION_CONFIG.gliderTopOffset;
+
+    for (const tree of this.collisionTrees) {
+      if (gliderTop < tree.groundHeight || gliderBottom > tree.topHeight) continue;
+
+      const radius = tree.radius + TREE_COLLISION_CONFIG.gliderRadius;
+      const dx = position.x - tree.x;
+      const dz = position.z - tree.z;
+      if (dx * dx + dz * dz <= radius * radius) return tree;
+    }
+
+    return null;
   }
 
   rebuild(center) {
@@ -105,6 +131,7 @@ class Vegetation {
     const maxCellZ = Math.floor((center.z + radius) / cellSize);
     const radiusSq = radius * radius;
     let count = 0;
+    const collisionTrees = [];
 
     for (let cellZ = minCellZ; cellZ <= maxCellZ && count < maxInstances; cellZ += 1) {
       for (let cellX = minCellX; cellX <= maxCellX && count < maxInstances; cellX += 1) {
@@ -133,8 +160,9 @@ class Vegetation {
         if (this.terrain.isUrbanBlockedAt?.(x, z)) continue;
 
         const scale = 0.7 + hashCell(cellX, cellZ, 3) * 0.8;
+        const heightScale = scale * (0.85 + hashCell(cellX, cellZ, 4) * 0.4);
         this.dummy.position.set(x, groundHeight - 0.6, z);
-        this.dummy.scale.set(scale, scale * (0.85 + hashCell(cellX, cellZ, 4) * 0.4), scale);
+        this.dummy.scale.set(scale, heightScale, scale);
         this.dummy.rotation.y = hashCell(cellX, cellZ, 5) * Math.PI * 2;
         this.dummy.updateMatrix();
         this.treeMesh.setMatrixAt(count, this.dummy.matrix);
@@ -142,10 +170,18 @@ class Vegetation {
           count,
           treeColors[Math.floor(hashCell(cellX, cellZ, 6) * treeColors.length)]
         );
+        collisionTrees.push({
+          x,
+          z,
+          groundHeight,
+          topHeight: groundHeight - 0.6 + 14 * heightScale,
+          radius: 5.25 * scale
+        });
         count += 1;
       }
     }
 
+    this.collisionTrees = collisionTrees;
     this.treeMesh.count = count;
     this.treeMesh.instanceMatrix.needsUpdate = true;
     if (this.treeMesh.instanceColor) this.treeMesh.instanceColor.needsUpdate = true;

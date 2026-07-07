@@ -22,11 +22,13 @@ const CAMERA_CONFIG = {
 // orientacao do modelo (banco/pitch), com leve olhar para baixo.
 const FIRST_PERSON_CONFIG = {
   headOffset: new THREE.Vector3(0, 0.72, 0.1),
-  lookDownPitch: 0.07,
+  // Olhar levemente para baixo para enquadrar o cockpit da selete e as maos.
+  lookDownPitch: 0.09,
   orientationSmoothing: 14,
-  // Near plane menor para nao cortar o casulo/linhas perto da cabeca;
-  // restaurado no modo externo para preservar a precisao do depth buffer.
-  nearPlane: 0.5
+  // Near plane bem curto para nao cortar as maos/batoques quando o freio
+  // recua perto do corpo; restaurado no modo externo para preservar a
+  // precisao do depth buffer.
+  nearPlane: 0.06
 };
 const THIRD_PERSON_NEAR_PLANE = 2;
 

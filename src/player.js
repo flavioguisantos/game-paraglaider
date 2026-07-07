@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { applyFlightPhysics, POLAR_SPEEDS, updateAltitudeMetrics } from './physics.js?v=realism-1';
-import { createParagliderModel, setParagliderLandedPose } from './paragliderModel.js?v=pilot-pose-1';
+import { createParagliderModel, setParagliderLandedPose } from './paragliderModel.js?v=pilot-pose-5';
+import { createFirstPersonRig, updateFirstPersonRig } from './firstPersonRig.js?v=8';
+import { getCameraMode } from './camera.js?v=camera-modes-3';
 
 const PLAYER_CONFIG = {
   launchX: 0,
@@ -38,6 +40,10 @@ export class Player {
         helmet: 0xf2c94c
       }
     });
+    // Rig da visao do piloto (selete + bracos com batoques): so aparece na
+    // primeira pessoa, quando o boneco de terceira pessoa e ocultado.
+    this.firstPersonRig = createFirstPersonRig();
+    this.group.add(this.firstPersonRig);
     this.position = this.group.position;
     this.velocity = new THREE.Vector3();
     this.heading = launchHeadingRadians;
@@ -76,6 +82,7 @@ export class Player {
   }
 
   update(delta, flightContext) {
+    this.syncFirstPersonView(delta);
     if (this.landed || this.entangled) return;
 
     const turnInput = Number(this.input.left) - Number(this.input.right);
@@ -123,6 +130,16 @@ export class Player {
     );
   }
 
+  // Mostra o rig de primeira pessoa (e esconde o boneco externo) enquanto a
+  // camera estiver na visao do piloto; pousado, volta sempre ao modo externo.
+  syncFirstPersonView(delta) {
+    const active = getCameraMode() === 'first-person' && !this.landed && !this.entangled;
+    this.firstPersonRig.visible = active;
+    const pilot = this.group.userData.parts?.pilot;
+    if (pilot) pilot.visible = !active;
+    if (active) updateFirstPersonRig(this.firstPersonRig, this.input, delta);
+  }
+
   getForwardVector() {
     return new THREE.Vector3(-Math.sin(this.heading), 0, -Math.cos(this.heading)).normalize();
   }
@@ -130,11 +147,17 @@ export class Player {
   applyLandingPose() {
     if (this.landingPoseApplied) return;
 
-    const groundHeight = this.terrain.getHeightAt(this.position.x, this.position.z);
+    const groundHeight = getVisualGroundHeight(this.terrain, this.position.x, this.position.z);
     this.group.rotation.set(0, this.heading, 0);
     setParagliderLandedPose(this.group, { groundHeight });
     this.landingPoseApplied = true;
   }
+}
+
+function getVisualGroundHeight(terrain, x, z) {
+  return terrain.getRenderedHeightAt
+    ? terrain.getRenderedHeightAt(x, z)
+    : terrain.getHeightAt(x, z);
 }
 
 // W acelera rumo a barra cheia; S freia rumo a velocidade minima; solto = trim.

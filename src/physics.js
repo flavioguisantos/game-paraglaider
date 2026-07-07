@@ -247,6 +247,34 @@ export function detectParagliderCollisions(entities) {
   }
 }
 
+export function detectVegetationCollisions(entities, vegetation, terrain) {
+  if (!vegetation || typeof vegetation.getCollisionAt !== 'function') return;
+
+  for (const entity of entities) {
+    if (!canCollide(entity)) continue;
+
+    const tree = vegetation.getCollisionAt(entity.position);
+    if (!tree) continue;
+
+    const groundHeight = terrain.getRenderedHeightAt
+      ? terrain.getRenderedHeightAt(entity.position.x, entity.position.z)
+      : terrain.getHeightAt(entity.position.x, entity.position.z);
+
+    entity.position.y = groundHeight + FLIGHT_PHYSICS.landingClearance;
+    entity.velocity.set(0, 0, 0);
+    entity.speed = 0;
+    entity.targetSpeed = 0;
+    entity.groundSpeedKmh = 0;
+    entity.windAdjustedSpeedKmh = 0;
+    entity.verticalSpeed = 0;
+    entity.landed = true;
+    entity.crashed = true;
+    entity.collisionSource = 'tree';
+    updateAltitudeMetrics(entity, terrain);
+    if (typeof entity.applyLandingPose === 'function') entity.applyLandingPose();
+  }
+}
+
 export function updateEntangledParagliders(entities, delta, { terrain, wind }) {
   const pairs = new Map();
 

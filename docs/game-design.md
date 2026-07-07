@@ -17,7 +17,7 @@ Antes da rodada, o jogador escolhe o local de voo, escolhe a cor principal do pa
 - `A` ou seta para esquerda: virar para esquerda.
 - `D` ou seta para direita: virar para direita.
 - Em telas touch, botoes sobrepostos no canto inferior replicam os mesmos comandos de acelerar, frear e virar para esquerda/direita.
-- `C` ou o botao de camera (📷) alterna entre a camera externa (terceira pessoa) e a visao do piloto (primeira pessoa). Na visao do piloto, a camera fica presa ao capacete sem atraso de posicao, herda a orientacao do modelo (inclina com a asa na curva e no pendulo) com leve olhar para baixo, e o near plane cai para 0.5 m para nao cortar o casulo (restaurado no modo externo). Apos o pouso, a camera orbital de pouso vale para os dois modos.
+- `C` ou o botao de camera (📷) alterna entre a camera externa (terceira pessoa) e a visao do piloto (primeira pessoa). Na visao do piloto, a camera fica presa ao capacete sem atraso de posicao, herda a orientacao do modelo (inclina com a asa na curva e no pendulo) com leve olhar para baixo, e o near plane cai para 0.06 m para nao cortar as maos/batoques quando o freio e puxado perto do corpo (restaurado no modo externo). Apos o pouso, a camera orbital de pouso vale para os dois modos.
 - A interface touch deve bloquear selecao de texto e callout nativo enquanto o jogador segura os botoes de comando.
 - O botao discreto de reinicio (`↻`) aparece durante a rodada e recarrega o prototipo para iniciar uma nova tentativa. Em telas touch, fica no canto superior para nao cobrir os comandos de virar, acelerar ou frear.
 
@@ -145,6 +145,7 @@ Regras de qualidade do pouso:
 - Tocar o solo descendo a 3 m/s ou mais rapido, ou voando a 48 km/h ou mais, conta como colisao ("Colidiu" no HUD e ranking).
 - Segurar o freio (`S`) a menos de ~7 m do solo executa o flare: uma reserva unica de energia amortece o afundamento por ~1,4 s, permitindo pouso suave.
 - Cair enroscado apos colisao em voo tambem conta como colisao.
+- Encostar em uma arvore em voo conta como colisao: o participante cai, marca `crashed` e sai da rodada.
 
 ## Modo realista
 No painel de camadas ha o toggle "Modo realista (sem ajudas)": esconde colunas, aneis, particulas e rotulos de m/s das termicas, os marcadores de lift orografico e as setas 3D de vento. Ficam apenas os sinais reais de um voo: nuvens cumulus no topo das termicas, sombras de nuvem, passaros circulando e o variometro. A fisica nao muda.

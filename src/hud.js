@@ -1,3 +1,5 @@
+import { THERMAL_ASSISTANT_SECTOR_COUNT, getThermalAssistantSectors } from './thermalAssistant.js?v=2';
+
 export function createRoundState() {
   return {
     elapsedSeconds: 0,
@@ -20,6 +22,7 @@ export function updateRoundState(round, delta, player) {
 // Fita de bussola: pixels por grau de rumo (define quanto do horizonte cabe).
 const COMPASS_PX_PER_DEGREE = 1.6;
 const COMPASS_LABELS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+const THERMAL_RING_RADIUS_PX = 30;
 
 export function createHud(root) {
   root.innerHTML = `
@@ -32,6 +35,13 @@ export function createHud(root) {
       <div class="instr-vario">
         <div class="vario-bar"><div class="vario-fill" data-hud="varioFill"></div></div>
         <div class="vario-value" data-hud="varioBox"><strong data-hud="vario">0.0</strong><em>M/S</em></div>
+      </div>
+      <div class="instr-thermal" data-hud="thermalAssistant">
+        <div class="thermal-ring" data-hud="thermalRing">
+          <div class="thermal-arrow" data-hud="thermalArrow">&#8593;</div>
+          <div class="thermal-core"></div>
+        </div>
+        <div class="thermal-label" data-hud="thermalLabel">Centralize</div>
       </div>
       <div class="instr-row">
         <div class="instr-cell"><span>VEL</span><strong data-hud="speed">0</strong><em>km/h solo</em></div>
@@ -64,6 +74,9 @@ export function createHud(root) {
   const compassTape = root.querySelector('[data-hud="compassTape"]');
   buildCompassTape(compassTape);
 
+  const thermalRing = root.querySelector('[data-hud="thermalRing"]');
+  const thermalSectors = buildThermalRing(thermalRing);
+
   return {
     time: root.querySelector('[data-hud="time"]'),
     altitude: root.querySelector('[data-hud="altitude"]'),
@@ -87,8 +100,28 @@ export function createHud(root) {
     scorePopDetail: root.querySelector('[data-hud="scorePopDetail"]'),
     status: root.querySelector('[data-hud="status"]'),
     rankingTitle: root.querySelector('[data-hud="rankingTitle"]'),
-    ranking: root.querySelector('[data-hud="ranking"]')
+    ranking: root.querySelector('[data-hud="ranking"]'),
+    thermalAssistant: root.querySelector('[data-hud="thermalAssistant"]'),
+    thermalArrow: root.querySelector('[data-hud="thermalArrow"]'),
+    thermalLabel: root.querySelector('[data-hud="thermalLabel"]'),
+    thermalSectors
   };
+}
+
+// Anel do assistente de termica: um marcador por setor de rumo, posicionado
+// radialmente e depois colorido/rotacionado a cada frame conforme os dados
+// acumulados em thermalAssistant.js (mesma tecnica da fita de bussola acima).
+function buildThermalRing(container) {
+  const sectors = [];
+
+  for (let index = 0; index < THERMAL_ASSISTANT_SECTOR_COUNT; index += 1) {
+    const tick = document.createElement('div');
+    tick.className = 'thermal-sector';
+    container.append(tick);
+    sectors.push(tick);
+  }
+
+  return sectors;
 }
 
 // Constroi tres voltas completas de fita (-360 a 720 graus) para que qualquer
@@ -113,7 +146,7 @@ function buildCompassTape(container) {
   }
 }
 
-export function updateHud(elements, { player, bots = [], terrain, round, wind, scoring }) {
+export function updateHud(elements, { player, bots = [], terrain, round, wind, scoring, thermalAssistant }) {
   const playerAltitude = getAltitudeMetrics(player, terrain);
   const bearingDegrees = getBearingDegrees(player.heading ?? 0);
 
@@ -122,6 +155,7 @@ export function updateHud(elements, { player, bots = [], terrain, round, wind, s
   elements.groundClearance.textContent = Math.round(playerAltitude.groundClearance).toLocaleString('pt-BR');
   elements.vario.textContent = formatSigned(player.verticalSpeed, 1);
   updateVarioVisuals(elements, player.verticalSpeed);
+  if (thermalAssistant) updateThermalAssistantVisuals(elements, thermalAssistant, player);
   elements.speed.textContent = `${Math.round(player.groundSpeedKmh ?? player.speed)}`;
   elements.glide.textContent = getGlideRatioText(player);
   elements.wind.textContent = `${Math.round(wind?.speedKmh ?? 0)}`;
@@ -183,6 +217,51 @@ function updateVarioVisuals(elements, verticalSpeed) {
   elements.varioBox.classList.toggle('is-climb', verticalSpeed > 0.1);
   // Afundamento normal de planeio (~-1 m/s) fica neutro; so alerta em sink forte.
   elements.varioBox.classList.toggle('is-sink', verticalSpeed < -2);
+}
+
+// Assistente de centralizacao: seta aponta o centro da termica (real ou
+// estimado pelo vario, conforme o modo) e o rotulo mostra forca e distancia.
+const THERMAL_CENTERED_DISTANCE_METERS = 10;
+
+function updateThermalAssistantVisuals(elements, thermalAssistant, player) {
+  const isUsable = thermalAssistant.active;
+
+  elements.thermalAssistant.classList.toggle('is-active', isUsable);
+
+  const sectors = getThermalAssistantSectors(thermalAssistant, player);
+  for (let index = 0; index < THERMAL_ASSISTANT_SECTOR_COUNT; index += 1) {
+    const sector = sectors[index];
+    const tick = elements.thermalSectors[index];
+
+    tick.style.transform = `rotate(${sector.relativeBearingDegrees}deg) translate(-50%, -${THERMAL_RING_RADIUS_PX}px)`;
+    tick.style.opacity = sector.hasData ? getThermalSectorOpacity(sector.average) : 0.12;
+    tick.style.backgroundColor = sector.average >= 0 ? '#59d98c' : '#ff6b66';
+  }
+
+  if (!isUsable) {
+    elements.thermalArrow.style.transform = 'rotate(0deg)';
+    elements.thermalArrow.style.opacity = 0.3;
+    elements.thermalLabel.textContent = 'Centralize';
+    return;
+  }
+
+  const distance = thermalAssistant.distanceMeters;
+  const strengthText = `${formatSigned(thermalAssistant.strength, 1)} m/s`;
+  elements.thermalArrow.style.transform = `rotate(${thermalAssistant.relativeBearingDegrees}deg)`;
+
+  if (distance < THERMAL_CENTERED_DISTANCE_METERS) {
+    // No nucleo: some a seta para o piloto so manter a curva.
+    elements.thermalArrow.style.opacity = 0;
+    elements.thermalLabel.textContent = `No centro · ${strengthText}`;
+  } else {
+    elements.thermalArrow.style.opacity = 1;
+    elements.thermalLabel.textContent = `${strengthText} · ${Math.round(distance)} m`;
+  }
+}
+
+function getThermalSectorOpacity(averageLift) {
+  const clamped = Math.max(-1, Math.min(2, averageLift));
+  return 0.25 + (Math.abs(clamped) / 2) * 0.75;
 }
 
 // Razao de planeio instantanea sobre o solo (velocidade horizontal / descida).

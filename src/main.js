@@ -2,18 +2,19 @@ import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { createCloudBillboard } from './clouds.js';
 import { createAdventureMusic, createScoreAudio, createVarioAudio, unlockGameAudio } from './audio.js';
-import { createBots } from './bot.js?v=realism-2';
-import { initializeThirdPersonCamera, toggleCameraMode, updateFlightCamera, updateStandbyCamera } from './camera.js?v=camera-modes-1';
-import { configureWind, createWindVector, detectParagliderCollisions, updateEntangledParagliders, updateWind } from './physics.js?v=realism-1';
-import { createHud, createRoundState, updateHud, updateRoundState } from './hud.js?v=hud-instrument-1';
+import { createBots } from './bot.js?v=realism-4';
+import { initializeThirdPersonCamera, toggleCameraMode, updateFlightCamera, updateStandbyCamera } from './camera.js?v=camera-modes-3';
+import { configureWind, createWindVector, detectParagliderCollisions, detectVegetationCollisions, updateEntangledParagliders, updateWind } from './physics.js?v=realism-2';
+import { createHud, createRoundState, updateHud, updateRoundState } from './hud.js?v=hud-instrument-4';
 import { findFlightLocation } from './flightLocations.js';
 import { createOrographicLift } from './orographicLift.js';
-import { Player } from './player.js?v=realism-2';
+import { Player } from './player.js?v=fp-rig-3';
 import { createScoringState, initializeScoringForEntities, updateScoring } from './scoring.js';
 import { createTerrain } from './terrain.js?v=terrain-realism-4';
 import { createThermalField } from './thermal.js?v=realism-1';
-import { createVegetation } from './vegetation.js';
-import { createLocationBuilding, updateLocationBuilding } from './buildings.js';
+import { createThermalAssistant, updateThermalAssistant } from './thermalAssistant.js?v=2';
+import { createVegetation } from './vegetation.js?v=tree-collision-1';
+import { createLocationBuilding, updateLocationBuilding } from './buildings.js?v=2';
 
 const canvas = document.querySelector('#game');
 const startButton = document.querySelector('#start-flight');
@@ -130,6 +131,7 @@ const appState = {
   flyers: [],
   round: null,
   scoring: null,
+  thermalAssistant: null,
   lastScoreFeedbackAudioId: null,
   starting: false,
   // Modo realista: esconde colunas/rotulos de termica, marcadores de lift e
@@ -286,6 +288,7 @@ async function startFlight() {
   initializeScoringForEntities(appState.flyers);
   appState.lastScoreFeedbackAudioId = null;
   appState.round = createRoundState();
+  appState.thermalAssistant = createThermalAssistant();
   appState.started = true;
   document.body.classList.add('is-flying');
   document.body.classList.remove('round-ended');
@@ -351,6 +354,7 @@ renderer.setAnimationLoop(() => {
     }
 
     detectParagliderCollisions(flyers);
+    detectVegetationCollisions(flyers, vegetation, terrain);
   }
 
   updateEntangledParagliders(flyers, delta, { terrain, wind });
@@ -363,7 +367,21 @@ renderer.setAnimationLoop(() => {
   if (round.ended) adventureMusic.stop();
   playScoreFeedbackAudio(player);
   varioAudio.update(delta, player.verticalSpeed, player.landed || round.ended);
-  updateHud(hud, { player, bots, terrain, round, wind, scoring: appState.scoring });
+  updateThermalAssistant(appState.thermalAssistant, delta, player, {
+    thermals,
+    // Segue o toggle "Modo realista": com ajudas aponta o nucleo real;
+    // sem ajudas estima o centro so pelos dados do vario.
+    useRealCore: appState.assistVisuals
+  });
+  updateHud(hud, {
+    player,
+    bots,
+    terrain,
+    round,
+    wind,
+    scoring: appState.scoring,
+    thermalAssistant: appState.thermalAssistant
+  });
   updateFlightCamera(camera, player, delta, { terrain });
 
   renderer.render(scene, camera);

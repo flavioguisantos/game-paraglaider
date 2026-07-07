@@ -48,6 +48,10 @@ export function createLocationBuilding() {
   return group;
 }
 
+// Afunda a base para nenhum canto flutuar em encosta (arvores usam 0.6 com
+// base pontual; aqui um pouco menos porque ja usamos o minimo dos cantos).
+const GROUND_SINK = 0.4;
+
 export function updateLocationBuilding(building, location, terrain) {
   if (!building) return;
 
@@ -63,7 +67,41 @@ export function updateLocationBuilding(building, location, terrain) {
     return;
   }
 
-  const groundHeight = terrain.getHeightAt(worldXZ.x, worldXZ.z);
-  building.position.set(worldXZ.x, groundHeight, worldXZ.z);
+  const groundHeight = getFootprintGroundHeight(terrain, worldXZ.x, worldXZ.z);
+  // Chunk ainda nao carregado: mantem oculto; esta funcao roda todo frame e
+  // reposiciona sozinha quando o relevo real chegar (mesmo padrao das arvores).
+  if (groundHeight === null) {
+    building.visible = false;
+    return;
+  }
+
+  building.position.set(worldXZ.x, groundHeight - GROUND_SINK, worldXZ.z);
   building.visible = true;
+}
+
+// Menor altura da malha renderizada sob o centro e os 4 cantos da base:
+// usa getRenderedHeightAt (relevo visivel, como as arvores em vegetation.js)
+// em vez de getHeightAt, que diverge metros da malha em encostas.
+function getFootprintGroundHeight(terrain, x, z) {
+  const fallbackHeight = terrain.config?.fallbackHeight;
+  const halfWidth = BODY_WIDTH / 2;
+  const halfDepth = BODY_DEPTH / 2;
+  const corners = [
+    [x, z],
+    [x - halfWidth, z - halfDepth],
+    [x + halfWidth, z - halfDepth],
+    [x - halfWidth, z + halfDepth],
+    [x + halfWidth, z + halfDepth]
+  ];
+
+  let minHeight = Infinity;
+  for (const [cornerX, cornerZ] of corners) {
+    const height = terrain.getRenderedHeightAt
+      ? terrain.getRenderedHeightAt(cornerX, cornerZ)
+      : terrain.getHeightAt(cornerX, cornerZ);
+    if (height === fallbackHeight) return null;
+    minHeight = Math.min(minHeight, height);
+  }
+
+  return minHeight;
 }

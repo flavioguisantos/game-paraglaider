@@ -24,8 +24,20 @@ const ASSET_CANOPY_CONFIG = {
   pitchUpRadians: 0
 };
 
+const INITIAL_LINE_CONFIG = {
+  lineTopLift: 1.62,
+  edgeDropScale: 3.58
+};
+
+const PROCEDURAL_CANOPY_LINE_CENTER_Y = 3.66;
+const PROCEDURAL_CANOPY_LOADING_Y = (
+  ASSET_CANOPY_CONFIG.verticalOffset
+  + INITIAL_LINE_CONFIG.lineTopLift
+  - PROCEDURAL_CANOPY_LINE_CENTER_Y
+);
+
 const LANDED_POSE_CONFIG = {
-  groundOffset: 0.05,
+  groundOffset: -0.08,
   canopyDepthOffset: 2.35,
   canopyFlattenScale: 0.08
 };
@@ -66,6 +78,8 @@ export function createParagliderModel(options = {}) {
   enableShadowCasting(group);
 
   if (options.canopyAssetUrl) {
+    proceduralCanopy.visible = false;
+    suspensionLines.visible = false;
     loadObjCanopy({
       url: options.canopyAssetUrl,
       canopyGroup,
@@ -81,6 +95,7 @@ export function createParagliderModel(options = {}) {
 function createProceduralCanopy(colors) {
   const group = new THREE.Group();
   group.name = 'ProceduralCanopy';
+  group.position.y = PROCEDURAL_CANOPY_LOADING_Y;
 
   const canopy = createCanopy(colors.canopy, 0, 0.06);
   canopy.position.y = 1.7;
@@ -114,6 +129,8 @@ function createProceduralCanopy(colors) {
 function loadObjCanopy({ url, canopyGroup, suspensionLines, fallback, colors }) {
   if (isBrowserOffline()) {
     markObjUnavailable(url, 'offline');
+    fallback.visible = true;
+    suspensionLines.visible = true;
     canopyGroup.userData.usesObj = false;
     return;
   }
@@ -138,11 +155,14 @@ function loadObjCanopy({ url, canopyGroup, suspensionLines, fallback, colors }) 
       canopyGroup.remove(fallback);
       canopyGroup.add(object);
       connectSuspensionLinesToCanopySurface(suspensionLines, object, canopyGroup);
+      suspensionLines.visible = true;
       canopyGroup.userData.assetUrl = url;
       canopyGroup.userData.usesObj = true;
     })
     .catch((error) => {
       markObjUnavailable(url, error);
+      fallback.visible = true;
+      suspensionLines.visible = true;
       canopyGroup.userData.usesObj = false;
     });
 }
@@ -488,13 +508,11 @@ function createSuspensionLines() {
   ];
   const halfSpan = ASSET_CANOPY_CONFIG.targetSpan / 2;
   const stations = [0.65, 1.45, 2.25, 3.05, 3.85, 4.65, 5.35, 6.02];
-  const lineTopLift = 1.62;
-  const edgeDropScale = 3.58;
   const getCanopyAnchorY = (normalizedX, row = {}) => (
     ASSET_CANOPY_CONFIG.verticalOffset
-    + lineTopLift
+    + INITIAL_LINE_CONFIG.lineTopLift
     + (row.yOffset ?? 0)
-    - Math.pow(normalizedX, 2.05) * edgeDropScale
+    - Math.pow(normalizedX, 2.05) * INITIAL_LINE_CONFIG.edgeDropScale
     + Math.pow(normalizedX, 2) * (row.tipLift ?? 0)
   );
 
