@@ -14,7 +14,12 @@ const FLIGHT_PHYSICS = {
   // Flare: freiar perto do chao converte energia em reducao de afundamento.
   flareHeightMeters: 7,
   flareLiftMetersPerSecond: 1.6,
-  flareDurationSeconds: 1.4
+  flareDurationSeconds: 1.4,
+  droneMaxClimbRate: 18,
+  droneMaxDescentRate: -18,
+  droneCruiseDescentRate: -0.35,
+  droneLiftInfluence: 0.18,
+  droneDragSinkPerKmh: 0.0025
 };
 
 const GRAVITY = 9.81;
@@ -120,6 +125,11 @@ export function updateWind(wind, delta) {
 export function applyFlightPhysics(entity, delta, { terrain, thermals, orographicLift, wind }) {
   if (entity.landed || entity.entangled) return;
 
+  if (entity.vehicleProfile?.flightModel === 'drone') {
+    applyDronePhysics(entity, delta, { terrain, thermals, orographicLift, wind });
+    return;
+  }
+
   const forward = entity.getForwardVector();
   // Gradiente de vento: perto do relevo o vento e mais fraco que em altitude.
   const windGradientFactor = getWindGradientFactor(entity.groundClearance ?? 0);
@@ -146,19 +156,18 @@ export function applyFlightPhysics(entity, delta, { terrain, thermals, orographi
   entity.windAngleStepDegrees = windRelativeVelocity.angleDegrees;
   entity.windAdjustedSpeedKmh = entity.speed + metersPerSecondToKmh(windRelativeVelocity.headwindComponent);
 
-  // Afundamento pela curva polar, agravado pelo fator de carga na curva:
-  // inclinar para girar custa altitude (n = 1/cos(bank), sink ~ n^1.5).
   const bankAngle = Math.atan(
     ((entity.turnRate ?? 0) * Math.max(forwardMetersPerSecond, 4)) / GRAVITY
   );
   entity.bankAngle = bankAngle;
-  const loadFactor = 1 / Math.max(Math.cos(bankAngle), 0.4);
-  const polarSink = getPolarSinkRate(entity.speed) * Math.pow(loadFactor, TURN_SINK_LOAD_EXPONENT);
 
   const thermalLift = thermals?.getLiftAt(entity.position) ?? 0;
   const ridgeLift = orographicLift?.getLiftAt(entity.position, { terrain, wind }) ?? 0;
-  entity.verticalSpeed = polarSink + thermalLift + ridgeLift;
-  applyFlare(entity, delta);
+  entity.verticalSpeed = getVerticalSpeed(entity, delta, {
+    bankAngle,
+    thermalLift,
+    ridgeLift
+  });
   entity.position.y += entity.verticalSpeed * delta;
 
   const groundHeight = terrain.getHeightAt(entity.position.x, entity.position.z);
@@ -179,6 +188,78 @@ export function applyFlightPhysics(entity, delta, { terrain, thermals, orographi
   }
 
   updateAltitudeMetrics(entity, terrain);
+}
+
+function applyDronePhysics(entity, delta, { terrain, thermals, orographicLift, wind }) {
+  const forward = entity.getForwardVector();
+  const worldUnitsPerMeter = terrain.worldUnitsPerMeter ?? 1;
+  const speedMetersPerSecond = kmhToMetersPerSecond(entity.speed);
+  const horizontalWind = wind ?? new THREE.Vector3();
+  const thermalLift = thermals?.getLiftAt(entity.position) ?? 0;
+  const ridgeLift = orographicLift?.getLiftAt(entity.position, { terrain, wind }) ?? 0;
+  const throttleInput = Number(entity.input?.descend) - Number(entity.input?.ascend);
+  const throttleVertical = throttleInput >= 0
+    ? throttleInput * FLIGHT_PHYSICS.droneMaxClimbRate
+    : throttleInput * -FLIGHT_PHYSICS.droneMaxDescentRate;
+  const liftContribution = (thermalLift + ridgeLift) * FLIGHT_PHYSICS.droneLiftInfluence;
+
+  entity.velocity.set(
+    (forward.x * speedMetersPerSecond + horizontalWind.x) * worldUnitsPerMeter,
+    (forward.y * speedMetersPerSecond) + throttleVertical + FLIGHT_PHYSICS.droneCruiseDescentRate + liftContribution,
+    (forward.z * speedMetersPerSecond + horizontalWind.z) * worldUnitsPerMeter
+  );
+
+  entity.position.addScaledVector(entity.velocity, delta);
+  entity.distanceTravelled += entity.velocity.length() * delta / worldUnitsPerMeter;
+  updateDistanceFromStart(entity, terrain);
+  entity.groundSpeedKmh = metersPerSecondToKmh(
+    Math.hypot(entity.velocity.x / worldUnitsPerMeter, entity.velocity.z / worldUnitsPerMeter)
+  );
+  entity.verticalSpeed = entity.velocity.y;
+  entity.windAngleDegrees = 0;
+  entity.windAngleStepDegrees = 0;
+  entity.windAdjustedSpeedKmh = entity.speed;
+  entity.bankAngle = entity.rollAngle ?? 0;
+
+  const groundHeight = terrain.getHeightAt(entity.position.x, entity.position.z);
+  const landingHeight = groundHeight + FLIGHT_PHYSICS.landingClearance;
+  if (entity.position.y <= landingHeight) {
+    const crashed = entity.verticalSpeed <= FLIGHT_PHYSICS.crashVerticalSpeed
+      || entity.speed >= FLIGHT_PHYSICS.crashAirspeedKmh;
+    entity.position.y = landingHeight;
+    entity.velocity.set(0, 0, 0);
+    entity.speed = 0;
+    entity.targetSpeed = 0;
+    entity.groundSpeedKmh = 0;
+    entity.windAdjustedSpeedKmh = 0;
+    entity.verticalSpeed = 0;
+    entity.landed = true;
+    entity.crashed = crashed;
+  }
+
+  updateAltitudeMetrics(entity, terrain);
+}
+
+function getVerticalSpeed(entity, delta, { bankAngle, thermalLift, ridgeLift }) {
+  if (entity.vehicleProfile?.flightModel === 'drone') {
+    const altitudeInput = Number(entity.input?.descend) - Number(entity.input?.ascend);
+    const throttleClimb = altitudeInput >= 0
+      ? altitudeInput * FLIGHT_PHYSICS.droneMaxClimbRate
+      : altitudeInput * -FLIGHT_PHYSICS.droneMaxDescentRate;
+    const aerodynamicPenalty = Math.max(0, entity.speed - entity.vehicleProfile.trimSpeedKmh)
+      * FLIGHT_PHYSICS.droneDragSinkPerKmh;
+    const liftContribution = (thermalLift + ridgeLift) * FLIGHT_PHYSICS.droneLiftInfluence;
+    return FLIGHT_PHYSICS.droneCruiseDescentRate + throttleClimb - aerodynamicPenalty + liftContribution;
+  }
+
+  // Afundamento pela curva polar, agravado pelo fator de carga na curva:
+  // inclinar para girar custa altitude (n = 1/cos(bank), sink ~ n^1.5).
+  const loadFactor = 1 / Math.max(Math.cos(bankAngle), 0.4);
+  const polarSink = getPolarSinkRate(entity.speed) * Math.pow(loadFactor, TURN_SINK_LOAD_EXPONENT);
+  const verticalSpeed = polarSink + thermalLift + ridgeLift;
+  entity.verticalSpeed = verticalSpeed;
+  applyFlare(entity, delta);
+  return entity.verticalSpeed;
 }
 
 // Segurar os freios (tecla S) perto do chao arredonda o pouso: consome uma

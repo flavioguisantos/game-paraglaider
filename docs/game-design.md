@@ -7,7 +7,7 @@ O jogador pilota um parapente em terreno montanhoso, buscando colunas de ar quen
 Ganhar altitude e afastar-se do ponto de decolagem. A rodada nao tem limite de tempo; ao final, o ranking compara jogador e bots por desempenho.
 
 ## Controles iniciais
-Antes da rodada, o jogador escolhe o local de voo, escolhe a cor principal do parapente em uma paleta ampliada e inicia o voo por um botao de tela. Locais iniciais disponiveis:
+Antes da rodada, o jogador escolhe o local de voo, escolhe entre `Parapente` e `Drone FPV`, define a cor principal do veiculo em uma paleta ampliada e inicia o voo por um botao de tela. Locais iniciais disponiveis:
 - Atibaia / Pedra Grande, Atibaia - SP.
 - Praia de Sao Vicente, Itarare, Sao Vicente - SP (`-23.964517, -46.363531`), com decolagem inicial mais alta, parapente apontado para o mar e vento vindo do mar.
 - Ao selecionar Sao Vicente na tela inicial, a camera de pre-voo tambem deve olhar de frente para o mar.
@@ -16,8 +16,13 @@ Antes da rodada, o jogador escolhe o local de voo, escolhe a cor principal do pa
 - `S` ou seta para baixo: frear do trim ate ~26 km/h; segurar o freio perto do chao executa o flare, amortecendo o pouso (reserva unica por voo).
 - `A` ou seta para esquerda: virar para esquerda.
 - `D` ou seta para direita: virar para direita.
-- Em telas touch, botoes sobrepostos no canto inferior replicam os mesmos comandos de acelerar, frear e virar para esquerda/direita.
+- No `Drone FPV`, `seta para cima` desce, `seta para baixo` sobe, `Espaco` aciona o boost de velocidade, `A`/`D` comandam yaw rapido e `W`/`S` controlam pitch para mergulho, subida forte e loop.
+- No `Drone FPV`, a camera em primeira pessoa acompanha imediatamente a inclinacao vertical do drone: ao descer olha para baixo; ao subir olha para cima.
+- No `Drone FPV`, os comandos de subir/descer tambem empurram o pitch no mesmo sentido visual: segurar `subir` aponta o nariz para cima e permite continuar o giro ate fechar um loop vertical.
+- No `Drone FPV`, ao virar para a direita/esquerda a camera deve inclinar para o mesmo lado da curva, sem herdar a leitura visual do parapente.
+- Em telas touch, botoes sobrepostos no canto inferior replicam os comandos principais; no drone, o cluster de velocidade troca para `descer`, `boost` e `subir`.
 - `C` ou o botao de camera (📷) alterna entre a camera externa (terceira pessoa) e a visao do piloto (primeira pessoa). Na visao do piloto, a camera fica presa ao capacete sem atraso de posicao, herda a orientacao do modelo (inclina com a asa na curva e no pendulo) com leve olhar para baixo, e o near plane cai para 0.06 m para nao cortar as maos/batoques quando o freio e puxado perto do corpo (restaurado no modo externo). Apos o pouso, a camera orbital de pouso vale para os dois modos.
+- No `Drone FPV`, a camera fica sempre em primeira pessoa e o toggle de camera e desativado.
 - A interface touch deve bloquear selecao de texto e callout nativo enquanto o jogador segura os botoes de comando.
 - O botao discreto de reinicio (`↻`) aparece durante a rodada e recarrega o prototipo para iniciar uma nova tentativa. Em telas touch, fica no canto superior para nao cobrir os comandos de virar, acelerar ou frear.
 
@@ -32,6 +37,7 @@ Quando o jogador pousa, o parapente deixa de voar, mas os comandos continuam ati
 - X/Z representam deslocamento horizontal.
 - X/Z/Y passam a representar metros no mundo do jogo.
 - A velocidade de trim do parapente e 38 km/h; o jogador varia entre ~26 km/h (freios) e ~55 km/h (barra) e, ao soltar, retorna suavemente ao trim. Na decolagem, a velocidade acelera do passo de rampa (~8 km/h) ate o trim.
+- O drone usa um perfil separado de alto desempenho: cruzeiro rapido, pico de ate ~700 km/h, resposta de yaw bem mais agressiva, pitch continuo sem auto-level e subida/descida diretas nas setas verticais invertidas.
 - A distancia no ranking e HUD e medida em linha reta entre o ponto de decolagem de cada participante e sua posicao atual, nao pelo caminho efetivamente percorrido.
 - Y representa altitude absoluta em metros em relacao ao nivel do mar.
 - A altura exibida como valor principal do parapente e a distancia vertical ate o terreno exatamente abaixo da posicao X/Z atual: `position.y - terrain.getHeightAt(position.x, position.z)`.
@@ -39,6 +45,7 @@ Quando o jogador pousa, o parapente deixa de voar, mas os comandos continuam ati
 - O afundamento segue uma curva polar de asa EN-B: ~1,45 m/s a 25 km/h, ~1,05 m/s no trim (planeio ~10:1) e ~2,3 m/s com barra cheia.
 - Curvar custa altitude: a inclinacao (bank) derivada da taxa de curva e da velocidade aumenta o afundamento pelo fator de carga, calibrado para uma vela EN-B hot sem punir demais a subida em giro moderado dentro da termica. A inclinacao visual do parapente segue o bank real.
 - O parapente deve sempre ter algum movimento para frente.
+- O drone tambem mantem avanco continuo, mas a pilotagem deve ficar seca e direta, sem balanco/pendulo visual do parapente.
 - Curvas devem ser suaves, progressivas e sem giro instantaneo ao pressionar ou soltar comando.
 - A taxa de curva deve ser mais proxima de um parapente real, priorizando leitura e controle fino em vez de rotacao rapida estilo arcade.
 - A curva ainda deve ser fechada o suficiente para permitir permanecer dentro de uma termica media.
@@ -140,6 +147,8 @@ Regras iniciais:
 
 ## Pouso
 Ao tocar o terreno, o participante pousa e sai da rodada. Visualmente, o parapente deve aparecer no chao, com a vela achatada e deitada sobre o terreno, e o piloto deve ficar de pe ao lado da vela.
+
+Quando o jogador escolhe `Drone FPV`, o contato com terreno, arvores e outros participantes continua encerrando a rodada pelas mesmas regras de colisao.
 
 Regras de qualidade do pouso:
 - Tocar o solo descendo a 3 m/s ou mais rapido, ou voando a 48 km/h ou mais, conta como colisao ("Colidiu" no HUD e ranking).

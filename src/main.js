@@ -3,12 +3,12 @@ import { Sky } from 'three/addons/objects/Sky.js';
 import { createCloudBillboard } from './clouds.js';
 import { createAdventureMusic, createScoreAudio, createVarioAudio, unlockGameAudio } from './audio.js';
 import { createBots } from './bot.js?v=hot-b-1';
-import { initializeThirdPersonCamera, toggleCameraMode, updateFlightCamera, updateStandbyCamera } from './camera.js?v=camera-modes-3';
+import { initializeThirdPersonCamera, setCameraMode, toggleCameraMode, updateFlightCamera, updateStandbyCamera } from './camera.js?v=camera-modes-3';
 import { configureWind, createWindVector, detectParagliderCollisions, detectVegetationCollisions, updateEntangledParagliders, updateWind } from './physics.js?v=hot-b-1';
 import { createHud, createRoundState, updateHud, updateRoundState } from './hud.js?v=hud-instrument-4';
 import { findFlightLocation } from './flightLocations.js';
 import { createOrographicLift } from './orographicLift.js';
-import { Player } from './player.js?v=hot-b-1';
+import { getVehicleProfile, Player } from './player.js?v=hot-b-1';
 import { createScoringState, initializeScoringForEntities, updateScoring } from './scoring.js';
 import { createTerrain } from './terrain.js?v=terrain-realism-4';
 import { createThermalField } from './thermal.js?v=realism-1';
@@ -21,6 +21,7 @@ const startButton = document.querySelector('#start-flight');
 const restartButton = document.querySelector('#restart-game');
 const colorInputs = [...document.querySelectorAll('input[name="canopy-color"]')];
 const locationInputs = [...document.querySelectorAll('input[name="flight-location"]')];
+const vehicleInputs = [...document.querySelectorAll('input[name="vehicle-type"]')];
 const scene = new THREE.Scene();
 // Perspectiva aerea: nevoa exponencial azulada — o haze cresce suavemente com a
 // distancia (como na atmosfera real) ate encobrir o anel de relevo distante
@@ -137,7 +138,8 @@ const appState = {
   // Modo realista: esconde colunas/rotulos de termica, marcadores de lift e
   // setas de vento; a fisica continua identica.
   assistVisuals: true,
-  selectedLocation: getSelectedFlightLocation()
+  selectedLocation: getSelectedFlightLocation(),
+  selectedVehicleType: getSelectedVehicleType()
 };
 // Hook de inspecao/testes (ex.: teleportar o piloto em testes automatizados).
 window.__appState = appState;
@@ -168,6 +170,7 @@ for (const input of locationInputs) {
 }
 setupLayerPanel();
 setupCameraToggle();
+setupVehicleSelection();
 
 function restartGame() {
   window.location.reload();
@@ -179,6 +182,7 @@ function setupCameraToggle() {
 
   const applyToggle = () => {
     if (!appState.started) return;
+    if (appState.player?.cameraPreference === 'first-person-only') return;
     const mode = toggleCameraMode();
     if (button) {
       button.classList.toggle('is-first-person', mode === 'first-person');
@@ -198,6 +202,18 @@ function setupCameraToggle() {
     applyToggle();
     button.blur();
   });
+}
+
+function setupVehicleSelection() {
+  for (const input of vehicleInputs) {
+    input.addEventListener('change', () => {
+      if (!input.checked || appState.started) return;
+      appState.selectedVehicleType = input.value;
+      updateVehicleSelectionUi();
+    });
+  }
+
+  updateVehicleSelectionUi();
 }
 
 // Painel de teste: liga/desliga cada camada vetorial do mapa.
@@ -267,11 +283,17 @@ async function startFlight() {
   );
 
   const selectedLocation = getSelectedFlightLocation();
+  const selectedVehicleType = getSelectedVehicleType();
+  appState.selectedVehicleType = selectedVehicleType;
+  const selectedVehicleProfile = getVehicleProfile(selectedVehicleType);
+  setCameraMode(selectedVehicleProfile.cameraPreference === 'first-person-only' ? 'first-person' : 'third-person');
+  updateVehicleSelectionUi();
   appState.player = new Player({
     terrain,
     canopyColor: selectedColor,
     launchAltitudeMeters: selectedLocation.launchAltitudeMeters,
-    launchHeadingRadians: selectedLocation.launchHeadingRadians
+    launchHeadingRadians: selectedLocation.launchHeadingRadians,
+    vehicleType: selectedVehicleType
   });
   // A guia de rota (linha ate o TP e marcadores) acompanha apenas o jogador.
   appState.player.isPlayer = true;
@@ -303,6 +325,10 @@ function getSelectedFlightLocation() {
   return findFlightLocation(selectedLocationId);
 }
 
+function getSelectedVehicleType() {
+  return vehicleInputs.find((input) => input.checked)?.value ?? 'paraglider';
+}
+
 function applySelectedFlightLocation() {
   const location = getSelectedFlightLocation();
   appState.selectedLocation = location;
@@ -317,6 +343,54 @@ function applySelectedFlightLocation() {
   thermals.setCeiling(location.cloudBaseMeters ?? 2200);
   orographicLift.configure(location.orographicLift);
   orographicLift.setAssistVisuals(appState.assistVisuals);
+}
+
+function updateVehicleSelectionUi() {
+  const vehicleType = appState.player?.vehicleType ?? appState.selectedVehicleType ?? getSelectedVehicleType();
+  const vehicleProfile = getVehicleProfile(vehicleType);
+  const colorTitle = document.querySelector('[data-start-field="color-title"]');
+  const colorOptions = document.querySelector('.color-options');
+  const cameraToggle = document.querySelector('#camera-toggle');
+  const ascendButton = document.querySelector('[data-control="ascend"]');
+  const descendButton = document.querySelector('[data-control="descend"]');
+  const boostButton = document.querySelector('[data-control="boost"]');
+
+  if (colorTitle) {
+    colorTitle.textContent = vehicleType === 'drone' ? 'Cor do drone' : 'Cor do parapente';
+  }
+  if (colorOptions) {
+    colorOptions.setAttribute('aria-label', vehicleType === 'drone' ? 'Cor do drone' : 'Cor do parapente');
+  }
+  if (cameraToggle) {
+    const firstPersonOnly = vehicleProfile.cameraPreference === 'first-person-only';
+    cameraToggle.disabled = firstPersonOnly;
+    cameraToggle.hidden = firstPersonOnly && appState.started;
+    cameraToggle.title = firstPersonOnly
+      ? 'Drone com camera fixa em primeira pessoa'
+      : 'Camera: externa (C alterna)';
+    cameraToggle.setAttribute(
+      'aria-label',
+      firstPersonOnly ? 'Drone com camera fixa em primeira pessoa' : 'Alternar camera externa/visao do piloto'
+    );
+  }
+  if (ascendButton) {
+    ascendButton.textContent = vehicleType === 'drone' ? '↓' : '⌃';
+    ascendButton.setAttribute('aria-label', vehicleType === 'drone' ? 'Descer' : 'Acelerar');
+    ascendButton.title = vehicleType === 'drone' ? 'Descer' : 'Acelerar';
+  }
+  if (descendButton) {
+    descendButton.textContent = vehicleType === 'drone' ? '↑' : '⌄';
+    descendButton.setAttribute('aria-label', vehicleType === 'drone' ? 'Subir' : 'Frear');
+    descendButton.title = vehicleType === 'drone' ? 'Subir' : 'Frear';
+  }
+  if (boostButton) {
+    boostButton.hidden = vehicleType !== 'drone';
+    boostButton.setAttribute('aria-label', 'Boost de velocidade');
+    boostButton.title = vehicleType === 'drone'
+      ? 'Boost de velocidade (Espaco)'
+      : 'Reservado ao drone';
+    boostButton.textContent = vehicleType === 'drone' ? 'SPD' : '⏭';
+  }
 }
 
 renderer.setAnimationLoop(() => {

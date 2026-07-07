@@ -38,6 +38,12 @@ export function getCameraMode() {
   return cameraMode;
 }
 
+export function setCameraMode(mode) {
+  if (mode !== 'third-person' && mode !== 'first-person') return cameraMode;
+  cameraMode = mode;
+  return cameraMode;
+}
+
 export function toggleCameraMode() {
   cameraMode = cameraMode === 'third-person' ? 'first-person' : 'third-person';
   return cameraMode;
@@ -74,14 +80,17 @@ export function initializeThirdPersonCamera(camera, target, context = {}) {
 
 // Despacha para o modo de camera ativo (externa ou visao do piloto).
 export function updateFlightCamera(camera, target, delta, context = {}) {
-  if (target.landed) {
+  const cameraProfile = target.cameraProfile ?? FIRST_PERSON_CONFIG;
+  const forceFirstPerson = target.cameraPreference === 'first-person-only';
+
+  if (target.landed && !forceFirstPerson) {
     setCameraNearPlane(camera, THIRD_PERSON_NEAR_PLANE);
     updateLandedCamera(camera, target, delta, context);
     return;
   }
 
-  if (cameraMode === 'first-person') {
-    updateFirstPersonCamera(camera, target, delta);
+  if (forceFirstPerson || cameraMode === 'first-person') {
+    updateFirstPersonCamera(camera, target, delta, cameraProfile);
     return;
   }
 
@@ -89,22 +98,26 @@ export function updateFlightCamera(camera, target, delta, context = {}) {
   updateThirdPersonCamera(camera, target, delta, context);
 }
 
-function updateFirstPersonCamera(camera, target, delta) {
-  setCameraNearPlane(camera, FIRST_PERSON_CONFIG.nearPlane);
+function updateFirstPersonCamera(camera, target, delta, cameraProfile = FIRST_PERSON_CONFIG) {
+  setCameraNearPlane(camera, cameraProfile.nearPlane ?? FIRST_PERSON_CONFIG.nearPlane);
   landedCamera.initialized = false;
 
   // Posicao presa a cabeca (sem atraso, para nao enjoar) e orientacao do
   // proprio modelo: a visao inclina junto com a asa na curva e no pendulo.
   firstPersonPosition
-    .copy(FIRST_PERSON_CONFIG.headOffset)
+    .copy(cameraProfile.headOffset ?? FIRST_PERSON_CONFIG.headOffset)
     .applyQuaternion(target.group.quaternion)
     .add(target.position);
   camera.position.copy(firstPersonPosition);
 
+  firstPersonPitchAdjust.setFromAxisAngle(
+    new THREE.Vector3(1, 0, 0),
+    -(cameraProfile.lookDownPitch ?? FIRST_PERSON_CONFIG.lookDownPitch)
+  );
   firstPersonQuaternion.copy(target.group.quaternion).multiply(firstPersonPitchAdjust);
   camera.quaternion.slerp(
     firstPersonQuaternion,
-    1 - Math.exp(-delta * FIRST_PERSON_CONFIG.orientationSmoothing)
+    1 - Math.exp(-delta * (cameraProfile.orientationSmoothing ?? FIRST_PERSON_CONFIG.orientationSmoothing))
   );
 
   // Mantem o lookAt suavizado coerente para a troca de volta ao modo externo.

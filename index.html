@@ -585,7 +585,7 @@
       }
 
       .touch-cluster--speed {
-        grid-template-rows: repeat(2, 58px);
+        grid-template-rows: repeat(3, 58px);
       }
 
       .touch-control {
@@ -937,7 +937,7 @@
         }
 
         .touch-cluster--speed {
-          grid-template-rows: repeat(2, 52px);
+          grid-template-rows: repeat(3, 52px);
         }
 
         .restart-button {
@@ -970,8 +970,9 @@
         <button class="touch-control" type="button" data-control="right" aria-label="Virar para direita">›</button>
       </div>
       <div class="touch-cluster touch-cluster--speed">
-        <button class="touch-control" type="button" data-control="forward" aria-label="Acelerar">⌃</button>
-        <button class="touch-control" type="button" data-control="backward" aria-label="Frear">⌄</button>
+        <button class="touch-control" type="button" data-control="ascend" aria-label="Acelerar">⌃</button>
+        <button class="touch-control" type="button" data-control="boost" aria-label="Boost de velocidade">⏭</button>
+        <button class="touch-control" type="button" data-control="descend" aria-label="Frear">⌄</button>
       </div>
     </div>
     <div id="start-panel" class="start-panel">
@@ -1007,7 +1008,22 @@
         </div>
       </div>
       <div class="start-field">
-        <div class="start-field-title">Cor do parapente</div>
+        <div class="start-field-title">Veiculo</div>
+        <div class="location-options" aria-label="Veiculo">
+          <label class="location-option">
+            <input type="radio" name="vehicle-type" value="paraglider" checked>
+            <strong>Parapente</strong>
+            <span>Voo livre com termicas, camera externa ou visao do piloto.</span>
+          </label>
+          <label class="location-option">
+            <input type="radio" name="vehicle-type" value="drone">
+            <strong>Drone FPV</strong>
+            <span>Camera sempre em primeira pessoa e velocidade extrema de drone.</span>
+          </label>
+        </div>
+      </div>
+      <div class="start-field">
+        <div class="start-field-title" data-start-field="color-title">Cor do parapente</div>
         <div class="color-options" aria-label="Cor do parapente">
         <label class="color-option">
           <input type="radio" name="canopy-color" value="0xa8dff2" checked>

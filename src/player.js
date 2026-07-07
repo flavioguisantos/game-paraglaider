@@ -7,53 +7,115 @@ import { getCameraMode } from './camera.js?v=camera-modes-3';
 const PLAYER_CONFIG = {
   launchX: 0,
   launchZ: 0,
-  startAltitude: 24,
-  // Faixa real de um EN-B: S = freios (ate ~26 km/h), W = barra (ate ~55 km/h).
-  minSpeedKmh: 26,
-  trimSpeedKmh: POLAR_SPEEDS.trimSpeedKmh,
-  maxSpeedKmh: POLAR_SPEEDS.maxSpeedKmh,
-  launchStartSpeedKmh: 8,
-  // Vela EN-B hot: curva ainda eficiente para enroscar, mas sem giro arcade.
-  maxTurnRate: 0.48,
-  turnResponse: 1.55,
-  // Visual: rolagem segue o bank real calculado pela fisica; pitch mistura
-  // comando de velocidade com o surge (aceleracao vertical) da vela.
-  visualBankScale: 0.85,
-  visualPitch: 0.14,
-  surgePitchScale: 0.035,
-  surgeSmoothing: 4
+  startAltitude: 24
 };
+
+const VEHICLE_PROFILES = {
+  paraglider: {
+    id: 'paraglider',
+    label: 'Parapente',
+    flightModel: 'paraglider',
+    startSpeedKmh: 8,
+    trimSpeedKmh: POLAR_SPEEDS.trimSpeedKmh,
+    minSpeedKmh: 26,
+    maxSpeedKmh: POLAR_SPEEDS.maxSpeedKmh,
+    maxTurnRate: 0.48,
+    turnResponse: 1.55,
+    visualBankScale: 0.85,
+    visualPitch: 0.14,
+    surgePitchScale: 0.035,
+    surgeSmoothing: 4,
+    cameraPreference: 'toggle',
+    cameraProfile: {
+      headOffset: new THREE.Vector3(0, 0.72, 0.1),
+      lookDownPitch: 0.09,
+      orientationSmoothing: 14,
+      nearPlane: 0.06
+    },
+    createModel(canopyColor) {
+      return createParagliderModel({
+        canopyAssetUrl: '/image/nova-vortex.obj',
+        colors: {
+          canopy: canopyColor,
+          stripe: 0x3157bd,
+          trim: 0x17242f,
+          helmet: 0xf2c94c
+        }
+      });
+    },
+    addFirstPersonRig(group) {
+      const firstPersonRig = createFirstPersonRig();
+      group.add(firstPersonRig);
+      return firstPersonRig;
+    }
+  },
+  drone: {
+    id: 'drone',
+    label: 'Drone FPV',
+    flightModel: 'drone',
+    startSpeedKmh: 120,
+    trimSpeedKmh: 180,
+    minSpeedKmh: 80,
+    maxSpeedKmh: 700,
+    maxTurnRate: 1.7,
+    turnResponse: 4.8,
+    maxPitchRate: 4.8,
+    pitchResponse: 7.5,
+    visualBankScale: 1.25,
+    visualPitch: 1,
+    surgePitchScale: 0,
+    surgeSmoothing: 12,
+    cameraPreference: 'first-person-only',
+    cameraProfile: {
+      headOffset: new THREE.Vector3(0, 0.13, -0.32),
+      lookDownPitch: 0.015,
+      orientationSmoothing: 42,
+      nearPlane: 0.03
+    },
+    createModel(accentColor) {
+      return createDroneModel(accentColor);
+    },
+    addFirstPersonRig() {
+      return null;
+    }
+  }
+};
+
+export function getVehicleProfile(vehicleType = 'paraglider') {
+  return VEHICLE_PROFILES[vehicleType] ?? VEHICLE_PROFILES.paraglider;
+}
 
 export class Player {
   constructor({
     terrain,
     canopyColor = 0xa8dff2,
     launchAltitudeMeters = PLAYER_CONFIG.startAltitude,
-    launchHeadingRadians = 0
+    launchHeadingRadians = 0,
+    vehicleType = 'paraglider'
   }) {
+    this.vehicleProfile = getVehicleProfile(vehicleType);
+    this.vehicleType = this.vehicleProfile.id;
+    this.vehicleLabel = this.vehicleProfile.label;
     this.terrain = terrain;
-    this.group = createParagliderModel({
-      canopyAssetUrl: '/image/nova-vortex.obj',
-      colors: {
-        canopy: canopyColor,
-        stripe: 0x3157bd,
-        trim: 0x17242f,
-        helmet: 0xf2c94c
-      }
-    });
+    this.group = this.vehicleProfile.createModel(canopyColor);
+    this.group.rotation.order = this.vehicleType === 'drone' ? 'YXZ' : 'XYZ';
     // Rig da visao do piloto (selete + bracos com batoques): so aparece na
     // primeira pessoa, quando o boneco de terceira pessoa e ocultado.
-    this.firstPersonRig = createFirstPersonRig();
-    this.group.add(this.firstPersonRig);
+    this.firstPersonRig = this.vehicleProfile.addFirstPersonRig(this.group);
+    this.cameraPreference = this.vehicleProfile.cameraPreference;
+    this.cameraProfile = this.vehicleProfile.cameraProfile;
     this.position = this.group.position;
     this.velocity = new THREE.Vector3();
     this.heading = launchHeadingRadians;
     this.turnRate = 0;
+    this.pitchAngle = 0;
+    this.pitchRate = 0;
+    this.rollAngle = 0;
     // Decola em corrida: a velocidade sobe do passo de rampa ate o trim.
-    this.speed = PLAYER_CONFIG.launchStartSpeedKmh;
-    this.targetSpeed = PLAYER_CONFIG.trimSpeedKmh;
+    this.speed = this.vehicleProfile.startSpeedKmh;
+    this.targetSpeed = this.vehicleProfile.trimSpeedKmh;
     this.groundSpeedKmh = 0;
-    this.windAdjustedSpeedKmh = PLAYER_CONFIG.trimSpeedKmh;
+    this.windAdjustedSpeedKmh = this.vehicleProfile.trimSpeedKmh;
     this.windAngleDegrees = 0;
     this.windAngleStepDegrees = 0;
     this.verticalSpeed = 0;
@@ -87,17 +149,36 @@ export class Player {
     if (this.landed || this.entangled) return;
 
     const turnInput = Number(this.input.left) - Number(this.input.right);
-    const speedInput = Number(this.input.forward) - Number(this.input.backward);
+    const altitudeInput = getAltitudeInput(this.vehicleProfile, this.input);
+    const speedInput = getSpeedInput(this.vehicleProfile, this.input);
+    const pitchInput = getPitchInput(this.vehicleProfile, this.input);
 
-    this.targetSpeed = getTargetSpeedKmh(speedInput);
+    this.targetSpeed = getTargetSpeedKmh(this.vehicleProfile, speedInput);
     this.speed = THREE.MathUtils.lerp(this.speed, this.targetSpeed, 1 - Math.exp(-delta * 4));
-    const targetTurnRate = turnInput * PLAYER_CONFIG.maxTurnRate;
+    const targetTurnRate = turnInput * this.vehicleProfile.maxTurnRate;
     this.turnRate = THREE.MathUtils.lerp(
       this.turnRate,
       targetTurnRate,
-      1 - Math.exp(-delta * PLAYER_CONFIG.turnResponse)
+      1 - Math.exp(-delta * this.vehicleProfile.turnResponse)
     );
     this.heading += this.turnRate * delta;
+
+    if (this.vehicleProfile.flightModel === 'drone') {
+      const targetPitchRate = pitchInput * this.vehicleProfile.maxPitchRate;
+      this.pitchRate = THREE.MathUtils.lerp(
+        this.pitchRate,
+        targetPitchRate,
+        1 - Math.exp(-delta * this.vehicleProfile.pitchResponse)
+      );
+      this.pitchAngle += this.pitchRate * delta;
+      this.rollAngle = THREE.MathUtils.lerp(
+        this.rollAngle,
+        turnInput * 0.9,
+        1 - Math.exp(-delta * 10)
+      );
+      this.group.rotation.set(this.pitchAngle, this.heading, this.rollAngle);
+      this.group.updateMatrixWorld(true);
+    }
 
     applyFlightPhysics(this, delta, flightContext);
 
@@ -114,34 +195,44 @@ export class Player {
     this.previousVerticalSpeed = this.verticalSpeed;
     this.smoothedSurge = THREE.MathUtils.lerp(
       this.smoothedSurge,
-      THREE.MathUtils.clamp(verticalAcceleration * PLAYER_CONFIG.surgePitchScale, -0.16, 0.16),
-      1 - Math.exp(-delta * PLAYER_CONFIG.surgeSmoothing)
+      THREE.MathUtils.clamp(verticalAcceleration * this.vehicleProfile.surgePitchScale, -0.18, 0.18),
+      1 - Math.exp(-delta * this.vehicleProfile.surgeSmoothing)
     );
 
     this.group.rotation.y = this.heading;
-    this.group.rotation.z = THREE.MathUtils.lerp(
-      this.group.rotation.z,
-      this.bankAngle * PLAYER_CONFIG.visualBankScale,
-      1 - Math.exp(-delta * 3.6)
-    );
-    this.group.rotation.x = THREE.MathUtils.lerp(
-      this.group.rotation.x,
-      -speedInput * PLAYER_CONFIG.visualPitch + this.smoothedSurge,
-      1 - Math.exp(-delta * 5)
-    );
+    if (this.vehicleProfile.flightModel === 'drone') {
+      this.group.rotation.set(this.pitchAngle, this.heading, this.rollAngle);
+    } else {
+      this.group.rotation.z = THREE.MathUtils.lerp(
+        this.group.rotation.z,
+        this.bankAngle * this.vehicleProfile.visualBankScale,
+        1 - Math.exp(-delta * 3.6)
+      );
+      this.group.rotation.x = THREE.MathUtils.lerp(
+        this.group.rotation.x,
+        getVisualPitch(this.vehicleProfile, altitudeInput, this.smoothedSurge),
+        1 - Math.exp(-delta * 5)
+      );
+    }
   }
 
   // Mostra o rig de primeira pessoa (e esconde o boneco externo) enquanto a
   // camera estiver na visao do piloto; pousado, volta sempre ao modo externo.
   syncFirstPersonView(delta) {
-    const active = getCameraMode() === 'first-person' && !this.landed && !this.entangled;
-    this.firstPersonRig.visible = active;
+    const active = (this.cameraPreference === 'first-person-only' || getCameraMode() === 'first-person')
+      && !this.landed
+      && !this.entangled;
+    if (this.firstPersonRig) this.firstPersonRig.visible = active;
     const pilot = this.group.userData.parts?.pilot;
     if (pilot) pilot.visible = !active;
-    if (active) updateFirstPersonRig(this.firstPersonRig, this.input, delta);
+    if (active && this.firstPersonRig) updateFirstPersonRig(this.firstPersonRig, this.input, delta);
   }
 
   getForwardVector() {
+    if (this.vehicleProfile.flightModel === 'drone') {
+      return new THREE.Vector3(0, 0, -1).applyQuaternion(this.group.quaternion).normalize();
+    }
+
     return new THREE.Vector3(-Math.sin(this.heading), 0, -Math.cos(this.heading)).normalize();
   }
 
@@ -149,8 +240,13 @@ export class Player {
     if (this.landingPoseApplied) return;
 
     const groundHeight = getVisualGroundHeight(this.terrain, this.position.x, this.position.z);
-    this.group.rotation.set(0, this.heading, 0);
-    setParagliderLandedPose(this.group, { groundHeight });
+    if (this.vehicleType === 'drone') {
+      this.group.rotation.set(0, this.heading, 0);
+      this.group.position.y = groundHeight + 0.82;
+    } else {
+      this.group.rotation.set(0, this.heading, 0);
+      setParagliderLandedPose(this.group, { groundHeight });
+    }
     this.landingPoseApplied = true;
   }
 }
@@ -161,15 +257,119 @@ function getVisualGroundHeight(terrain, x, z) {
     : terrain.getHeightAt(x, z);
 }
 
-// W acelera rumo a barra cheia; S freia rumo a velocidade minima; solto = trim.
-function getTargetSpeedKmh(speedInput) {
+function getAltitudeInput(profile, input) {
+  if (profile.flightModel === 'drone') {
+    return Number(input.descend) - Number(input.ascend);
+  }
+
+  return Number(input.forward || input.ascend) - Number(input.backward || input.descend);
+}
+
+function getSpeedInput(profile, input) {
+  if (profile.flightModel === 'drone') {
+    return Number(input.boost);
+  }
+
+  return Number(input.forward || input.ascend) - Number(input.backward || input.descend);
+}
+
+function getPitchInput(profile, input) {
+  if (profile.flightModel === 'drone') {
+    const stickPitch = Number(input.forward) - Number(input.backward);
+    const verticalPitch = Number(input.descend) - Number(input.ascend);
+    return Math.max(-1, Math.min(1, stickPitch + verticalPitch));
+  }
+
+  return 0;
+}
+
+function getVisualPitch(profile, altitudeInput, smoothedSurge) {
+  if (profile.flightModel === 'drone') {
+    return -altitudeInput * profile.visualPitch;
+  }
+
+  return -altitudeInput * profile.visualPitch + smoothedSurge;
+}
+
+// Cada veiculo interpreta o eixo de velocidade no proprio perfil.
+function getTargetSpeedKmh(profile, speedInput) {
   if (speedInput > 0) {
-    return THREE.MathUtils.lerp(PLAYER_CONFIG.trimSpeedKmh, PLAYER_CONFIG.maxSpeedKmh, speedInput);
+    return THREE.MathUtils.lerp(profile.trimSpeedKmh, profile.maxSpeedKmh, speedInput);
   }
   if (speedInput < 0) {
-    return THREE.MathUtils.lerp(PLAYER_CONFIG.trimSpeedKmh, PLAYER_CONFIG.minSpeedKmh, -speedInput);
+    return THREE.MathUtils.lerp(profile.trimSpeedKmh, profile.minSpeedKmh, -speedInput);
   }
-  return PLAYER_CONFIG.trimSpeedKmh;
+  return profile.trimSpeedKmh;
+}
+
+function createDroneModel(accentColor) {
+  const group = new THREE.Group();
+  group.name = 'DronePlayer';
+
+  const frameMaterial = new THREE.MeshStandardMaterial({
+    color: 0x151b22,
+    metalness: 0.68,
+    roughness: 0.34
+  });
+  const accentMaterial = new THREE.MeshStandardMaterial({
+    color: accentColor,
+    emissive: accentColor,
+    emissiveIntensity: 0.16,
+    metalness: 0.22,
+    roughness: 0.48
+  });
+  const propMaterial = new THREE.MeshStandardMaterial({
+    color: 0x7e93a8,
+    metalness: 0.25,
+    roughness: 0.66
+  });
+
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.12, 0.52), frameMaterial);
+  body.castShadow = true;
+  body.receiveShadow = true;
+  group.add(body);
+
+  const topPlate = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.035, 0.28), accentMaterial);
+  topPlate.position.y = 0.08;
+  topPlate.castShadow = true;
+  group.add(topPlate);
+
+  const cameraPod = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.12, 0.16), accentMaterial);
+  cameraPod.position.set(0, 0.02, -0.22);
+  cameraPod.castShadow = true;
+  group.add(cameraPod);
+
+  const armGeometry = new THREE.BoxGeometry(0.52, 0.04, 0.06);
+  const armA = new THREE.Mesh(armGeometry, frameMaterial);
+  armA.rotation.y = Math.PI / 4;
+  armA.castShadow = true;
+  group.add(armA);
+
+  const armB = new THREE.Mesh(armGeometry, frameMaterial);
+  armB.rotation.y = -Math.PI / 4;
+  armB.castShadow = true;
+  group.add(armB);
+
+  const rotorOffsets = [
+    [-0.24, 0.03, -0.24],
+    [0.24, 0.03, -0.24],
+    [-0.24, 0.03, 0.24],
+    [0.24, 0.03, 0.24]
+  ];
+
+  for (const [x, y, z] of rotorOffsets) {
+    const rotor = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.02, 18), accentMaterial);
+    rotor.position.set(x, y, z);
+    rotor.castShadow = true;
+    group.add(rotor);
+
+    const prop = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.006, 0.024), propMaterial);
+    prop.position.set(x, y + 0.02, z);
+    prop.castShadow = true;
+    group.add(prop);
+  }
+
+  return group;
 }
 
 function createInputState() {
@@ -177,18 +377,22 @@ function createInputState() {
     forward: false,
     backward: false,
     left: false,
-    right: false
+    right: false,
+    ascend: false,
+    descend: false,
+    boost: false
   };
 
   const keyMap = new Map([
     ['KeyW', 'forward'],
-    ['ArrowUp', 'forward'],
     ['KeyS', 'backward'],
-    ['ArrowDown', 'backward'],
+    ['ArrowUp', 'ascend'],
+    ['ArrowDown', 'descend'],
     ['KeyA', 'left'],
     ['ArrowLeft', 'left'],
     ['KeyD', 'right'],
-    ['ArrowRight', 'right']
+    ['ArrowRight', 'right'],
+    ['Space', 'boost']
   ]);
 
   window.addEventListener('keydown', (event) => {
