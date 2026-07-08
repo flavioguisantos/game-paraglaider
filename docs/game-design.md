@@ -62,7 +62,7 @@ Regras iniciais:
 - Quanto mais perto do centro da termica, maior a sustentacao. O perfil radial e gaussiano (forte no nucleo, ~6% na borda do raio) e existe um anel de descendencia entre 1,0 e ~1,65 raios, onde o ar desce (~30% da forca da termica).
 - A forca cresce com a altura nos primeiros ~150 m acima do solo (termica desorganizada perto do chao) e enfraquece na faixa final antes do teto.
 - Cada termica tem ciclo de vida (4 a 9 minutos): nasce fraca, atinge o auge e decai ate morrer; os visuais (coluna, particulas, nuvem) esmaecem junto. Termicas mortas sao substituidas por novas no corredor a frente do jogador.
-- As forcas medias ficam entre ~1,8 e 3,2 m/s, com termicas "quentes" ocasionais ate ~1,5x mais fortes.
+- As forcas medias ficam entre ~1,8 e 3,2 m/s, com termicas "quentes" ocasionais podendo disparar bem acima da media e atingir ate 10 m/s no pico do nucleo.
 - Cada rodada sorteia variacao de forca entre as termicas, com uma coluna podendo ficar mais forte que as demais.
 - A sustentacao deve ser claramente mais alta no centro e cair em direcao as extremidades da coluna.
 - Fora da termica, o parapente perde altitude constantemente.

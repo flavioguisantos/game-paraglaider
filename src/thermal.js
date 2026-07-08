@@ -26,8 +26,9 @@ const THERMAL_CONFIG = {
   decaySeconds: 70,
   minStrengthMultiplier: 0.85,
   maxStrengthMultiplier: 1.15,
-  hotStrengthMultiplierMin: 1.3,
-  hotStrengthMultiplierMax: 1.5,
+  hotStrengthMultiplierMin: 2.2,
+  hotStrengthMultiplierMax: 3.4,
+  maxStrengthMetersPerSecond: 10,
   minAheadThermals: 7,
   maxThermals: 15,
   spawnAheadMin: 550,
@@ -346,7 +347,10 @@ function createThermal(
   const strengthMultiplier = isHotThermal
     ? THREE.MathUtils.randFloat(THERMAL_CONFIG.hotStrengthMultiplierMin, THERMAL_CONFIG.hotStrengthMultiplierMax)
     : THREE.MathUtils.randFloat(THERMAL_CONFIG.minStrengthMultiplier, THERMAL_CONFIG.maxStrengthMultiplier);
-  const strength = seed.strength * strengthMultiplier;
+  const strength = Math.min(
+    THERMAL_CONFIG.maxStrengthMetersPerSecond,
+    seed.strength * strengthMultiplier
+  );
 
   const column = new THREE.Mesh(
     new THREE.CylinderGeometry(seed.radius, seed.radius * 0.72, 1, 24, 1, true),
@@ -624,7 +628,10 @@ function recycleThermal(thermal) {
   thermal.strengthMultiplier = thermal.isHotThermal
     ? THREE.MathUtils.randFloat(THERMAL_CONFIG.hotStrengthMultiplierMin, THERMAL_CONFIG.hotStrengthMultiplierMax)
     : THREE.MathUtils.randFloat(THERMAL_CONFIG.minStrengthMultiplier, THERMAL_CONFIG.maxStrengthMultiplier);
-  thermal.strength = thermal.baseStrength * thermal.strengthMultiplier;
+  thermal.strength = Math.min(
+    THERMAL_CONFIG.maxStrengthMetersPerSecond,
+    thermal.baseStrength * thermal.strengthMultiplier
+  );
   thermal.cycleFactor = 0;
 }
 
