@@ -28,6 +28,7 @@ jogo-parapente/
 │   ├── urbanScenery.js
 │   ├── audio.js
 │   ├── camera.js
+│   ├── celebration.js
 │   └── hud.js
 ├── index.html
 ├── package.json
@@ -95,6 +96,9 @@ Controla feedback sonoro local com Web Audio API. O variometro sonoro, a fanfarr
 
 ### `src/camera.js`
 Controla camera em terceira pessoa com suavizacao. Mantem a camera acima do terreno consultando `terrain.getHeightAt()` para evitar que o relevo oclua mapa e termicas, especialmente em telas estreitas e regioes montanhosas. Tambem posiciona a camera de pre-voo sobre o terreno real carregado. Apos pouso do jogador, os mesmos comandos de direcao passam a orbitar e aproximar/afastar a camera ao redor do local de pouso.
+
+### `src/celebration.js`
+Comemoracao de GOL para redes sociais. Exporta o rastreador de recordes do voo (`createFlightStats`/`updateFlightStats`, com altitude maxima, subida maxima e velocidade maxima sobre o solo, atualizado por frame no loop principal) e `createCelebration`, que monta um overlay com animacao de confete em canvas e um card com os principais dados do voo. O card e renderizado tambem em um canvas 1080x1350 (4:5) para compartilhar via Web Share API com arquivo ou baixar como PNG; sem suporte a share de arquivos, o compartilhar cai para download. `main.js` dispara a comemoracao uma unica vez por rodada quando `player.routeFinished` fica verdadeiro, sem pausar o jogo; o modulo nao altera fisica nem pontuacao.
 
 ### `src/hud.js`
 Atualiza elementos 2D de interface: altura sobre o solo, altitude em relacao ao nivel do mar, variometro, velocidade real sobre o solo, distancia radial desde a decolagem, pontuacao, combo, proximo waypoint, card temporario de pontos, cronometro sem limite, vento, estado de rodada e ranking por pontos. A marcacao do HUD separa metricas principais e secundarias para permitir layout compacto em telas de celular.

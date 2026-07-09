@@ -9,6 +9,7 @@ import { createHud, createRoundState, updateHud, updateRoundState } from './hud.
 import { findFlightLocation } from './flightLocations.js';
 import { createOrographicLift } from './orographicLift.js';
 import { getVehicleProfile, Player } from './player.js?v=hot-b-1';
+import { createCelebration, createFlightStats, updateFlightStats } from './celebration.js';
 import { createScoringState, initializeScoringForEntities, updateScoring } from './scoring.js';
 import { createTerrain } from './terrain.js?v=terrain-realism-4';
 import { createThermalField } from './thermal.js?v=realism-1';
@@ -119,6 +120,7 @@ const thermals = createThermalField({ scene, terrain, sunDirection: SUN_DIRECTIO
 const orographicLift = createOrographicLift();
 scene.add(orographicLift.group);
 const hud = createHud(document.querySelector('#hud'));
+const celebration = createCelebration();
 const varioAudio = createVarioAudio();
 const scoreAudio = createScoreAudio();
 const adventureMusic = createAdventureMusic({ trackUrl: '/assets/audio/adventure-track.mp3' });
@@ -133,6 +135,8 @@ const appState = {
   round: null,
   scoring: null,
   thermalAssistant: null,
+  flightStats: null,
+  golCelebrated: false,
   lastScoreFeedbackAudioId: null,
   starting: false,
   // Modo realista: esconde colunas/rotulos de termica, marcadores de lift e
@@ -312,6 +316,9 @@ async function startFlight() {
   appState.lastScoreFeedbackAudioId = null;
   appState.round = createRoundState();
   appState.thermalAssistant = createThermalAssistant();
+  appState.flightStats = createFlightStats();
+  appState.golCelebrated = false;
+  celebration.hide();
   appState.started = true;
   document.body.classList.add('is-flying');
   document.body.classList.remove('round-ended');
@@ -435,6 +442,8 @@ renderer.setAnimationLoop(() => {
     updateScoring(appState.scoring, delta, flyers, { thermals, terrain });
   }
 
+  updateFlightStats(appState.flightStats, player);
+  maybeCelebrateGol(player, round);
   updateRoundState(round, delta, player);
   document.body.classList.toggle('round-ended', round.ended);
   if (round.ended) adventureMusic.stop();
@@ -459,6 +468,29 @@ renderer.setAnimationLoop(() => {
 
   renderer.render(scene, camera);
 });
+
+// Ao cruzar o GOL, abre a comemoracao uma unica vez por rodada com os dados
+// consolidados do voo; o jogo continua rodando atras do overlay.
+function maybeCelebrateGol(player, round) {
+  if (appState.golCelebrated || !player.routeFinished || player.crashed) return;
+
+  appState.golCelebrated = true;
+  const stats = appState.flightStats ?? createFlightStats();
+  celebration.show({
+    locationName: appState.selectedLocation?.name ?? 'Local de voo',
+    score: player.score ?? 0,
+    elapsedSeconds: round.elapsedSeconds,
+    distanceFromStartMeters: Number.isFinite(player.distanceFromStart)
+      ? player.distanceFromStart
+      : player.distanceTravelled,
+    maxAltitudeMeters: stats.maxAltitudeMeters,
+    maxClimbMetersPerSecond: stats.maxClimbMetersPerSecond,
+    maxGroundSpeedKmh: stats.maxGroundSpeedKmh,
+    bestThermalCombo: player.bestThermalCombo ?? 1,
+    completedWaypoints: player.completedWaypoints ?? 0,
+    completedAt: new Date()
+  });
+}
 
 function playScoreFeedbackAudio(player) {
   const feedback = player.scoreFeedback;

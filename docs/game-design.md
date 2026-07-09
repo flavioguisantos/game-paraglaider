@@ -89,6 +89,7 @@ O MVP passa a usar uma pontuacao estilo cross-country simplificada:
 - Entrar em uma nova termica valida sem pousar aumenta o combo de altitude (`2x`, `3x`, ate `5x`). O combo multiplica distancia, subida e waypoints, e zera para `1x` ao pousar ou colidir.
 - O HUD mostra pontos, combo atual, proximo waypoint e o ultimo evento de pontuacao relevante.
 - Ao ganhar um pacote relevante de pontos, o jogador recebe um card temporario com o valor ganho e uma fanfarra curta sintetizada ("tarantaran tara"). Pontos continuos de voo sao agrupados em blocos de 1000 pontos para evitar spam visual/sonoro; waypoints disparam feedback imediato.
+- Ao cruzar o GOL, uma comemoracao abre uma unica vez por rodada: overlay com chuva de confete e um card com os principais dados do voo (local, pontuacao, tempo, distancia, altitude maxima, subida maxima, velocidade maxima sobre o solo, combo maximo e waypoints). O card pode ser compartilhado via Web Share API ou baixado como imagem PNG 1080x1350 (formato 4:5 para redes sociais); em navegadores sem compartilhamento de arquivos, o botao de compartilhar baixa a imagem. O jogo continua rodando atras do overlay e o botao "Continuar voando" fecha a comemoracao.
 
 ## HUD de instrumento
 O HUD imita um instrumento de voo real (vario/GPS de parapente) com fundo escuro fosco e digitos monoespacados tabulares:
