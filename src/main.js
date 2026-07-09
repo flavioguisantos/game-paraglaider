@@ -5,7 +5,7 @@ import { createAdventureMusic, createScoreAudio, createVarioAudio, unlockGameAud
 import { createBots } from './bot.js?v=hot-b-1';
 import { initializeThirdPersonCamera, setCameraMode, toggleCameraMode, updateFlightCamera, updateStandbyCamera } from './camera.js?v=camera-modes-3';
 import { configureWind, createWindVector, detectParagliderCollisions, detectVegetationCollisions, updateEntangledParagliders, updateWind } from './physics.js?v=hot-b-1';
-import { createHud, createRoundState, updateHud, updateRoundState } from './hud.js?v=hud-instrument-4';
+import { createHud, createRoundState, updateHud, updateRoundState } from './hud.js?v=hud-instrument-5';
 import { findFlightLocation } from './flightLocations.js';
 import { createOrographicLift } from './orographicLift.js';
 import { getVehicleProfile, Player } from './player.js?v=hot-b-1';

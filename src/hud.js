@@ -167,7 +167,7 @@ export function updateHud(elements, { player, bots = [], terrain, round, wind, s
   elements.distance.textContent = formatDistance(getStraightLineDistance(player));
   elements.score.textContent = formatScore(player.score ?? 0);
   elements.combo.textContent = `${player.thermalCombo ?? 1}x`;
-  elements.waypoint.textContent = getWaypointText(player, scoring);
+  elements.waypoint.textContent = getWaypointText(player, scoring, terrain);
   elements.scoreEvent.textContent = player.lastScoringEvent ?? '';
   updateScorePop(elements, player, scoring);
   elements.status.textContent = getStatusText(round, player);
@@ -331,11 +331,26 @@ function formatScore(score) {
   return Math.round(score).toLocaleString('pt-BR');
 }
 
-function getWaypointText(player, scoring) {
+// Rota no painel: nome do proximo TP + distancia em linha reta ate ele.
+function getWaypointText(player, scoring, terrain) {
   if (player.routeFinished) return 'Completa';
 
   const waypoint = scoring?.route?.[player.nextWaypointIndex ?? 0];
-  return waypoint?.name ?? '--';
+  if (!waypoint) return '--';
+
+  const worldUnitsPerMeter = terrain?.worldUnitsPerMeter ?? 1;
+  const distanceMeters = Math.hypot(
+    waypoint.x - player.position.x,
+    waypoint.z - player.position.z
+  ) / worldUnitsPerMeter;
+
+  return `${waypoint.name} · ${formatShortDistance(distanceMeters)}`;
+}
+
+// Formato curto para caber na celula do painel (uma casa decimal em km).
+function formatShortDistance(meters) {
+  if (meters >= 1000) return `${(meters / 1000).toFixed(1)} km`;
+  return `${Math.round(meters)} m`;
 }
 
 function getStraightLineDistance(entity) {

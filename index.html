@@ -1124,9 +1124,33 @@
         }
 
         .instr-compass,
-        .instr-distance,
+        .instr-distance {
+          display: none;
+        }
+
+        /* Assistente de termica compacto: so aparece quando ha leitura ativa,
+           ocupando a linha livre abaixo dos mostradores (colunas 2 em diante). */
         .instr-thermal {
           display: none;
+          order: 5;
+          grid-column: 2 / -1;
+          margin: 0;
+          padding: 2px 8px;
+          gap: 10px;
+        }
+
+        .instr-thermal.is-active {
+          display: flex;
+        }
+
+        .instr-thermal .thermal-ring {
+          transform: scale(0.72);
+          transform-origin: center;
+          margin: -8px;
+        }
+
+        .instr-thermal .thermal-label {
+          font-size: 11px;
         }
 
         .instr-score {
@@ -1424,6 +1448,6 @@
       </div>
       <button id="start-flight" class="start-button" type="button">Iniciar voo</button>
     </div>
-    <script type="module" src="/src/main.js?v=fp-rig-1"></script>
+    <script type="module" src="/src/main.js?v=tp-dist-1"></script>
   </body>
 </html>
