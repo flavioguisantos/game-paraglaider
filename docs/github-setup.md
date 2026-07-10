@@ -12,12 +12,11 @@ Este projeto usa Pull Requests para receber contribuicoes.
   - `research`
 - Protecao da branch `main`:
   - exigir Pull Request antes de merge;
-  - exigir 1 aprovacao;
-  - descartar aprovacao antiga quando novos commits forem enviados;
+  - exigir 1 aprovacao para colaboradores;
   - exigir conversas resolvidas;
   - bloquear force push;
   - bloquear exclusao da branch;
-  - aplicar tambem para administradores.
+  - nao aplicar a exigencia para administradores, permitindo merge pelo mantenedor principal.
 - GitHub Actions:
   - workflow `Build` roda em Pull Requests e pushes na `main`.
 
@@ -79,9 +78,9 @@ O repositorio `flavioguisantos/game-paraglaider` foi tornado publico para habili
 A branch `main` esta configurada com:
 
 - Pull Request obrigatorio antes de merge;
-- 1 aprovacao obrigatoria;
+- 1 aprovacao obrigatoria para colaboradores;
+- regra nao aplicada a administradores, permitindo merge pelo mantenedor principal;
 - aprovacoes antigas descartadas quando novos commits sao enviados;
 - conversas resolvidas obrigatorias;
 - force push bloqueado;
 - exclusao da branch bloqueada;
-- regra aplicada tambem para administradores.

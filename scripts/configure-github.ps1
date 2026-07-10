@@ -101,7 +101,7 @@ foreach ($label in $labels) {
 
 $branchProtection = @{
   required_status_checks = $null
-  enforce_admins = $true
+  enforce_admins = $false
   required_pull_request_reviews = @{
     required_approving_review_count = 1
     dismiss_stale_reviews = $true
