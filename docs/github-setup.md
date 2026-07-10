@@ -71,3 +71,17 @@ Nesse caso, as opcoes sao:
 - tornar o repositorio publico;
 - assinar um plano que habilite branch protection em repositorios privados;
 - manter o repositorio privado sem protecao automatica de `main` por enquanto.
+
+## Estado atual
+
+O repositorio `flavioguisantos/game-paraglaider` foi tornado publico para habilitar protecao da branch `main`.
+
+A branch `main` esta configurada com:
+
+- Pull Request obrigatorio antes de merge;
+- 1 aprovacao obrigatoria;
+- aprovacoes antigas descartadas quando novos commits sao enviados;
+- conversas resolvidas obrigatorias;
+- force push bloqueado;
+- exclusao da branch bloqueada;
+- regra aplicada tambem para administradores.
