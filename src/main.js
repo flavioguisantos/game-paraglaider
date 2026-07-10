@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { Sky } from 'three/addons/objects/Sky.js';
 import { createCloudBillboard } from './clouds.js';
 import { createAdventureMusic, createScoreAudio, createVarioAudio, unlockGameAudio } from './audio.js';
 import { createBots } from './bot.js?v=hot-b-4';
@@ -24,11 +23,13 @@ const colorInputs = [...document.querySelectorAll('input[name="canopy-color"]')]
 const locationInputs = [...document.querySelectorAll('input[name="flight-location"]')];
 const vehicleInputs = [...document.querySelectorAll('input[name="vehicle-type"]')];
 const scene = new THREE.Scene();
+const SKY_BLUE = 0x77bdf0;
+scene.background = new THREE.Color(SKY_BLUE);
 // Perspectiva aerea: nevoa exponencial azulada — o haze cresce suavemente com a
 // distancia (como na atmosfera real) ate encobrir o anel de relevo distante
 // (~55 km), que substituiu as silhuetas 2D de montanha. Com 0.000029, a 3 km a
 // perda e <1%; a 52 km restam ~10% de contraste.
-scene.fog = new THREE.FogExp2(0xdceaf5, 0.000029);
+scene.fog = new THREE.FogExp2(0xc9e2f6, 0.000029);
 
 const viewport = getViewportSize();
 // near=2: com far=90000, near menor destroi a precisao do depth buffer a distancia
@@ -43,13 +44,14 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.12;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.setClearColor(SKY_BLUE, 1);
 setAppHeight();
 
 const ambientLight = new THREE.HemisphereLight(0xdfefff, 0x40563a, 1.15);
 scene.add(ambientLight);
 
 // Direcao fixa do sol; a posicao da luz acompanha o jogador para manter o frustum de sombra util.
-const SUN_DIRECTION = new THREE.Vector3(-220, 520, 180).normalize();
+const SUN_DIRECTION = new THREE.Vector3(-220, 520, -180).normalize();
 const SUN_DISTANCE = 2600;
 const SHADOW_FRUSTUM_RADIUS = 950;
 const sunLight = new THREE.DirectionalLight(0xfff8e8, 3.1);
@@ -71,25 +73,96 @@ function updateSunLight(referencePosition) {
   sunLight.target.position.copy(referencePosition);
   sunLight.position.copy(SUN_DIRECTION).multiplyScalar(SUN_DISTANCE).add(referencePosition);
   sky.position.set(referencePosition.x, 0, referencePosition.z);
+  sunVisual.position.copy(SUN_DIRECTION).multiplyScalar(76000).add(referencePosition);
 }
 
 const sky = createAtmosphericSky();
 scene.add(sky);
+const sunVisual = createSunVisual();
+scene.add(sunVisual);
 applySkyEnvironment();
 
 function createAtmosphericSky() {
-  const sky = new Sky();
+  const sky = new THREE.Mesh(
+    new THREE.SphereGeometry(1, 48, 24),
+    new THREE.ShaderMaterial({
+      side: THREE.BackSide,
+      depthWrite: false,
+      depthTest: false,
+      fog: false,
+      toneMapped: false,
+      uniforms: {
+        topColor: { value: new THREE.Color(0x63b5f2) },
+        horizonColor: { value: new THREE.Color(0xe6f7ff) },
+        lowerColor: { value: new THREE.Color(0xb8ddf4) },
+        sunDirection: { value: SUN_DIRECTION.clone() }
+      },
+      vertexShader: `
+        varying vec3 vSkyDirection;
+
+        void main() {
+          vSkyDirection = normalize(position);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 topColor;
+        uniform vec3 horizonColor;
+        uniform vec3 lowerColor;
+        uniform vec3 sunDirection;
+        varying vec3 vSkyDirection;
+
+        void main() {
+          float height = clamp(vSkyDirection.y * 0.5 + 0.5, 0.0, 1.0);
+          vec3 skyColor = mix(lowerColor, horizonColor, smoothstep(0.0, 0.46, height));
+          skyColor = mix(skyColor, topColor, smoothstep(0.38, 1.0, height));
+
+          float sunAmount = max(dot(normalize(vSkyDirection), normalize(sunDirection)), 0.0);
+          float sunHalo = pow(sunAmount, 24.0) * 0.34 + pow(sunAmount, 160.0) * 0.42;
+          skyColor = mix(skyColor, vec3(1.0, 0.93, 0.64), clamp(sunHalo, 0.0, 0.65));
+
+          gl_FragColor = vec4(skyColor, 1.0);
+        }
+      `
+    })
+  );
   sky.name = 'AtmosphericSky';
   // Mantem a cupula do ceu dentro do far plane da camera (90000).
   sky.scale.setScalar(80000);
-
-  const uniforms = sky.material.uniforms;
-  uniforms.turbidity.value = 3.4;
-  uniforms.rayleigh.value = 3.2;
-  uniforms.mieCoefficient.value = 0.0031;
-  uniforms.mieDirectionalG.value = 0.82;
-  uniforms.sunPosition.value.copy(SUN_DIRECTION);
+  sky.renderOrder = -100;
   return sky;
+}
+
+function createSunVisual() {
+  const size = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const context = canvas.getContext('2d');
+  const center = size / 2;
+  const glow = context.createRadialGradient(center, center, 0, center, center, center);
+  glow.addColorStop(0, 'rgba(255, 255, 245, 1)');
+  glow.addColorStop(0.16, 'rgba(255, 244, 184, 0.98)');
+  glow.addColorStop(0.34, 'rgba(255, 218, 92, 0.48)');
+  glow.addColorStop(1, 'rgba(255, 218, 92, 0)');
+  context.fillStyle = glow;
+  context.fillRect(0, 0, size, size);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: texture,
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.96,
+    depthWrite: false,
+    depthTest: false
+  }));
+  sprite.name = 'SunVisual';
+  sprite.scale.set(3600, 3600, 1);
+  sprite.renderOrder = -1;
+  sprite.position.copy(SUN_DIRECTION).multiplyScalar(76000);
+  return sprite;
 }
 
 function applySkyEnvironment() {

@@ -383,8 +383,8 @@ function createThermal(
   visual.add(cloud);
 
   const cloudShadow = createCloudShadow({
-    width: seed.radius * THERMAL_CONFIG.cloudDiameterMultiplier * 1.2,
-    opacity: 0.22
+    width: seed.radius * THERMAL_CONFIG.cloudDiameterMultiplier * 1.55,
+    opacity: 0.34
   });
   visual.add(cloudShadow);
 
@@ -604,11 +604,13 @@ function updateCloudShadow(thermal, groundHeight, sunDirection, terrain) {
   const localX = thermal.tiltOffset.x - sunDirection.x * rayLength;
   const localZ = thermal.tiltOffset.z - sunDirection.z * rayLength;
   const shadowGroundHeight = terrain
-    ? terrain.getHeightAt(thermal.position.x + localX, thermal.position.z + localZ)
+    ? terrain.getRenderedHeightAt?.(thermal.position.x + localX, thermal.position.z + localZ)
+      ?? terrain.getHeightAt(thermal.position.x + localX, thermal.position.z + localZ)
     : groundHeight;
 
   shadow.visible = true;
-  shadow.position.set(localX, shadowGroundHeight - groundHeight + 2.2, localZ);
+  shadow.rotation.z = Math.atan2(-sunDirection.z, -sunDirection.x);
+  shadow.position.set(localX, shadowGroundHeight - groundHeight + 3.5, localZ);
 }
 
 // Ciclo de vida: rampa ao nascer, plena no meio, decaimento antes de morrer.
@@ -655,7 +657,7 @@ function applyCycleOpacity(thermal) {
   }
   setFadedOpacity(thermal.label.material, 1, cycle);
   if (thermal.cloudShadow) {
-    setFadedOpacity(thermal.cloudShadow.material, 0.22, cycle);
+    setFadedOpacity(thermal.cloudShadow.material, 0.34, cycle);
   }
   thermal.cloud.traverse((child) => {
     if (!child.isSprite) return;

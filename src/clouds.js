@@ -44,7 +44,7 @@ export function createCloudShadow({ width = 700, opacity = 0.24 } = {}) {
     new THREE.PlaneGeometry(1, 1),
     new THREE.MeshBasicMaterial({
       map: getCloudShadowTexture(),
-      color: 0x14202c,
+      color: 0x0d1822,
       transparent: true,
       opacity,
       depthWrite: false
@@ -52,24 +52,48 @@ export function createCloudShadow({ width = 700, opacity = 0.24 } = {}) {
   );
   mesh.name = 'CloudShadow';
   mesh.rotation.x = -Math.PI / 2;
-  mesh.scale.set(width, width * 0.62, 1);
+  mesh.scale.set(width, width * 0.68, 1);
   return mesh;
 }
 
 function getCloudShadowTexture() {
   if (cloudShadowTexture) return cloudShadowTexture;
 
-  const size = 128;
+  const size = 256;
   const canvas = document.createElement('canvas');
   canvas.width = size;
   canvas.height = size;
   const context = canvas.getContext('2d');
-  const gradient = context.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
-  gradient.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
-  gradient.addColorStop(0.55, 'rgba(255, 255, 255, 0.5)');
-  gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-  context.fillStyle = gradient;
+  const random = createSeededRandom(509);
+
+  for (let index = 0; index < 18; index += 1) {
+    const t = index / 17;
+    const envelope = Math.sin(t * Math.PI);
+    const x = size * (0.14 + t * 0.72) + (random() - 0.5) * size * 0.1;
+    const y = size * (0.5 + (random() - 0.5) * 0.18);
+    const radiusX = size * (0.07 + envelope * 0.11) * (0.75 + random() * 0.5);
+    const radiusY = radiusX * (0.58 + random() * 0.2);
+    const gradient = context.createRadialGradient(x, y, 0, x, y, Math.max(radiusX, radiusY));
+    gradient.addColorStop(0, 'rgba(255, 255, 255, 0.78)');
+    gradient.addColorStop(0.55, 'rgba(255, 255, 255, 0.32)');
+    gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    context.save();
+    context.translate(x, y);
+    context.scale(1, radiusY / radiusX);
+    context.translate(-x, -y);
+    context.fillStyle = gradient;
+    context.fillRect(x - radiusX, y - radiusX, radiusX * 2, radiusX * 2);
+    context.restore();
+  }
+
+  context.globalCompositeOperation = 'destination-in';
+  const fade = context.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size * 0.52);
+  fade.addColorStop(0, 'rgba(255, 255, 255, 1)');
+  fade.addColorStop(0.7, 'rgba(255, 255, 255, 0.82)');
+  fade.addColorStop(1, 'rgba(255, 255, 255, 0)');
+  context.fillStyle = fade;
   context.fillRect(0, 0, size, size);
+  context.globalCompositeOperation = 'source-over';
 
   cloudShadowTexture = new THREE.CanvasTexture(canvas);
   cloudShadowTexture.userData.shared = true;
