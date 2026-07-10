@@ -70,9 +70,11 @@ Pergunta-chave: **"a sensação de voar em 3D é boa, e eu jogaria de novo por 5
 Em 3D, preste atenção especial à câmera — é o maior risco de o jogo "não parecer bom" mesmo com a mecânica certa.
 
 ## 10. Próxima fase (só depois do MVP validado)
-- Trocar bots por jogadores reais via WebSockets (Socket.io) — sincronizar posição/rotação a cada tick
+- Trocar bots por jogadores reais em multiplayer ao vivo via WebSockets ou Socket.io — sincronizar posição, rotação, velocidade e estado de rodada
+- Definir protocolo de mensagens para input, snapshots, pouso, ranking e eventos de sala
+- Validar interpolação/extrapolação de jogadores remotos com latência simulada
+- Criar salas simples por código, sem login obrigatório no primeiro protótipo online
 - Otimizar terreno (LOD, chunking) para suportar mais jogadores/área maior
 - Manter deploy como Static Site no Render enquanto nao houver multiplayer/backend real
-- Adicionar salas de partida (matchmaking simples por código de sala)
 - Modelos 3D low-poly reais e texturas, substituindo as formas geométricas provisórias
 - Sistema básico de conta/skin como próximo passo de monetização

@@ -21,11 +21,17 @@ A sensacao de voar em 3D e boa o suficiente para jogar novamente por pelo menos 
 - Colisao simples com terreno: ao tocar o solo, o participante pousa e sai da rodada.
 
 ## Fora do MVP
-- Multiplayer real.
-- WebSockets ou Socket.io.
+- Multiplayer real ao vivo.
+- WebSockets, Socket.io ou servidor online obrigatorio.
 - Contas, salas, matchmaking, skins ou monetizacao.
 - Modelos 3D finais, texturas finais e iluminacao avancada.
 - Terreno com LOD, chunking ou otimizacoes complexas.
+
+## Pos-MVP planejado
+- Multiplayer ao vivo com jogadores reais, depois da validacao da sensacao de voo.
+- Pesquisa de arquitetura de rede antes de integrar WebSockets/Socket.io ao jogo principal.
+- Salas simples por codigo somente apos existir um prototipo de sincronizacao estavel.
+- Ranking online somente depois de validar sincronizacao, latencia e autoridade de estado.
 
 ## Stack inicial
 - JavaScript no navegador.

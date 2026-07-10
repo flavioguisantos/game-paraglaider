@@ -9,6 +9,7 @@
 - Fase 6: concluida.
 - Fase 7: concluida.
 - Proxima fase sugerida: validar jogabilidade e decidir a proxima fase do produto.
+- Trilhas de contribuicao e multiplayer ao vivo pos-MVP: documentadas para issues e PRs futuros.
 
 ## Fase 1: Base tecnica - concluida
 - [x] Criar `package.json`.
@@ -63,6 +64,24 @@
 - [x] Criar `render.yaml` para Static Site.
 - [x] Publicar `dist/` como saida de build.
 
+## Preparacao para colaboradores - concluida
+- [x] Criar `README.md` com objetivo, stack, escopo e fluxo local.
+- [x] Criar `CONTRIBUTING.md` com fluxo de branch, PR e validacao.
+- [x] Criar `CODE_OF_CONDUCT.md`.
+- [x] Criar templates de issue e Pull Request em `.github/`.
+- [x] Criar workflow GitHub Actions de build para PRs.
+- [x] Criar script local para labels e protecao da branch `main`.
+- [x] Criar `docs/contribution-tasks.md` com tarefas pequenas para colaboradores.
+
+## Trilha pos-MVP: multiplayer ao vivo
+- [ ] Pesquisar WebSocket nativo, Socket.io e alternativas de sincronizacao em navegador.
+- [ ] Propor arquitetura cliente-servidor para jogadores reais.
+- [ ] Definir protocolo de mensagens para input, snapshots, pouso, ranking e eventos de rodada.
+- [ ] Prototipar servidor minimo isolado do MVP local.
+- [ ] Validar interpolacao/extrapolacao de jogadores remotos com latencia simulada.
+- [ ] Planejar salas simples por codigo, sem login ou matchmaking complexo.
+- [ ] Definir criterio de entrada do multiplayer ao vivo no produto principal.
+
 ## Ordem de prioridade
 1. Cena 3D renderizando.
 2. Terreno legivel.
@@ -72,3 +91,4 @@
 6. HUD util.
 7. Bots.
 8. Ranking.
+9. Pesquisa de multiplayer ao vivo pos-MVP.
