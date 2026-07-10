@@ -30,6 +30,8 @@ const INITIAL_LINE_CONFIG = {
   edgeDropScale: 3.58
 };
 
+const BRAKE_LINE_TIP_BLEND = 0.5;
+
 const PROCEDURAL_CANOPY_LINE_CENTER_Y = 3.66;
 const PROCEDURAL_CANOPY_LOADING_Y = (
   ASSET_CANOPY_CONFIG.verticalOffset
@@ -590,10 +592,12 @@ function createSuspensionLines() {
   const brakeRow = lineRows[lineRows.length - 1];
   for (const side of [-1, 1]) {
     const station = 3.05;
-    const normalizedX = station / halfSpan;
+    const baseAnchorX = station * brakeRow.spread;
+    const anchorX = THREE.MathUtils.lerp(baseAnchorX, halfSpan, BRAKE_LINE_TIP_BLEND);
+    const normalizedX = anchorX / halfSpan;
     const brakeLine = createCanopySuspensionLine({
       anchorPoint: new THREE.Vector3(
-        side * station * brakeRow.spread,
+        side * anchorX,
         getCanopyAnchorY(normalizedX, brakeRow),
         ASSET_CANOPY_CONFIG.depthOffset + brakeRow.z + Math.pow(normalizedX, 2) * 0.34
       ),
