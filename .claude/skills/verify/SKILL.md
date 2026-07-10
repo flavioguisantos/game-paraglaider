@@ -11,6 +11,7 @@ Site estático (three.js via importmap `/vendor/three`). Sem testes; a verifica�
 
 - `image/pilot-arms.glb` (braços skinned da primeira pessoa, até o punho) é gerado por `node scripts/generate-pilot-arms.js`.
 - `image/pilot-hands.glb` (mãos cartoon rígidas presas ao osso do punho) é gerado por `node scripts/generate-pilot-hands.js` a partir de `image/obj_9_ARM2-1.stl` (decima ~124k → ~14k triângulos).
+- `image/pilot-pod.glb` (piloto 3D com selete e fitas do modelo externo; os batoques são adicionados pelo jogo) é gerado por `node scripts/generate-pilot-model.js` a partir de `image/piloto.glb` (Tripo3D; decima ~1,4M → ~21k triângulos preservando UVs). Os GLBs fonte (`pilot.glb`, `piloto.glb`) são excluídos do dist pelo build.
 - Regenerar após editar esses scripts, antes do build.
 
 ## Build + servir

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { applyFlightPhysics, updateAltitudeMetrics } from './physics.js?v=hot-b-1';
-import { createParagliderModel, setParagliderLandedPose } from './paragliderModel.js?v=pilot-pose-5';
+import { createParagliderModel, setParagliderLandedPose } from './paragliderModel.js?v=pilot-pose-8';
 
 const BOT_CONFIG = {
   // Como pilotos reais: mais devagar circulando (minimo afundamento),

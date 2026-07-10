@@ -29,7 +29,13 @@ fs.mkdirSync(distDir, { recursive: true });
 
 copyFile('index.html', 'index.html');
 copyDirectory('src', 'src');
-copyDirectory('image', 'image');
+// Assets fonte (so usados pelos scripts de geracao) ficam fora do build.
+const sourceOnlyAssets = new Set(['pilot.glb', 'piloto.glb']);
+fs.cpSync(path.join(rootDir, 'image'), path.join(distDir, 'image'), {
+  recursive: true,
+  force: true,
+  filter: (source) => !sourceOnlyAssets.has(path.basename(source))
+});
 copyDirectory('assets', 'assets');
 copyDirectory('mapas/processed', 'mapas/processed');
 copyFile('node_modules/fflate/esm/browser.js', 'vendor/fflate/browser.js');

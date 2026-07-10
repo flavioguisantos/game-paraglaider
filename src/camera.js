@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 
 const CAMERA_CONFIG = {
-  distance: 31,
-  height: 15,
+  distance: 15.5,
+  height: 7.5,
   lookAhead: 20,
   lookHeight: 5,
   followSmoothing: 3.8,
@@ -21,7 +21,7 @@ const CAMERA_CONFIG = {
 // Visao do piloto (primeira pessoa): camera no capacete, herdando a
 // orientacao do modelo (banco/pitch), com leve olhar para baixo.
 const FIRST_PERSON_CONFIG = {
-  headOffset: new THREE.Vector3(0, 0.72, 0.1),
+  headOffset: new THREE.Vector3(0, 0.945, 0.945),
   // Olhar levemente para baixo para enquadrar o cockpit da selete e as maos.
   lookDownPitch: 0.09,
   orientationSmoothing: 14,

@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { applyFlightPhysics, POLAR_SPEEDS, updateAltitudeMetrics } from './physics.js?v=hot-b-1';
-import { createParagliderModel, setParagliderLandedPose } from './paragliderModel.js?v=pilot-pose-5';
+import { createParagliderModel, setParagliderLandedPose } from './paragliderModel.js?v=pilot-pose-8';
 import { createFirstPersonRig, updateFirstPersonRig } from './firstPersonRig.js?v=8';
-import { getCameraMode } from './camera.js?v=camera-modes-3';
+import { getCameraMode } from './camera.js?v=camera-modes-7';
 
 const PLAYER_CONFIG = {
   launchX: 0,
@@ -32,10 +32,14 @@ const VEHICLE_PROFILES = {
     surgeSmoothing: 4,
     cameraPreference: 'toggle',
     cameraProfile: {
-      headOffset: new THREE.Vector3(0, 0.72, 0.1),
-      lookDownPitch: 0.09,
+      // Camera "GoPro nas linhas": atras e acima do piloto, enquadrando as
+      // costas, a selete e as linhas convergindo para a asa (estilo selfie
+      // de voo). O boneco externo permanece visivel no lugar do rig de maos.
+      headOffset: new THREE.Vector3(0, 0.945, 0.945),
+      lookDownPitch: 0.18,
       orientationSmoothing: 14,
-      nearPlane: 0.06
+      nearPlane: 0.06,
+      showPilotModel: true
     },
     createModel(canopyColor) {
       return createParagliderModel({
@@ -221,16 +225,18 @@ export class Player {
     }
   }
 
-  // Mostra o rig de primeira pessoa (e esconde o boneco externo) enquanto a
-  // camera estiver na visao do piloto; pousado, volta sempre ao modo externo.
+  // Ajusta o que aparece na visao do piloto; pousado, volta sempre ao modo
+  // externo. Com showPilotModel (camera recuada atras do piloto), o boneco
+  // externo continua visivel e o rig de maos/cockpit fica sempre oculto.
   syncFirstPersonView(delta) {
     const active = (this.cameraPreference === 'first-person-only' || getCameraMode() === 'first-person')
       && !this.landed
       && !this.entangled;
-    if (this.firstPersonRig) this.firstPersonRig.visible = active;
+    const showRig = active && !this.cameraProfile?.showPilotModel;
+    if (this.firstPersonRig) this.firstPersonRig.visible = showRig;
     const pilot = this.group.userData.parts?.pilot;
-    if (pilot) pilot.visible = !active;
-    if (active && this.firstPersonRig) updateFirstPersonRig(this.firstPersonRig, this.input, delta);
+    if (pilot) pilot.visible = !showRig;
+    if (showRig && this.firstPersonRig) updateFirstPersonRig(this.firstPersonRig, this.input, delta);
   }
 
   getForwardVector() {

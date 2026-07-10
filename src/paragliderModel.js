@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const DEFAULT_COLORS = {
   canopy: 0x9ed8f0,
@@ -50,6 +51,28 @@ const OBJ_TO_GAME_AXIS_MATRIX = new THREE.Matrix4().makeBasis(
 
 const objCanopyCache = new Map();
 const unavailableObjUrls = new Set();
+
+// Piloto 3D com selete, conectores e batoques (image/pilot-pod.glb, decimado
+// de image/pilot.glb por scripts/generate-pilot-model.js). No GLB o piloto
+// olha para +Z; o jogo voa para -Z, dai o rotationY de meia-volta.
+const PILOT_POD_CONFIG = {
+  assetUrl: '/image/pilot-pod.glb',
+  scale: 1.5,
+  rotationY: Math.PI,
+  flightPosition: new THREE.Vector3(0, 0.15, 0.1),
+  // Pousado: casulo inclinado ate o chao, piloto "sentado" ao lado da asa.
+  standingRotationX: -1.05,
+  standingPosition: new THREE.Vector3(0, 0.62, 0),
+  // Pontos de conexao no espaco LOCAL do GLB (lado +X; o outro e espelhado):
+  // topo da fita da selete (loop do tirante) e punho fechado do piloto, onde
+  // o jogo adiciona o batoque (o asset vem com as maos vazias).
+  harnessAttachLocal: new THREE.Vector3(0.14, 0.272, 0.012),
+  toggleAttachLocal: new THREE.Vector3(0.21, 0.115, -0.04),
+  fistLocal: new THREE.Vector3(0.21, 0.095, -0.04)
+};
+
+let pilotPodTemplatePromise = null;
+let pilotPodUnavailable = false;
 
 export function createParagliderModel(options = {}) {
   const config = {
@@ -554,8 +577,33 @@ function createSuspensionLines() {
     lineGroup: group
   }));
 
-  group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([harnessPoints[0], new THREE.Vector3(-0.18, -0.05, -0.1)]), riserMaterial));
-  group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([harnessPoints[1], new THREE.Vector3(0.18, -0.05, -0.1)]), riserMaterial));
+  const riserLines = [
+    new THREE.Line(new THREE.BufferGeometry().setFromPoints([harnessPoints[0], new THREE.Vector3(-0.18, -0.05, -0.1)]), riserMaterial),
+    new THREE.Line(new THREE.BufferGeometry().setFromPoints([harnessPoints[1], new THREE.Vector3(0.18, -0.05, -0.1)]), riserMaterial)
+  ];
+  group.add(...riserLines);
+  group.userData.riserLines = riserLines;
+
+  // Linhas de comando (freio): do bordo de fuga ate a mao do piloto. Com o
+  // piloto GLB, o endpoint e movido para a barra do batoque que ele segura.
+  const brakeMaterial = new THREE.LineBasicMaterial({ color: 0xd8342a, transparent: true, opacity: 0.85 });
+  const brakeRow = lineRows[lineRows.length - 1];
+  for (const side of [-1, 1]) {
+    const station = 3.05;
+    const normalizedX = station / halfSpan;
+    const brakeLine = createCanopySuspensionLine({
+      anchorPoint: new THREE.Vector3(
+        side * station * brakeRow.spread,
+        getCanopyAnchorY(normalizedX, brakeRow),
+        ASSET_CANOPY_CONFIG.depthOffset + brakeRow.z + Math.pow(normalizedX, 2) * 0.34
+      ),
+      targetHarness: new THREE.Vector3(side * 0.42, 0.62, 0.2),
+      material: brakeMaterial,
+      lineGroup: group
+    });
+    brakeLine.userData.isBrakeLine = true;
+    group.add(brakeLine);
+  }
 
   return group;
 }
@@ -603,15 +651,133 @@ function createPilot(colors) {
 
   group.userData.parts = { pod, torso, helmet, leftArm, rightArm, harness };
   setPilotFlightPose(group);
+  loadPilotPod(group);
   return group;
+}
+
+// Troca o piloto procedural pelo GLB assim que carregar; sem rede ou sem o
+// asset, o procedural continua. O template e compartilhado (jogador + bots
+// clonam a mesma geometria/material).
+function loadPilotPod(pilot) {
+  if (pilotPodUnavailable) return;
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+
+  if (!pilotPodTemplatePromise) {
+    pilotPodTemplatePromise = new GLTFLoader().loadAsync(PILOT_POD_CONFIG.assetUrl);
+  }
+
+  pilotPodTemplatePromise
+    .then((gltf) => {
+      const template = gltf.scene.getObjectByName('PilotPod');
+      if (!template) throw new Error('no PilotPod no GLB nao encontrado');
+
+      const pod = template.clone();
+      pod.name = 'PilotPodAsset';
+      pod.traverse((child) => {
+        if (!child.isMesh) return;
+        child.castShadow = true;
+        // A textura do asset e um cinza medio uniforme; o tint multiplicativo
+        // escurece para o tom de equipamento do jogo sem perder o detalhe.
+        // DoubleSide fecha os furos deixados pela decimacao da malha.
+        child.material.color.set(0x5b636d);
+        child.material.side = THREE.DoubleSide;
+      });
+      addPilotPodToggles(pod);
+      pilot.add(pod);
+      pilot.userData.glbPilot = pod;
+
+      for (const mesh of Object.values(pilot.userData.parts ?? {})) {
+        mesh.visible = false;
+      }
+
+      // Reaplica a pose vigente ja com o GLB no lugar.
+      if (pilot.userData.poseName === 'standing') {
+        setPilotStandingPose(pilot);
+      } else {
+        setPilotFlightPose(pilot);
+      }
+
+      attachLinesToPilotPod(pilot);
+    })
+    .catch((error) => {
+      if (!pilotPodUnavailable) {
+        pilotPodUnavailable = true;
+        console.warn(`Nao foi possivel carregar o piloto GLB; usando piloto procedural: ${PILOT_POD_CONFIG.assetUrl}`, error);
+      }
+    });
+}
+
+// Batoques (asset vem com as maos vazias): barra vermelha em cada punho, no
+// espaco local do GLB, para a linha de comando ter onde chegar.
+function addPilotPodToggles(pod) {
+  const toggleMaterial = new THREE.MeshStandardMaterial({ color: 0xc0392b, roughness: 0.82 });
+  const toggleGeometry = new THREE.CylinderGeometry(0.0072, 0.0072, 0.066, 10);
+  toggleGeometry.rotateZ(Math.PI / 2);
+
+  for (const side of [-1, 1]) {
+    const toggle = new THREE.Mesh(toggleGeometry, toggleMaterial);
+    toggle.castShadow = true;
+    toggle.position.set(
+      side * PILOT_POD_CONFIG.fistLocal.x,
+      PILOT_POD_CONFIG.fistLocal.y,
+      PILOT_POD_CONFIG.fistLocal.z
+    );
+    pod.add(toggle);
+  }
+}
+
+// Converte um ponto local do GLB (lado dado pelo sinal) para o espaco do
+// modelo na pose de voo (escala + meia-volta em Y + offset do casulo).
+function pilotPodAttachPoint(local, side) {
+  return new THREE.Vector3(
+    side * Math.abs(local.x) * PILOT_POD_CONFIG.scale,
+    local.y * PILOT_POD_CONFIG.scale + PILOT_POD_CONFIG.flightPosition.y,
+    -local.z * PILOT_POD_CONFIG.scale + PILOT_POD_CONFIG.flightPosition.z
+  );
+}
+
+// Reconecta as linhas ao piloto GLB: linhas de sustentacao no topo da fita da
+// selete, linhas de comando no batoque do punho. Os tirantes falsos do piloto
+// procedural somem (a fita do GLB ja faz esse papel).
+function attachLinesToPilotPod(pilot) {
+  const suspensionLines = pilot.parent?.userData?.parts?.suspensionLines;
+  if (!suspensionLines) return;
+
+  for (const line of suspensionLines.userData.canopyLines ?? []) {
+    const side = line.userData.harnessPoint.x < 0 ? -1 : 1;
+    const local = line.userData.isBrakeLine
+      ? PILOT_POD_CONFIG.toggleAttachLocal
+      : PILOT_POD_CONFIG.harnessAttachLocal;
+    const endPoint = pilotPodAttachPoint(local, side);
+
+    // Preserva a ancora atual na vela (vertice 0), que pode ja ter sido
+    // ajustada pelo snap a superficie do OBJ.
+    const anchor = new THREE.Vector3().fromBufferAttribute(line.geometry.getAttribute('position'), 0);
+    line.geometry.dispose();
+    line.geometry = new THREE.BufferGeometry().setFromPoints([anchor, endPoint]);
+    line.userData.harnessPoint = endPoint.clone();
+  }
+
+  for (const riser of suspensionLines.userData.riserLines ?? []) {
+    riser.visible = false;
+  }
 }
 
 function setPilotFlightPose(pilot) {
   const parts = pilot.userData.parts;
   if (!parts) return;
 
+  pilot.userData.poseName = 'flight';
   pilot.position.set(0, 0, 0);
   pilot.rotation.set(0, 0, 0);
+
+  const glbPilot = pilot.userData.glbPilot;
+  if (glbPilot) {
+    glbPilot.scale.setScalar(PILOT_POD_CONFIG.scale);
+    glbPilot.rotation.set(0, PILOT_POD_CONFIG.rotationY, 0);
+    glbPilot.position.copy(PILOT_POD_CONFIG.flightPosition);
+    return;
+  }
 
   // Pod harness real: pes/casulo apontando para frente (-Z, direcao de voo),
   // levemente erguidos, com o piloto reclinado e a cabeca atras/acima.
@@ -638,8 +804,17 @@ function setPilotStandingPose(pilot) {
   const parts = pilot.userData.parts;
   if (!parts) return;
 
+  pilot.userData.poseName = 'standing';
   pilot.position.set(2.8, 0.95, 1.25);
   pilot.rotation.set(0, -0.35, 0);
+
+  const glbPilot = pilot.userData.glbPilot;
+  if (glbPilot) {
+    glbPilot.scale.setScalar(PILOT_POD_CONFIG.scale);
+    glbPilot.rotation.set(PILOT_POD_CONFIG.standingRotationX, PILOT_POD_CONFIG.rotationY, 0);
+    glbPilot.position.copy(PILOT_POD_CONFIG.standingPosition);
+    return;
+  }
 
   // Em pe, o casulo fica recolhido atras das pernas.
   parts.pod.visible = false;
