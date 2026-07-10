@@ -29,6 +29,12 @@ Use este arquivo para escolher somente o contexto necessario para a tarefa atual
 ### Instrucao para futuras IAs ou padroes de colaboracao
 - `docs/ai-guidelines.md`
 
+### Contribuicao open source, issues, PRs ou captacao de colaboradores
+- `README.md`
+- `CONTRIBUTING.md`
+- `docs/contribution-tasks.md`
+- `docs/github-setup.md`
+
 ## Evitar
 - Nao abrir todos os arquivos de `docs/` automaticamente.
 - Nao copiar trechos longos dos documentos para respostas ou novos arquivos.

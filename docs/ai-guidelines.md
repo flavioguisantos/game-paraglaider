@@ -3,6 +3,8 @@
 ## Como trabalhar neste projeto
 - Antes de implementar, ler `plano.md` e os arquivos em `docs/`.
 - Preservar o escopo do MVP, evitando adicionar multiplayer, contas, skins ou backend complexo antes da validacao do voo.
+- Para colaboracao open source, seguir `CONTRIBUTING.md` e consultar `docs/contribution-tasks.md`.
+- Tratar multiplayer ao vivo como trilha pos-MVP ate existir decisao explicita para integrar backend ao produto principal.
 - Priorizar pequenas entregas verificaveis.
 - Manter a estrutura modular descrita em `docs/architecture.md`.
 - Nao introduzir assets externos obrigatorios sem necessidade.
@@ -28,6 +30,12 @@
 - Criar economia, loja ou skins.
 - Depender de modelos 3D externos para o jogo rodar.
 - Adicionar framework frontend pesado sem necessidade.
+
+## Permitido como preparacao pos-MVP
+- Criar issues de pesquisa sobre multiplayer ao vivo.
+- Documentar arquitetura, protocolo e riscos de sincronizacao.
+- Criar prototipos isolados que nao sejam dependencia obrigatoria do MVP local.
+- Discutir WebSockets/Socket.io sem integrar backend permanente ao loop principal.
 
 ## Verificacao recomendada apos alteracoes
 - Rodar instalacao e servidor local.
