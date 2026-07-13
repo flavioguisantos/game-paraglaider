@@ -5,10 +5,21 @@ import { createBots } from './bot.js?v=hot-b-4';
 import { initializeThirdPersonCamera, setCameraMode, toggleCameraMode, updateFlightCamera, updateStandbyCamera } from './camera.js?v=camera-modes-7';
 import { configureWind, createWindVector, detectParagliderCollisions, detectVegetationCollisions, updateEntangledParagliders, updateWind } from './physics.js?v=hot-b-1';
 import { createHud, createRoundState, updateHud, updateRoundState } from './hud.js?v=hud-instrument-5';
-import { findFlightLocation } from './flightLocations.js';
-import { fetchMatchCount, registerStartedMatch } from './matchCounterApi.js';
+import { findFlightLocation, getFlightLocations, setFlightLocations } from './flightLocations.js';
+import {
+  ensureGuestPlayerIdentity,
+  fetchLaunches,
+  fetchLaunchSession,
+  fetchMatchCount,
+  joinLaunchSession,
+  leaveLaunchSession,
+  postPlayerResult,
+  registerStartedMatch
+} from './gameApi.js';
+import { createGameRealtimeClient } from './gameRealtimeClient.js';
 import { createOrographicLift } from './orographicLift.js';
 import { getVehicleProfile, Player } from './player.js?v=fp-cam-6';
+import { RemotePlayer } from './remotePlayer.js';
 import { createCelebration, createFlightStats, updateFlightStats } from './celebration.js';
 import { createScoringState, initializeScoringForEntities, updateScoring } from './scoring.js';
 import { createTerrain } from './terrain.js?v=terrain-realism-4';
@@ -21,8 +32,10 @@ const canvas = document.querySelector('#game');
 const startButton = document.querySelector('#start-flight');
 const restartButton = document.querySelector('#restart-game');
 const totalMatchesElements = [...document.querySelectorAll('[data-total-matches]')];
+const launchPresenceElements = [...document.querySelectorAll('[data-launch-presence]')];
+const launchStatusElements = [...document.querySelectorAll('[data-launch-status]')];
+const launchOptionsRoot = document.querySelector('[data-launch-options]');
 const colorInputs = [...document.querySelectorAll('input[name="canopy-color"]')];
-const locationInputs = [...document.querySelectorAll('input[name="flight-location"]')];
 const vehicleInputs = [...document.querySelectorAll('input[name="vehicle-type"]')];
 const scene = new THREE.Scene();
 const SKY_BLUE = 0x77bdf0;
@@ -202,6 +215,12 @@ const adventureMusic = createAdventureMusic({ trackUrl: '/assets/audio/adventure
 
 const clock = new THREE.Clock();
 const standbyPosition = new THREE.Vector3(0, 0, 0);
+const realtimeClient = createGameRealtimeClient({
+  onSessionMessage: handleRealtimeSessionMessage,
+  onError(error) {
+    console.warn('Falha no canal realtime do jogo.', error);
+  }
+});
 const appState = {
   started: false,
   player: null,
@@ -219,7 +238,16 @@ const appState = {
   assistVisuals: true,
   selectedLocation: getSelectedFlightLocation(),
   selectedVehicleType: getSelectedVehicleType(),
-  totalMatches: null
+  totalMatches: null,
+  launchCatalogLoaded: false,
+  launchSession: null,
+  launchPresenceCount: 0,
+  launchStatusLabel: 'Offline',
+  guestIdentity: null,
+  remotePlayers: new Map(),
+  remoteRanking: [],
+  lastRealtimeStateAtMs: 0,
+  lastRealtimeResultSent: false
 };
 // Hook de inspecao/testes (ex.: teleportar o piloto em testes automatizados).
 window.__appState = appState;
@@ -240,22 +268,92 @@ function handleResize() {
 
 window.addEventListener('resize', handleResize);
 window.visualViewport?.addEventListener('resize', handleResize);
+startButton.disabled = true;
 startButton.addEventListener('click', startFlight);
 restartButton?.addEventListener('click', restartGame);
-loadMatchCount();
-for (const input of locationInputs) {
-  input.addEventListener('change', () => {
-    if (input.checked && !appState.started) {
-      applySelectedFlightLocation();
-    }
-  });
-}
+window.addEventListener('beforeunload', () => {
+  void disconnectRealtimeAndSession();
+});
 setupLayerPanel();
 setupCameraToggle();
 setupVehicleSelection();
+void initializeGameFront();
 
 function restartGame() {
+  void disconnectRealtimeAndSession();
   window.location.reload();
+}
+
+async function initializeGameFront() {
+  try {
+    try {
+      appState.guestIdentity = await ensureGuestPlayerIdentity();
+    } catch (error) {
+      console.warn('Nao foi possivel emitir a identidade guest do jogador.', error);
+    }
+
+    await Promise.all([
+      loadMatchCount(),
+      loadLaunchCatalog()
+    ]);
+    await refreshSelectedLaunchSession();
+  } finally {
+    startButton.disabled = false;
+  }
+}
+
+async function loadLaunchCatalog() {
+  try {
+    const launches = await fetchLaunches();
+    setFlightLocations(launches);
+    renderLaunchOptions(getFlightLocations());
+    appState.selectedLocation = getSelectedFlightLocation();
+    appState.launchCatalogLoaded = true;
+    applySelectedFlightLocation();
+  } catch (error) {
+    console.warn('Nao foi possivel carregar o catalogo de rampas da API; usando fallback local.', error);
+    renderLaunchOptions(getFlightLocations());
+    appState.selectedLocation = getSelectedFlightLocation();
+  }
+}
+
+function renderLaunchOptions(locations) {
+  if (!launchOptionsRoot) return;
+
+  launchOptionsRoot.innerHTML = '';
+  const selectedId = appState.selectedLocation?.id ?? locations[0]?.id;
+
+  for (const location of locations) {
+    const label = document.createElement('label');
+    label.className = 'location-option';
+    label.innerHTML = `
+      <input type="radio" name="flight-location" value="${location.id}">
+      <strong>${location.name}</strong>
+      <span>${location.region}</span>
+    `;
+    const input = label.querySelector('input');
+    input.checked = location.id === selectedId;
+    input.addEventListener('change', () => {
+      if (!input.checked || appState.started) return;
+      appState.selectedLocation = getSelectedFlightLocation();
+      applySelectedFlightLocation();
+      void refreshSelectedLaunchSession();
+    });
+    launchOptionsRoot.append(label);
+  }
+}
+
+async function refreshSelectedLaunchSession() {
+  const location = getSelectedFlightLocation();
+  if (!location?.launchId && !location?.id) return;
+
+  try {
+    const bundle = await fetchLaunchSession(location.launchId ?? location.id);
+    applyLaunchSessionBundle(bundle);
+  } catch (error) {
+    console.warn('Nao foi possivel carregar a sessao ativa da rampa.', error);
+    applyLaunchSessionBundle(null);
+  }
 }
 
 // Alternancia de camera estilo jogo de corrida: externa <-> visao do piloto.
@@ -393,12 +491,19 @@ async function startFlight() {
   appState.lastScoreFeedbackAudioId = null;
   appState.round = createRoundState();
   appState.round.totalMatches = appState.totalMatches;
+  appState.round.remoteRanking = appState.remoteRanking;
   appState.thermalAssistant = createThermalAssistant();
   appState.flightStats = createFlightStats();
   appState.golCelebrated = false;
+  appState.lastRealtimeResultSent = false;
   celebration.hide();
+  clearRemotePlayers();
   appState.started = true;
   void updateGlobalMatchCounterOnStart();
+  void joinSelectedLaunchRealtime({
+    vehicleType: selectedVehicleType,
+    canopyColor: `#${selectedColor.toString(16).padStart(6, '0')}`
+  });
   document.body.classList.add('is-flying');
   document.body.classList.remove('round-ended');
   adventureMusic.start();
@@ -408,7 +513,7 @@ async function startFlight() {
 }
 
 function getSelectedFlightLocation() {
-  const selectedLocationId = locationInputs.find((input) => input.checked)?.value;
+  const selectedLocationId = getLocationInputs().find((input) => input.checked)?.value;
   return findFlightLocation(selectedLocationId);
 }
 
@@ -430,6 +535,43 @@ function applySelectedFlightLocation() {
   thermals.setCeiling(location.cloudBaseMeters ?? 2200);
   orographicLift.configure(location.orographicLift);
   orographicLift.setAssistVisuals(appState.assistVisuals);
+}
+
+function getLocationInputs() {
+  return [...document.querySelectorAll('input[name="flight-location"]')];
+}
+
+function applyLaunchSessionBundle(bundle) {
+  appState.launchSession = bundle?.session ?? null;
+  appState.launchPresenceCount = Number(bundle?.session?.playerCount ?? 0);
+  appState.launchStatusLabel = getLaunchStatusLabel(bundle?.session?.status);
+  appState.remoteRanking = bundle?.session?.ranking ?? [];
+  updateLaunchSessionUi();
+}
+
+function updateLaunchSessionUi() {
+  const presence = `${appState.launchPresenceCount}`;
+  for (const element of launchPresenceElements) {
+    element.textContent = presence;
+  }
+  for (const element of launchStatusElements) {
+    element.textContent = appState.launchStatusLabel;
+  }
+}
+
+function getLaunchStatusLabel(status) {
+  switch (status) {
+    case 'active':
+      return 'Sessao ativa';
+    case 'waiting':
+      return 'Aguardando';
+    case 'paused':
+      return 'Pausada';
+    case 'ended':
+      return 'Encerrada';
+    default:
+      return 'Offline';
+  }
 }
 
 async function loadMatchCount() {
@@ -466,6 +608,163 @@ function setGlobalMatchCount(totalMatches) {
 function formatGlobalMatchCount(totalMatches) {
   if (!Number.isFinite(totalMatches)) return '--';
   return Math.round(totalMatches).toLocaleString('pt-BR');
+}
+
+async function joinSelectedLaunchRealtime({ vehicleType, canopyColor }) {
+  const launchId = appState.selectedLocation?.launchId ?? appState.selectedLocation?.id;
+  if (!launchId || !appState.guestIdentity) return;
+
+  try {
+    await joinLaunchSession(launchId, appState.guestIdentity, {
+      displayName: appState.guestIdentity.displayName,
+      vehicleType,
+      canopyColor,
+      status: 'connected'
+    });
+    realtimeClient.connect({
+      launchId,
+      playerIdentity: appState.guestIdentity,
+      player: {
+        displayName: appState.guestIdentity.displayName,
+        vehicleType,
+        canopyColor,
+        status: 'connected'
+      }
+    });
+  } catch (error) {
+    console.warn('Nao foi possivel entrar na sessao da rampa.', error);
+  }
+}
+
+async function disconnectRealtimeAndSession() {
+  const launchId = appState.selectedLocation?.launchId ?? appState.selectedLocation?.id;
+  if (launchId && appState.guestIdentity) {
+    try {
+      await leaveLaunchSession(launchId, appState.guestIdentity);
+    } catch {}
+  }
+  realtimeClient.disconnect({ notifyLeave: false });
+}
+
+function handleRealtimeSessionMessage(message) {
+  if (!message?.session) return;
+  applyLaunchSessionBundle({ session: message.session });
+  if (appState.round) {
+    appState.round.remoteRanking = message.session.ranking ?? [];
+  }
+  syncRemotePlayers(message.session.players ?? []);
+}
+
+function syncRemotePlayers(players) {
+  const seen = new Set();
+
+  for (const player of players) {
+    if (!player?.playerId || player.playerId === appState.guestIdentity?.playerId) continue;
+    if (player.status === 'disconnected') continue;
+    seen.add(player.playerId);
+    let remotePlayer = appState.remotePlayers.get(player.playerId);
+    if (!remotePlayer) {
+      remotePlayer = new RemotePlayer({
+        playerId: player.playerId,
+        displayName: player.displayName,
+        vehicleType: player.vehicleType,
+        canopyColor: player.canopyColor,
+        terrain
+      });
+      appState.remotePlayers.set(player.playerId, remotePlayer);
+      scene.add(remotePlayer.group);
+    }
+    remotePlayer.updateFromSnapshot(player);
+  }
+
+  for (const [playerId, remotePlayer] of appState.remotePlayers.entries()) {
+    if (seen.has(playerId)) continue;
+    remotePlayer.dispose();
+    appState.remotePlayers.delete(playerId);
+  }
+}
+
+function clearRemotePlayers() {
+  for (const remotePlayer of appState.remotePlayers.values()) {
+    remotePlayer.dispose();
+  }
+  appState.remotePlayers.clear();
+}
+
+function maybeSendRealtimePlayerState(nowMs) {
+  if (!appState.started || !appState.player || !appState.guestIdentity) return;
+  if (nowMs - appState.lastRealtimeStateAtMs < 100) return;
+
+  appState.lastRealtimeStateAtMs = nowMs;
+  realtimeClient.sendPlayerState(buildRealtimePlayerState());
+}
+
+function buildRealtimePlayerState() {
+  const player = appState.player;
+  return {
+    displayName: appState.guestIdentity?.displayName,
+    vehicleType: player.vehicleType,
+    canopyColor: getSelectedCanopyColorHex(),
+    status: player.landed ? (player.crashed ? 'crashed' : 'landed') : 'flying',
+    headingRadians: player.heading,
+    turnRate: player.turnRate,
+    bankAngle: player.bankAngle,
+    position: {
+      x: player.position.x,
+      y: player.position.y,
+      z: player.position.z
+    },
+    metrics: {
+      altitudeAboveSeaLevel: player.altitudeAboveSeaLevel,
+      groundClearance: player.groundClearance,
+      speedKmh: player.groundSpeedKmh ?? player.speed,
+      verticalSpeed: player.verticalSpeed,
+      distanceFromStart: player.distanceFromStart,
+      score: player.score ?? 0,
+      combo: player.thermalCombo ?? 1,
+      nextWaypointIndex: player.nextWaypointIndex ?? 0,
+      completedWaypoints: player.completedWaypoints ?? 0
+    }
+  };
+}
+
+function maybeSendRealtimeResult(round) {
+  if (!appState.started || !appState.player || !round?.ended || appState.lastRealtimeResultSent || !appState.guestIdentity) return;
+
+  appState.lastRealtimeResultSent = true;
+  const stats = appState.flightStats ?? createFlightStats();
+  void postPlayerResult(
+    appState.selectedLocation?.launchId ?? appState.selectedLocation?.id,
+    appState.guestIdentity,
+    appState.player.crashed ? 'crashed' : 'landed',
+    {
+      finalScore: appState.player.score ?? 0,
+      flightTimeSeconds: round.elapsedSeconds,
+      maxAltitudeMeters: stats.maxAltitudeMeters,
+      maxGroundSpeedKmh: stats.maxGroundSpeedKmh,
+      maxClimbMetersPerSecond: stats.maxClimbMetersPerSecond,
+      bestThermalCombo: appState.player.bestThermalCombo ?? 1,
+      completedWaypoints: appState.player.completedWaypoints ?? 0,
+      finishedAt: new Date().toISOString()
+    }
+  ).catch((error) => {
+    console.warn('Nao foi possivel publicar o resultado da rodada.', error);
+  });
+  realtimeClient.sendPlayerResult(appState.player.crashed ? 'crashed' : 'landed', {
+    finalScore: appState.player.score ?? 0,
+    flightTimeSeconds: round.elapsedSeconds,
+    maxAltitudeMeters: stats.maxAltitudeMeters,
+    maxGroundSpeedKmh: stats.maxGroundSpeedKmh,
+    maxClimbMetersPerSecond: stats.maxClimbMetersPerSecond,
+    bestThermalCombo: appState.player.bestThermalCombo ?? 1,
+    completedWaypoints: appState.player.completedWaypoints ?? 0,
+    finishedAt: new Date().toISOString()
+  });
+}
+
+function getSelectedCanopyColorHex() {
+  const selectedColor = colorInputs.find((input) => input.checked)?.value ?? '0xa8dff2';
+  return `#${selectedColor.replace(/^0x/i, '').padStart(6, '0')}`;
 }
 
 function updateVehicleSelectionUi() {
@@ -516,6 +815,7 @@ function updateVehicleSelectionUi() {
 
 renderer.setAnimationLoop(() => {
   const delta = Math.min(clock.getDelta(), 0.05);
+  const nowMs = performance.now();
   const referencePosition = appState.player?.position ?? standbyPosition;
   terrain.update(referencePosition, delta);
   vegetation.update(referencePosition);
@@ -525,6 +825,9 @@ renderer.setAnimationLoop(() => {
   updateWindMarkers(windMarkers, wind, referencePosition, terrain);
 
   if (!appState.started) {
+    for (const remotePlayer of appState.remotePlayers.values()) {
+      remotePlayer.update(delta);
+    }
     thermals.update(delta, wind);
     orographicLift.update(delta, { referencePosition, terrain, wind });
     updateStandbyCamera(camera, terrain, delta, {
@@ -556,10 +859,15 @@ renderer.setAnimationLoop(() => {
   if (!round.ended) {
     updateScoring(appState.scoring, delta, flyers, { thermals, terrain });
   }
+  for (const remotePlayer of appState.remotePlayers.values()) {
+    remotePlayer.update(delta);
+  }
 
   updateFlightStats(appState.flightStats, player);
   maybeCelebrateGol(player, round);
   updateRoundState(round, delta, player);
+  maybeSendRealtimePlayerState(nowMs);
+  maybeSendRealtimeResult(round);
   document.body.classList.toggle('round-ended', round.ended);
   if (round.ended) adventureMusic.stop();
   playScoreFeedbackAudio(player);
