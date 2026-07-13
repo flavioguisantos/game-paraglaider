@@ -465,6 +465,12 @@
         border-radius: 10px;
       }
 
+      .start-stats-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+
       .start-stats span {
         display: block;
         font-size: 11px;
@@ -1394,7 +1400,7 @@
       <h1 class="start-title">Jogo Parapente 3D</h1>
       <div class="start-field">
         <div class="start-field-title">Local de voo</div>
-        <div class="location-options" aria-label="Local de voo">
+        <div class="location-options" aria-label="Local de voo" data-launch-options>
           <label class="location-option">
             <input type="radio" name="flight-location" value="atibaia-pedra-grande" checked>
             <strong>Atibaia / Pedra Grande</strong>
@@ -1490,9 +1496,16 @@
         </label>
         </div>
       </div>
-      <div class="start-stats">
-        <span>Partidas iniciadas</span>
-        <strong data-total-matches>--</strong>
+      <div class="start-stats-grid">
+        <div class="start-stats">
+          <span>Partidas iniciadas</span>
+          <strong data-total-matches>--</strong>
+        </div>
+        <div class="start-stats">
+          <span>Pilotos na rampa</span>
+          <strong data-launch-presence>0</strong>
+          <span data-launch-status>Aguardando</span>
+        </div>
       </div>
       <button id="start-flight" class="start-button" type="button">Iniciar voo</button>
     </div>

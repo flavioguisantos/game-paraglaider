@@ -12,6 +12,14 @@ Ganhar altitude e afastar-se do ponto de decolagem. A rodada nao tem limite de t
 - O total global deve aparecer no menu inicial e no HUD como informacao social/operacional, sem interferir na pontuacao da rodada.
 - A integracao com persistencia deve ficar desacoplada do loop principal por um client dedicado no front e por rotas proprias de jogo no back-end, facilitando extracao futura para uma API exclusiva.
 
+## Presenca por rampa
+- O prototipo passa a consultar o catalogo de rampas e o resumo da sessao da rampa pela API de jogo, em vez de depender apenas da lista local embutida.
+- O painel inicial deve mostrar quantos pilotos estao presentes na rampa atualmente e o status resumido da sessao selecionada.
+- Ao iniciar o voo, o cliente entra na sessao da rampa com uma identidade guest emitida pela API.
+- Enquanto voa, o cliente publica snapshots resumidos do proprio jogador e recebe snapshots dos outros pilotos presentes na mesma rampa.
+- Os outros jogadores devem aparecer voando na cena como participantes remotos visuais; eles nao substituem ainda a fisica local, os bots ou a simulacao autoritativa.
+- Quando houver ranking realtime na sessao da rampa, o cartao de ranking do HUD deve priorizar esse ranking online.
+
 ## Controles iniciais
 Antes da rodada, o jogador escolhe o local de voo, escolhe entre `Parapente` e `Drone FPV`, define a cor principal do veiculo em uma paleta ampliada e inicia o voo por um botao de tela. No layout mobile da tela inicial, o painel continua exibindo a escolha de rampa/local, a escolha entre `Parapente` e `Drone FPV`, a paleta de cor e o botao de iniciar, com layout mais compacto e rolavel. Locais iniciais disponiveis:
 - Atibaia / Pedra Grande, Atibaia - SP.

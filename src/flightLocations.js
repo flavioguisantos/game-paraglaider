@@ -1,4 +1,4 @@
-export const FLIGHT_LOCATIONS = [
+const LOCAL_FLIGHT_LOCATIONS = [
   {
     id: 'atibaia-pedra-grande',
     name: 'Atibaia / Pedra Grande',
@@ -81,8 +81,51 @@ export const FLIGHT_LOCATIONS = [
   }
 ];
 
-export const DEFAULT_FLIGHT_LOCATION = FLIGHT_LOCATIONS[0];
+let activeFlightLocations = [...LOCAL_FLIGHT_LOCATIONS];
+
+export const DEFAULT_FLIGHT_LOCATION = LOCAL_FLIGHT_LOCATIONS[0];
+
+export function normalizeFlightLocation(location = {}) {
+  return {
+    id: location.id ?? location.launchId,
+    launchId: location.launchId ?? location.id,
+    name: location.name ?? 'Local de voo',
+    region: location.region ?? '',
+    latitude: Number(location.latitude ?? 0),
+    longitude: Number(location.longitude ?? 0),
+    launchAltitudeMeters: Number(location.launchAltitudeMeters ?? DEFAULT_FLIGHT_LOCATION.launchAltitudeMeters),
+    launchHeadingRadians: Number(location.launchHeadingRadians ?? 0),
+    standbyHeadingRadians: location.standbyHeadingRadians ?? null,
+    liftMode: location.liftMode ?? 'thermal',
+    cloudBaseMeters: location.cloudBaseMeters ?? null,
+    hasSea: Boolean(location.hasSea),
+    wind: location.wind ?? {},
+    orographicLift: location.orographicLift ?? {},
+    building: location.building ?? null
+  };
+}
+
+export function getFlightLocations() {
+  return activeFlightLocations;
+}
+
+export function setFlightLocations(locations = []) {
+  if (!Array.isArray(locations) || locations.length === 0) {
+    activeFlightLocations = [...LOCAL_FLIGHT_LOCATIONS];
+    return activeFlightLocations;
+  }
+
+  activeFlightLocations = locations
+    .map((location) => normalizeFlightLocation(location))
+    .filter((location) => typeof location.id === 'string' && location.id.trim());
+
+  if (activeFlightLocations.length === 0) {
+    activeFlightLocations = [...LOCAL_FLIGHT_LOCATIONS];
+  }
+
+  return activeFlightLocations;
+}
 
 export function findFlightLocation(id) {
-  return FLIGHT_LOCATIONS.find((location) => location.id === id) ?? DEFAULT_FLIGHT_LOCATION;
+  return activeFlightLocations.find((location) => location.id === id) ?? activeFlightLocations[0] ?? DEFAULT_FLIGHT_LOCATION;
 }

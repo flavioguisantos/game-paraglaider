@@ -5,7 +5,8 @@ export function createRoundState() {
     elapsedSeconds: 0,
     ended: false,
     endReason: null,
-    totalMatches: null
+    totalMatches: null,
+    remoteRanking: []
   };
 }
 
@@ -175,11 +176,15 @@ export function updateHud(elements, { player, bots = [], terrain, round, wind, s
   elements.scoreEvent.textContent = player.lastScoringEvent ?? '';
   updateScorePop(elements, player, scoring);
   elements.status.textContent = getStatusText(round, player);
-  elements.rankingTitle.textContent = round.ended ? 'Ranking final' : 'Ranking';
-  elements.ranking.innerHTML = getRankingRows([
-    { name: 'Voce', entity: player },
-    ...bots.map((bot) => ({ name: bot.name, entity: bot }))
-  ], terrain).join('');
+  elements.rankingTitle.textContent = round.remoteRanking?.length
+    ? 'Rampa online'
+    : (round.ended ? 'Ranking final' : 'Ranking');
+  elements.ranking.innerHTML = round.remoteRanking?.length
+    ? getNetworkRankingRows(round.remoteRanking).join('')
+    : getRankingRows([
+      { name: 'Voce', entity: player },
+      ...bots.map((bot) => ({ name: bot.name, entity: bot }))
+    ], terrain).join('');
 }
 
 function updateScorePop(elements, player, scoring) {
@@ -338,6 +343,14 @@ function formatScore(score) {
 function formatMatchCount(totalMatches) {
   if (!Number.isFinite(totalMatches)) return '--';
   return Math.round(totalMatches).toLocaleString('pt-BR');
+}
+
+function getNetworkRankingRows(entries) {
+  return entries.map((entry) => {
+    const distance = formatDistance(entry.distanceFromStart ?? 0);
+    const altitude = Math.round(entry.groundClearance ?? 0);
+    return `<li><span>${entry.displayName ?? entry.playerId}</span><strong>${formatScore(entry.score ?? 0)} pts / ${distance} / ${altitude} m solo</strong><em>${entry.status ?? 'conectado'} / combo ${entry.combo ?? 1}x / ${entry.completedWaypoints ?? 0} TP</em></li>`;
+  });
 }
 
 // Rota no painel: nome do proximo TP + distancia em linha reta ate ele.
