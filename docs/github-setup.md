@@ -13,9 +13,11 @@ Este projeto usa Pull Requests para receber contribuicoes.
 - Protecao da branch `main`:
   - exigir Pull Request antes de merge;
   - exigir 1 aprovacao para colaboradores;
+  - exigir aprovacao de code owner;
   - exigir conversas resolvidas;
   - bloquear force push;
   - bloquear exclusao da branch;
+  - manter somente `flavioguisantos` com permissao `write`/`admin` no repositorio;
   - nao aplicar a exigencia para administradores, permitindo merge pelo mantenedor principal.
 - GitHub Actions:
   - workflow `Build` roda em Pull Requests e pushes na `main`.
@@ -79,8 +81,13 @@ A branch `main` esta configurada com:
 
 - Pull Request obrigatorio antes de merge;
 - 1 aprovacao obrigatoria para colaboradores;
+- aprovacao obrigatoria de code owner;
+- `flavioguisantos` definido como code owner de todos os arquivos em `.github/CODEOWNERS`;
+- somente `flavioguisantos` aparece como colaborador com permissao no repositorio;
 - regra nao aplicada a administradores, permitindo merge pelo mantenedor principal;
 - aprovacoes antigas descartadas quando novos commits sao enviados;
 - conversas resolvidas obrigatorias;
 - force push bloqueado;
 - exclusao da branch bloqueada;
+
+Em repositorios pessoais, o endpoint de branch protection nao permite restringir push/merge por usuario como em repositorios de organizacao. A regra operacional para garantir que so o mantenedor faca merge e nao conceder permissao `write`, `maintain` ou `admin` para outros usuarios. Colaboradores externos devem contribuir por fork/PR ou com permissao de leitura/triage.

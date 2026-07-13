@@ -6,6 +6,7 @@ import { initializeThirdPersonCamera, setCameraMode, toggleCameraMode, updateFli
 import { configureWind, createWindVector, detectParagliderCollisions, detectVegetationCollisions, updateEntangledParagliders, updateWind } from './physics.js?v=hot-b-1';
 import { createHud, createRoundState, updateHud, updateRoundState } from './hud.js?v=hud-instrument-5';
 import { findFlightLocation } from './flightLocations.js';
+import { fetchMatchCount, registerStartedMatch } from './matchCounterApi.js';
 import { createOrographicLift } from './orographicLift.js';
 import { getVehicleProfile, Player } from './player.js?v=fp-cam-6';
 import { createCelebration, createFlightStats, updateFlightStats } from './celebration.js';
@@ -19,6 +20,7 @@ import { createLocationBuilding, updateLocationBuilding } from './buildings.js?v
 const canvas = document.querySelector('#game');
 const startButton = document.querySelector('#start-flight');
 const restartButton = document.querySelector('#restart-game');
+const totalMatchesElements = [...document.querySelectorAll('[data-total-matches]')];
 const colorInputs = [...document.querySelectorAll('input[name="canopy-color"]')];
 const locationInputs = [...document.querySelectorAll('input[name="flight-location"]')];
 const vehicleInputs = [...document.querySelectorAll('input[name="vehicle-type"]')];
@@ -216,7 +218,8 @@ const appState = {
   // setas de vento; a fisica continua identica.
   assistVisuals: true,
   selectedLocation: getSelectedFlightLocation(),
-  selectedVehicleType: getSelectedVehicleType()
+  selectedVehicleType: getSelectedVehicleType(),
+  totalMatches: null
 };
 // Hook de inspecao/testes (ex.: teleportar o piloto em testes automatizados).
 window.__appState = appState;
@@ -239,6 +242,7 @@ window.addEventListener('resize', handleResize);
 window.visualViewport?.addEventListener('resize', handleResize);
 startButton.addEventListener('click', startFlight);
 restartButton?.addEventListener('click', restartGame);
+loadMatchCount();
 for (const input of locationInputs) {
   input.addEventListener('change', () => {
     if (input.checked && !appState.started) {
@@ -388,11 +392,13 @@ async function startFlight() {
   initializeScoringForEntities(appState.flyers);
   appState.lastScoreFeedbackAudioId = null;
   appState.round = createRoundState();
+  appState.round.totalMatches = appState.totalMatches;
   appState.thermalAssistant = createThermalAssistant();
   appState.flightStats = createFlightStats();
   appState.golCelebrated = false;
   celebration.hide();
   appState.started = true;
+  void updateGlobalMatchCounterOnStart();
   document.body.classList.add('is-flying');
   document.body.classList.remove('round-ended');
   adventureMusic.start();
@@ -424,6 +430,42 @@ function applySelectedFlightLocation() {
   thermals.setCeiling(location.cloudBaseMeters ?? 2200);
   orographicLift.configure(location.orographicLift);
   orographicLift.setAssistVisuals(appState.assistVisuals);
+}
+
+async function loadMatchCount() {
+  try {
+    const counter = await fetchMatchCount();
+    setGlobalMatchCount(counter.totalMatches);
+  } catch (error) {
+    console.warn('Nao foi possivel carregar o contador global de partidas.', error);
+    setGlobalMatchCount(null);
+  }
+}
+
+async function updateGlobalMatchCounterOnStart() {
+  try {
+    const counter = await registerStartedMatch();
+    setGlobalMatchCount(counter.totalMatches);
+  } catch (error) {
+    console.warn('Nao foi possivel registrar a partida iniciada.', error);
+  }
+}
+
+function setGlobalMatchCount(totalMatches) {
+  appState.totalMatches = Number.isFinite(totalMatches) ? totalMatches : null;
+  if (appState.round) {
+    appState.round.totalMatches = appState.totalMatches;
+  }
+
+  const label = formatGlobalMatchCount(appState.totalMatches);
+  for (const element of totalMatchesElements) {
+    element.textContent = label;
+  }
+}
+
+function formatGlobalMatchCount(totalMatches) {
+  if (!Number.isFinite(totalMatches)) return '--';
+  return Math.round(totalMatches).toLocaleString('pt-BR');
 }
 
 function updateVehicleSelectionUi() {

@@ -351,6 +351,25 @@
         color: #ffd166;
       }
 
+      .instr-meta {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        font-size: 9px;
+        letter-spacing: 0.14em;
+        color: #7e93a8;
+      }
+
+      .instr-meta strong {
+        font-size: 13px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        color: #cfe3f4;
+      }
+
       .instr-event {
         min-height: 16px;
         margin-top: 4px;
@@ -436,6 +455,31 @@
         letter-spacing: 0.16em;
         text-transform: uppercase;
         color: #9fb4c8;
+      }
+
+      .start-stats {
+        margin: 14px 0 2px;
+        padding: 10px 12px;
+        background: rgba(10, 16, 24, 0.4);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 10px;
+      }
+
+      .start-stats span {
+        display: block;
+        font-size: 11px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: rgba(232, 241, 248, 0.72);
+      }
+
+      .start-stats strong {
+        display: block;
+        margin-top: 4px;
+        font-size: 24px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        color: #ffd166;
       }
 
       .score-pop strong {
@@ -1445,6 +1489,10 @@
           <span style="background: #9acd32"></span>
         </label>
         </div>
+      </div>
+      <div class="start-stats">
+        <span>Partidas iniciadas</span>
+        <strong data-total-matches>--</strong>
       </div>
       <button id="start-flight" class="start-button" type="button">Iniciar voo</button>
     </div>

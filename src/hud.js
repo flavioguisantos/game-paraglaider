@@ -4,7 +4,8 @@ export function createRoundState() {
   return {
     elapsedSeconds: 0,
     ended: false,
-    endReason: null
+    endReason: null,
+    totalMatches: null
   };
 }
 
@@ -58,6 +59,7 @@ export function createHud(root) {
         <div><span>COMBO</span><strong data-hud="combo">1x</strong></div>
         <div><span>ROTA</span><strong data-hud="waypoint">TP1</strong></div>
       </div>
+      <div class="instr-meta"><span>PARTIDAS</span><strong data-hud="totalMatches">--</strong></div>
       <div class="instr-event" data-hud="scoreEvent"></div>
     </div>
     <div class="hud-ranking">
@@ -93,6 +95,7 @@ export function createHud(root) {
     score: root.querySelector('[data-hud="score"]'),
     combo: root.querySelector('[data-hud="combo"]'),
     waypoint: root.querySelector('[data-hud="waypoint"]'),
+    totalMatches: root.querySelector('[data-hud="totalMatches"]'),
     scoreEvent: root.querySelector('[data-hud="scoreEvent"]'),
     scorePop: root.querySelector('[data-hud="scorePop"]'),
     scorePopLabel: root.querySelector('[data-hud="scorePopLabel"]'),
@@ -168,6 +171,7 @@ export function updateHud(elements, { player, bots = [], terrain, round, wind, s
   elements.score.textContent = formatScore(player.score ?? 0);
   elements.combo.textContent = `${player.thermalCombo ?? 1}x`;
   elements.waypoint.textContent = getWaypointText(player, scoring, terrain);
+  elements.totalMatches.textContent = formatMatchCount(round.totalMatches);
   elements.scoreEvent.textContent = player.lastScoringEvent ?? '';
   updateScorePop(elements, player, scoring);
   elements.status.textContent = getStatusText(round, player);
@@ -329,6 +333,11 @@ function compareRankingEntries(a, b, terrain) {
 
 function formatScore(score) {
   return Math.round(score).toLocaleString('pt-BR');
+}
+
+function formatMatchCount(totalMatches) {
+  if (!Number.isFinite(totalMatches)) return '--';
+  return Math.round(totalMatches).toLocaleString('pt-BR');
 }
 
 // Rota no painel: nome do proximo TP + distancia em linha reta ate ele.
