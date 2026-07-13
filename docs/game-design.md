@@ -6,6 +6,12 @@ O jogador pilota um parapente em terreno montanhoso, buscando colunas de ar quen
 ## Objetivo da rodada
 Ganhar altitude e afastar-se do ponto de decolagem. A rodada nao tem limite de tempo; ao final, o ranking compara jogador e bots por desempenho.
 
+## Contador de partidas
+- O prototipo mantem um contador global de partidas iniciadas com sucesso.
+- Uma partida conta apenas quando a rodada realmente nasce apos o clique em iniciar, e nao no clique isolado do botao.
+- O total global deve aparecer no menu inicial e no HUD como informacao social/operacional, sem interferir na pontuacao da rodada.
+- A integracao com persistencia deve ficar desacoplada do loop principal por um client dedicado no front e por rotas proprias de jogo no back-end, facilitando extracao futura para uma API exclusiva.
+
 ## Controles iniciais
 Antes da rodada, o jogador escolhe o local de voo, escolhe entre `Parapente` e `Drone FPV`, define a cor principal do veiculo em uma paleta ampliada e inicia o voo por um botao de tela. No layout mobile da tela inicial, o painel continua exibindo a escolha de rampa/local, a escolha entre `Parapente` e `Drone FPV`, a paleta de cor e o botao de iniciar, com layout mais compacto e rolavel. Locais iniciais disponiveis:
 - Atibaia / Pedra Grande, Atibaia - SP.
