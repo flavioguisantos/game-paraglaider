@@ -14,6 +14,7 @@ import {
   joinLaunchSession,
   leaveLaunchSession,
   postPlayerResult,
+  readStoredPilotDisplayName,
   registerStartedMatch
 } from './gameApi.js';
 import { createGameRealtimeClient } from './gameRealtimeClient.js';
@@ -35,6 +36,7 @@ const totalMatchesElements = [...document.querySelectorAll('[data-total-matches]
 const launchPresenceElements = [...document.querySelectorAll('[data-launch-presence]')];
 const launchStatusElements = [...document.querySelectorAll('[data-launch-status]')];
 const launchOptionsRoot = document.querySelector('[data-launch-options]');
+const pilotNameInput = document.querySelector('#pilot-name');
 const colorInputs = [...document.querySelectorAll('input[name="canopy-color"]')];
 const vehicleInputs = [...document.querySelectorAll('input[name="vehicle-type"]')];
 const scene = new THREE.Scene();
@@ -286,11 +288,7 @@ function restartGame() {
 
 async function initializeGameFront() {
   try {
-    try {
-      appState.guestIdentity = await ensureGuestPlayerIdentity();
-    } catch (error) {
-      console.warn('Nao foi possivel emitir a identidade guest do jogador.', error);
-    }
+    if (pilotNameInput) pilotNameInput.value = readStoredPilotDisplayName();
 
     await Promise.all([
       loadMatchCount(),
@@ -441,6 +439,8 @@ function setupLayerPanel() {
 
 async function startFlight() {
   if (appState.started || appState.starting) return;
+  const displayName = getValidatedPilotDisplayName();
+  if (!displayName) return;
 
   appState.starting = true;
   startButton.disabled = true;
@@ -465,6 +465,17 @@ async function startFlight() {
   const selectedLocation = getSelectedFlightLocation();
   const selectedVehicleType = getSelectedVehicleType();
   appState.selectedVehicleType = selectedVehicleType;
+  try {
+    appState.guestIdentity = await ensureGuestPlayerIdentity({
+      displayName,
+      preferredVehicleType: selectedVehicleType
+    });
+  } catch (error) {
+    console.warn('Nao foi possivel emitir a identidade guest do jogador.', error);
+    appState.starting = false;
+    startButton.disabled = false;
+    return;
+  }
   const selectedVehicleProfile = getVehicleProfile(selectedVehicleType);
   setCameraMode(selectedVehicleProfile.cameraPreference === 'first-person-only' ? 'first-person' : 'third-person');
   updateVehicleSelectionUi();
@@ -473,7 +484,8 @@ async function startFlight() {
     canopyColor: selectedColor,
     launchAltitudeMeters: selectedLocation.launchAltitudeMeters,
     launchHeadingRadians: selectedLocation.launchHeadingRadians,
-    vehicleType: selectedVehicleType
+    vehicleType: selectedVehicleType,
+    displayName: appState.guestIdentity.displayName
   });
   // A guia de rota (linha ate o TP e marcadores) acompanha apenas o jogador.
   appState.player.isPlayer = true;
@@ -519,6 +531,15 @@ function getSelectedFlightLocation() {
 
 function getSelectedVehicleType() {
   return vehicleInputs.find((input) => input.checked)?.value ?? 'paraglider';
+}
+
+function getValidatedPilotDisplayName() {
+  if (!pilotNameInput) return 'Piloto';
+  pilotNameInput.value = pilotNameInput.value.replace(/\s+/g, ' ').trim().slice(0, 24);
+  if (pilotNameInput.value) return pilotNameInput.value;
+  pilotNameInput.reportValidity();
+  pilotNameInput.focus();
+  return '';
 }
 
 function applySelectedFlightLocation() {

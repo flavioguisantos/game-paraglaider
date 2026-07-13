@@ -3,6 +3,7 @@ import { applyFlightPhysics, POLAR_SPEEDS, updateAltitudeMetrics } from './physi
 import { createParagliderModel, setParagliderLandedPose } from './paragliderModel.js?v=pilot-pose-8';
 import { createFirstPersonRig, updateFirstPersonRig } from './firstPersonRig.js?v=8';
 import { getCameraMode } from './camera.js?v=camera-modes-7';
+import { createPlayerNameTag } from './playerNameTag.js';
 
 const PLAYER_CONFIG = {
   launchX: 0,
@@ -100,7 +101,8 @@ export class Player {
     canopyColor = 0xa8dff2,
     launchAltitudeMeters = PLAYER_CONFIG.startAltitude,
     launchHeadingRadians = 0,
-    vehicleType = 'paraglider'
+    vehicleType = 'paraglider',
+    displayName = 'Piloto'
   }) {
     this.vehicleProfile = getVehicleProfile(vehicleType);
     this.vehicleType = this.vehicleProfile.id;
@@ -111,6 +113,12 @@ export class Player {
     // Rig da visao do piloto (selete + bracos com batoques): so aparece na
     // primeira pessoa, quando o boneco de terceira pessoa e ocultado.
     this.firstPersonRig = this.vehicleProfile.addFirstPersonRig(this.group);
+    this.nameTag = createPlayerNameTag(displayName, {
+      offsetY: this.vehicleType === 'drone' ? 1.2 : 10.8,
+      width: this.vehicleType === 'drone' ? 4.6 : 8.2,
+      height: this.vehicleType === 'drone' ? 1.2 : 2.05
+    });
+    this.group.add(this.nameTag.sprite);
     this.cameraPreference = this.vehicleProfile.cameraPreference;
     this.cameraProfile = this.vehicleProfile.cameraProfile;
     this.position = this.group.position;
@@ -233,6 +241,7 @@ export class Player {
       && !this.landed
       && !this.entangled;
     const showRig = active && !this.cameraProfile?.showPilotModel;
+    if (this.nameTag) this.nameTag.sprite.visible = !active;
     if (this.firstPersonRig) this.firstPersonRig.visible = showRig;
     const pilot = this.group.userData.parts?.pilot;
     if (pilot) pilot.visible = !showRig;

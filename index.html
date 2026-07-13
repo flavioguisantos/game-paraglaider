@@ -970,6 +970,22 @@
         text-transform: uppercase;
       }
 
+      .start-text-input {
+        width: 100%;
+        min-height: 42px;
+        box-sizing: border-box;
+        padding: 10px 12px;
+        color: #f7fbff;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 6px;
+        font: inherit;
+      }
+
+      .start-text-input::placeholder {
+        color: rgba(247, 251, 255, 0.42);
+      }
+
       .location-options {
         display: grid;
         gap: 8px;
@@ -1398,6 +1414,18 @@
     </div>
     <div id="start-panel" class="start-panel">
       <h1 class="start-title">Jogo Parapente 3D</h1>
+      <div class="start-field">
+        <div class="start-field-title">Nome do piloto</div>
+        <input
+          id="pilot-name"
+          class="start-text-input"
+          type="text"
+          maxlength="24"
+          placeholder="Digite seu nome"
+          autocomplete="nickname"
+          required
+        >
+      </div>
       <div class="start-field">
         <div class="start-field-title">Local de voo</div>
         <div class="location-options" aria-label="Local de voo" data-launch-options>

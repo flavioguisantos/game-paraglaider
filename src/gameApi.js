@@ -1,5 +1,6 @@
 const DEFAULT_GAME_API_BASE_URL = 'https://avcb-api-prd.onrender.com';
 const GAME_PLAYER_IDENTITY_KEY = 'jogo-parapente.game-player-identity.v1';
+const PILOT_DISPLAY_NAME_KEY = 'jogo-parapente.pilot-display-name.v1';
 
 export function getGameApiBaseUrl() {
   const configured = window.__GAME_API_BASE_URL;
@@ -65,11 +66,19 @@ export async function fetchLaunchSession(launchId) {
   return payload?.dados ?? null;
 }
 
-export async function ensureGuestPlayerIdentity() {
+export async function ensureGuestPlayerIdentity(options = {}) {
+  const displayName = normalizePilotDisplayName(options.displayName);
+  const preferredVehicleType = options.preferredVehicleType ?? 'paraglider';
   const cached = readStoredIdentity();
-  if (cached?.accessToken && cached?.playerId) return cached;
+  if (
+    cached?.accessToken
+    && cached?.playerId
+    && cached.displayName === displayName
+    && cached.preferredVehicleType === preferredVehicleType
+  ) {
+    return cached;
+  }
 
-  const displayName = buildGuestDisplayName();
   const payload = await requestGameJson('/api/game/players/guest', {
     method: 'POST',
     headers: {
@@ -77,18 +86,29 @@ export async function ensureGuestPlayerIdentity() {
     },
     body: JSON.stringify({
       displayName,
-      preferredVehicleType: 'paraglider'
+      preferredVehicleType
     })
   });
 
   const identity = {
     playerId: payload?.dados?.playerId,
     displayName: payload?.dados?.displayName ?? displayName,
-    preferredVehicleType: payload?.dados?.preferredVehicleType ?? 'paraglider',
+    preferredVehicleType: payload?.dados?.preferredVehicleType ?? preferredVehicleType,
     accessToken: payload?.dados?.access_token
   };
   writeStoredIdentity(identity);
+  writeStoredPilotDisplayName(identity.displayName);
   return identity;
+}
+
+export function readStoredPilotDisplayName() {
+  try {
+    const raw = window.localStorage.getItem(PILOT_DISPLAY_NAME_KEY);
+    if (!raw) return '';
+    return normalizePilotDisplayName(raw);
+  } catch {
+    return '';
+  }
 }
 
 export async function joinLaunchSession(launchId, identity, player) {
@@ -143,9 +163,11 @@ export async function leaveLaunchSession(launchId, identity) {
   });
 }
 
-function buildGuestDisplayName() {
-  const suffix = Math.random().toString(36).slice(2, 6).toUpperCase();
-  return `Piloto ${suffix}`;
+function normalizePilotDisplayName(displayName) {
+  const cleaned = String(displayName ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return cleaned.slice(0, 24);
 }
 
 function readStoredIdentity() {
@@ -163,5 +185,11 @@ function readStoredIdentity() {
 function writeStoredIdentity(identity) {
   try {
     window.localStorage.setItem(GAME_PLAYER_IDENTITY_KEY, JSON.stringify(identity));
+  } catch {}
+}
+
+function writeStoredPilotDisplayName(displayName) {
+  try {
+    window.localStorage.setItem(PILOT_DISPLAY_NAME_KEY, normalizePilotDisplayName(displayName));
   } catch {}
 }

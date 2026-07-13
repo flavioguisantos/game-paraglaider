@@ -15,13 +15,15 @@ Ganhar altitude e afastar-se do ponto de decolagem. A rodada nao tem limite de t
 ## Presenca por rampa
 - O prototipo passa a consultar o catalogo de rampas e o resumo da sessao da rampa pela API de jogo, em vez de depender apenas da lista local embutida.
 - O painel inicial deve mostrar quantos pilotos estao presentes na rampa atualmente e o status resumido da sessao selecionada.
+- Antes de iniciar o voo, o jogador deve informar obrigatoriamente o nome do piloto; esse nome identifica a identidade guest emitida pela API para a sessao.
 - Ao iniciar o voo, o cliente entra na sessao da rampa com uma identidade guest emitida pela API.
 - Enquanto voa, o cliente publica snapshots resumidos do proprio jogador e recebe snapshots dos outros pilotos presentes na mesma rampa.
 - Os outros jogadores devem aparecer voando na cena como participantes remotos visuais; eles nao substituem ainda a fisica local, os bots ou a simulacao autoritativa.
+- O nome do piloto deve aparecer acima da vela para que os demais participantes identifiquem quem esta voando na rampa.
 - Quando houver ranking realtime na sessao da rampa, o cartao de ranking do HUD deve priorizar esse ranking online.
 
 ## Controles iniciais
-Antes da rodada, o jogador escolhe o local de voo, escolhe entre `Parapente` e `Drone FPV`, define a cor principal do veiculo em uma paleta ampliada e inicia o voo por um botao de tela. No layout mobile da tela inicial, o painel continua exibindo a escolha de rampa/local, a escolha entre `Parapente` e `Drone FPV`, a paleta de cor e o botao de iniciar, com layout mais compacto e rolavel. Locais iniciais disponiveis:
+Antes da rodada, o jogador informa o nome do piloto, escolhe o local de voo, escolhe entre `Parapente` e `Drone FPV`, define a cor principal do veiculo em uma paleta ampliada e inicia o voo por um botao de tela. No layout mobile da tela inicial, o painel continua exibindo o campo de nome, a escolha de rampa/local, a escolha entre `Parapente` e `Drone FPV`, a paleta de cor e o botao de iniciar, com layout mais compacto e rolavel. Locais iniciais disponiveis:
 - Atibaia / Pedra Grande, Atibaia - SP.
 - Praia de Sao Vicente, Itarare, Sao Vicente - SP (`-23.964517, -46.363531`), com decolagem inicial mais alta, parapente apontado para o mar e vento vindo do mar.
 - Ao selecionar Sao Vicente na tela inicial, a camera de pre-voo tambem deve olhar de frente para o mar.
