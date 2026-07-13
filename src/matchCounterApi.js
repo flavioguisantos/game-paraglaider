@@ -1,15 +1,12 @@
+const DEFAULT_GAME_API_BASE_URL = 'https://avcb-api-prd.onrender.com';
+
 function getApiBaseUrl() {
   const configured = window.__GAME_API_BASE_URL;
   if (typeof configured === 'string' && configured.trim()) {
     return configured.replace(/\/+$/, '');
   }
 
-  const { protocol, hostname, origin } = window.location;
-  if (protocol === 'file:' || hostname === 'localhost' || hostname === '127.0.0.1') {
-    return 'http://localhost:3000';
-  }
-
-  return origin.replace(/\/+$/, '');
+  return DEFAULT_GAME_API_BASE_URL;
 }
 
 async function requestJson(path, options = {}) {
