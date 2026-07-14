@@ -118,6 +118,7 @@ export class Player {
       width: this.vehicleType === 'drone' ? 4.6 : 8.2,
       height: this.vehicleType === 'drone' ? 1.2 : 2.05
     });
+    this.nameTag.sprite.visible = false;
     this.group.add(this.nameTag.sprite);
     this.cameraPreference = this.vehicleProfile.cameraPreference;
     this.cameraProfile = this.vehicleProfile.cameraProfile;
@@ -241,7 +242,7 @@ export class Player {
       && !this.landed
       && !this.entangled;
     const showRig = active && !this.cameraProfile?.showPilotModel;
-    if (this.nameTag) this.nameTag.sprite.visible = !active;
+    if (this.nameTag) this.nameTag.sprite.visible = false;
     if (this.firstPersonRig) this.firstPersonRig.visible = showRig;
     const pilot = this.group.userData.parts?.pilot;
     if (pilot) pilot.visible = !showRig;
