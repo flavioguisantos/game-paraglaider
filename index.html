@@ -55,6 +55,29 @@
         box-shadow: 0 12px 34px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.07);
       }
 
+      .hud-thermal-card {
+        display: none;
+        margin-top: 10px;
+        padding: 10px 12px;
+        background: linear-gradient(155deg, rgba(31, 28, 18, 0.9), rgba(16, 19, 25, 0.92));
+        border: 1px solid rgba(255, 209, 102, 0.24);
+        border-radius: 10px;
+        box-shadow: 0 10px 26px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+      }
+
+      .hud-thermal-card.is-active {
+        display: block;
+      }
+
+      .hud-thermal-title {
+        margin-bottom: 8px;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: rgba(255, 209, 102, 0.88);
+      }
+
       .instr-top {
         display: flex;
         justify-content: space-between;
@@ -164,21 +187,10 @@
       }
 
       .instr-thermal {
-        position: relative;
         display: flex;
         align-items: center;
         gap: 12px;
-        margin: 0 0 10px;
-        padding: 8px 12px;
-        background: rgba(255, 255, 255, 0.05);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 8px;
-        opacity: 0.45;
-        transition: opacity 200ms ease;
-      }
-
-      .instr-thermal.is-active {
-        opacity: 1;
+        padding: 0;
       }
 
       .thermal-ring {
@@ -1202,45 +1214,45 @@
           display: none;
         }
 
+        .hud-thermal-card {
+          margin-top: 6px;
+          padding: 6px 8px;
+          border-radius: 8px;
+        }
+
+        .hud-thermal-title {
+          margin-bottom: 4px;
+          font-size: 8px;
+          letter-spacing: 0.1em;
+        }
+
         .instr-thermal {
-          display: none;
-          grid-column: 1 / -1;
-          align-items: center;
           gap: 8px;
-          margin-top: 2px;
-          padding: 4px 6px;
-          background: rgba(255, 209, 102, 0.08);
-          border: 1px solid rgba(255, 209, 102, 0.18);
-          border-radius: 6px;
         }
 
-        .instr-thermal.is-active {
-          display: flex;
-        }
-
-        .instr-thermal .thermal-ring {
+        .hud-thermal-card .thermal-ring {
           width: 34px;
           height: 34px;
         }
 
-        .instr-thermal .thermal-sector {
+        .hud-thermal-card .thermal-sector {
           width: 4px;
           height: 4px;
           margin: -2px 0 0 -2px;
         }
 
-        .instr-thermal .thermal-arrow {
+        .hud-thermal-card .thermal-arrow {
           margin: -8px 0 0 -4px;
           font-size: 14px;
         }
 
-        .instr-thermal .thermal-core {
+        .hud-thermal-card .thermal-core {
           width: 4px;
           height: 4px;
           margin: -2px 0 0 -2px;
         }
 
-        .instr-thermal .thermal-label {
+        .hud-thermal-card .thermal-label {
           font-size: 10px;
         }
 

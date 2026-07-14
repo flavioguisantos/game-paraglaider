@@ -38,13 +38,6 @@ export function createHud(root) {
         <div class="vario-bar"><div class="vario-fill" data-hud="varioFill"></div></div>
         <div class="vario-value" data-hud="varioBox"><strong data-hud="vario">0.0</strong><em>M/S</em></div>
       </div>
-      <div class="instr-thermal" data-hud="thermalAssistant">
-        <div class="thermal-ring" data-hud="thermalRing">
-          <div class="thermal-arrow" data-hud="thermalArrow">&#8593;</div>
-          <div class="thermal-core"></div>
-        </div>
-        <div class="thermal-label" data-hud="thermalLabel">Centralize</div>
-      </div>
       <div class="instr-row">
         <div class="instr-cell instr-cell--speed"><span>VEL</span><strong data-hud="speed">0</strong><em>km/h solo</em></div>
         <div class="instr-cell instr-cell--glide"><span>PLANEIO</span><strong data-hud="glide">--</strong><em>:1</em></div>
@@ -62,6 +55,16 @@ export function createHud(root) {
       </div>
       <div class="instr-meta"><span>PARTIDAS</span><strong data-hud="totalMatches">--</strong></div>
       <div class="instr-event" data-hud="scoreEvent"></div>
+    </div>
+    <div class="hud-thermal-card" data-hud="thermalAssistant">
+      <div class="hud-thermal-title">Assistente termico</div>
+      <div class="instr-thermal">
+        <div class="thermal-ring" data-hud="thermalRing">
+          <div class="thermal-arrow" data-hud="thermalArrow">&#8593;</div>
+          <div class="thermal-core"></div>
+        </div>
+        <div class="thermal-label" data-hud="thermalLabel">Centralize</div>
+      </div>
     </div>
     <div class="hud-ranking">
       <div class="hud-ranking-title" data-hud="rankingTitle">Ranking</div>
