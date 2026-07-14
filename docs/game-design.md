@@ -117,10 +117,11 @@ O HUD imita um instrumento de voo real (vario/GPS de parapente) com fundo escuro
 - Altitude sobre o nivel do mar e altura sobre o solo lado a lado.
 - Velocidade sobre o solo, razao de planeio instantanea (velocidade horizontal / descida; "∞" quando subindo) e vento com seta relativa ao rumo (para cima = vento de cauda), usando o angulo relativo calculado pela fisica.
 - Fita de bussola com marcas a cada 15 graus e pontos cardeais, deslizando conforme o rumo (marcador central amarelo).
+- O assistente termico, quando ativo, deve aparecer em um card separado logo abaixo do instrumento principal para nao embaralhar altitude, vario e navegacao.
 - Distancia da decolagem, pontuacao, combo, proximo waypoint e status/tempo em linhas discretas. O ranking fica em um cartao separado abaixo do instrumento.
 
 ## HUD mobile
-Em telas estreitas o instrumento vira uma faixa unica e compacta no topo: vario, altura sobre o solo, velocidade, pontuacao, combo e proximo waypoint com a distancia ate ele aparecem em uma unica linha, enquanto status/tempo ficam sobrepostos em escala menor. A altitude sobre o nivel do mar, o vento, a fita de bussola, o planeio e a distancia desde a decolagem ficam ocultos. O assistente termico dedicado fica escondido fora da termica e reaparece logo abaixo da faixa apenas durante leitura ativa, sem reservar espaco fixo. O ranking fica oculto durante o voo no mobile e reaparece quando a rodada termina para nao competir com a cena 3D e os controles touch. O painel inicial fica no canto superior da tela no mobile, afastado dos controles touch inferiores.
+Em telas estreitas o instrumento vira uma faixa unica e compacta no topo: vario, altura sobre o solo, velocidade, pontuacao, combo e proximo waypoint com a distancia ate ele aparecem em uma unica linha, enquanto status/tempo ficam sobrepostos em escala menor. A altitude sobre o nivel do mar, o vento, a fita de bussola, o planeio e a distancia desde a decolagem ficam ocultos. O assistente termico dedicado fica escondido fora da termica e reaparece em um card proprio logo abaixo da faixa apenas durante leitura ativa, sem reservar espaco fixo. O ranking fica oculto durante o voo no mobile e reaparece quando a rodada termina para nao competir com a cena 3D e os controles touch. O painel inicial fica no canto superior da tela no mobile, afastado dos controles touch inferiores.
 
 ## Musica
 Ao iniciar a rodada, uma trilha procedural de aventura mais animada toca em volume baixo durante o voo e para quando a rodada termina.
