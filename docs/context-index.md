@@ -11,6 +11,7 @@ Use este arquivo para escolher somente o contexto necessario para a tarefa atual
 - `docs/project-context.md`
 - `plano.md`
 - `docs/radio-voice-plan.md`
+- `docs/radio-voice-runbook.md`
 
 ### Arquitetura, estrutura de pastas ou responsabilidades de modulos
 - `docs/architecture.md`

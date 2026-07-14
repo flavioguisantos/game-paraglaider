@@ -84,6 +84,7 @@
 
 ## Trilha pos-MVP: radio por voz half-duplex por rampa
 - [x] Consolidar plano completo de implantacao em `docs/radio-voice-plan.md`.
+- [x] Consolidar runbook operacional em `docs/radio-voice-runbook.md`.
 - [x] Fechar contrato funcional do radio e estados do canal.
 - [x] Definir protocolo realtime de controle e sinalizacao WebRTC.
 - [x] Estender backend da sessao para arbitrar um unico locutor por rampa.

@@ -1053,10 +1053,14 @@ function getRadioRemainingTimeText(expiresAt) {
 }
 
 function applyRadioAudioMix(radioActive) {
-  const duckFactor = radioActive ? 0.5 : 1;
   const varioDuck = radioActive ? 0.34 : 1;
   const scoreDuck = radioActive ? 0.45 : 1;
-  adventureMusic.setDuckFactor(duckFactor);
+  if (radioActive) {
+    adventureMusic.pauseForRadio();
+  } else {
+    adventureMusic.resumeAfterRadio();
+    adventureMusic.setDuckFactor(1);
+  }
   varioAudio.setDuckFactor(varioDuck);
   scoreAudio.setDuckFactor(scoreDuck);
 }
