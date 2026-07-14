@@ -49,6 +49,13 @@ export function createGameRealtimeClient(handlers = {}) {
       case 'presence_update':
       case 'world_snapshot':
       case 'round_event':
+      case 'radio_talk_granted':
+      case 'radio_talk_denied':
+      case 'radio_talk_released':
+      case 'radio_force_stop':
+      case 'radio_offer':
+      case 'radio_answer':
+      case 'radio_ice_candidate':
         handlers.onSessionMessage?.(message);
         return;
       case 'error':
@@ -113,6 +120,43 @@ export function createGameRealtimeClient(handlers = {}) {
     }
   }
 
+  function sendRadioRequestTalk() {
+    send({
+      type: 'radio_request_talk'
+    });
+  }
+
+  function sendRadioReleaseTalk(reason = 'button_release') {
+    send({
+      type: 'radio_release_talk',
+      reason
+    });
+  }
+
+  function sendRadioOffer(targetPlayerId, sdp) {
+    send({
+      type: 'radio_offer',
+      targetPlayerId,
+      sdp
+    });
+  }
+
+  function sendRadioAnswer(targetPlayerId, sdp) {
+    send({
+      type: 'radio_answer',
+      targetPlayerId,
+      sdp
+    });
+  }
+
+  function sendRadioIceCandidate(targetPlayerId, candidate) {
+    send({
+      type: 'radio_ice_candidate',
+      targetPlayerId,
+      candidate
+    });
+  }
+
   function send(payload) {
     if (!socket || socket.readyState !== WebSocket.OPEN) return;
     socket.send(JSON.stringify(payload));
@@ -122,6 +166,11 @@ export function createGameRealtimeClient(handlers = {}) {
     connect,
     disconnect,
     requestSnapshot,
+    sendRadioAnswer,
+    sendRadioIceCandidate,
+    sendRadioOffer,
+    sendRadioReleaseTalk,
+    sendRadioRequestTalk,
     sendPlayerResult,
     sendPlayerState
   };

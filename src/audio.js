@@ -251,6 +251,7 @@ class AdventureMusic {
     this.trackUrl = options.trackUrl ?? null;
     this.externalAudio = null;
     this.externalAudioSource = null;
+    this.duckFactor = 1;
   }
 
   start() {
@@ -262,7 +263,7 @@ class AdventureMusic {
       return;
     }
     this.masterGain = this.masterGain || this.context.createGain();
-    this.masterGain.gain.setValueAtTime(MUSIC_CONFIG.volume, this.context.currentTime);
+    this.applyMasterGain();
 
     if (this.trackUrl && this.canPlayExternalTrack()) {
       this.startExternalTrack();
@@ -305,6 +306,14 @@ class AdventureMusic {
     recordAudioDebug('musicStopped', { state: this.context?.state ?? null, track: this.trackUrl ? 'external' : 'procedural' });
   }
 
+  setDuckFactor(factor = 1) {
+    this.duckFactor = clamp(factor, 0.2, 1);
+    this.applyMasterGain();
+    if (this.externalAudio) {
+      this.externalAudio.volume = 0.8 * this.duckFactor;
+    }
+  }
+
   canPlayExternalTrack() {
     return Boolean(this.trackUrl) && typeof window !== 'undefined' && typeof Audio !== 'undefined';
   }
@@ -314,7 +323,7 @@ class AdventureMusic {
       this.externalAudio = new Audio(this.trackUrl);
       this.externalAudio.loop = true;
       this.externalAudio.preload = 'auto';
-      this.externalAudio.volume = 0.8;
+      this.externalAudio.volume = 0.8 * this.duckFactor;
       this.externalAudio.crossOrigin = 'anonymous';
       this.externalAudioSource = this.context.createMediaElementSource(this.externalAudio);
       this.externalAudioSource.connect(this.masterGain);
@@ -329,7 +338,7 @@ class AdventureMusic {
       if (playPromise?.then) {
         playPromise
           .then(() => {
-            this.externalAudio.volume = 0.8;
+            this.externalAudio.volume = 0.8 * this.duckFactor;
             recordAudioDebug('musicStarted', { state: this.context.state, currentTime: Number(this.context.currentTime.toFixed(3)), track: this.trackUrl });
           })
           .catch((error) => {
@@ -458,6 +467,12 @@ class AdventureMusic {
     envelope.connect(this.masterGain);
     source.start(startTime);
     source.stop(startTime + duration);
+  }
+
+  applyMasterGain() {
+    if (!this.context) return;
+    this.masterGain = this.masterGain || this.context.createGain();
+    this.masterGain.gain.setValueAtTime(MUSIC_CONFIG.volume * this.duckFactor, this.context.currentTime);
   }
 }
 

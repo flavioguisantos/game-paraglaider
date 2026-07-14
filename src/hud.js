@@ -54,6 +54,13 @@ export function createHud(root) {
         <div class="instr-score-card instr-score-card--waypoint"><span>ROTA</span><strong data-hud="waypoint">TP1</strong></div>
       </div>
       <div class="instr-meta"><span>PARTIDAS</span><strong data-hud="totalMatches">--</strong></div>
+      <div class="hud-radio" data-hud="radioRoot">
+        <div class="hud-radio-head">
+          <span data-hud="radioLabel">Radio livre</span>
+          <strong data-hud="radioSpeaker">--</strong>
+        </div>
+        <button class="hud-radio-button" type="button" data-hud="radioButton">Segure para falar</button>
+      </div>
       <div class="instr-event" data-hud="scoreEvent"></div>
     </div>
     <div class="hud-thermal-card" data-hud="thermalAssistant">
@@ -100,6 +107,10 @@ export function createHud(root) {
     combo: root.querySelector('[data-hud="combo"]'),
     waypoint: root.querySelector('[data-hud="waypoint"]'),
     totalMatches: root.querySelector('[data-hud="totalMatches"]'),
+    radioRoot: root.querySelector('[data-hud="radioRoot"]'),
+    radioLabel: root.querySelector('[data-hud="radioLabel"]'),
+    radioSpeaker: root.querySelector('[data-hud="radioSpeaker"]'),
+    radioButton: root.querySelector('[data-hud="radioButton"]'),
     scoreEvent: root.querySelector('[data-hud="scoreEvent"]'),
     scorePop: root.querySelector('[data-hud="scorePop"]'),
     scorePopLabel: root.querySelector('[data-hud="scorePopLabel"]'),
@@ -153,7 +164,7 @@ function buildCompassTape(container) {
   }
 }
 
-export function updateHud(elements, { player, bots = [], terrain, round, wind, scoring, thermalAssistant }) {
+export function updateHud(elements, { player, bots = [], terrain, round, wind, scoring, thermalAssistant, radio }) {
   const playerAltitude = getAltitudeMetrics(player, terrain);
   const bearingDegrees = getBearingDegrees(player.heading ?? 0);
 
@@ -176,6 +187,7 @@ export function updateHud(elements, { player, bots = [], terrain, round, wind, s
   elements.combo.textContent = `${player.thermalCombo ?? 1}x`;
   elements.waypoint.textContent = getWaypointText(player, scoring, terrain);
   elements.totalMatches.textContent = formatMatchCount(round.totalMatches);
+  updateRadioHud(elements, radio);
   elements.scoreEvent.textContent = player.lastScoringEvent ?? '';
   updateScorePop(elements, player, scoring);
   elements.status.textContent = getStatusText(round, player);
@@ -188,6 +200,17 @@ export function updateHud(elements, { player, bots = [], terrain, round, wind, s
       { name: 'Voce', entity: player },
       ...bots.map((bot) => ({ name: bot.name, entity: bot }))
     ], terrain).join('');
+}
+
+function updateRadioHud(elements, radio) {
+  const label = radio?.hudLabel ?? 'Radio indisponivel';
+  const speaker = radio?.speakerName ?? '--';
+  elements.radioLabel.textContent = label;
+  elements.radioSpeaker.textContent = speaker;
+  elements.radioRoot.classList.toggle('is-occupied', radio?.channelStatus === 'occupied');
+  elements.radioRoot.classList.toggle('is-transmitting', radio?.clientStatus === 'transmitting');
+  elements.radioButton.disabled = !radio?.buttonEnabled;
+  elements.radioButton.textContent = radio?.buttonText ?? 'Segure para falar';
 }
 
 function updateScorePop(elements, player, scoring) {

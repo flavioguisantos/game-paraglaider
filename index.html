@@ -382,6 +382,59 @@
         color: #cfe3f4;
       }
 
+      .hud-radio {
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        pointer-events: auto;
+      }
+
+      .hud-radio-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+        font-size: 9px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: #7e93a8;
+      }
+
+      .hud-radio-head strong {
+        color: #eef6ff;
+        font-size: 11px;
+        letter-spacing: 0.04em;
+      }
+
+      .hud-radio-button {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 8px;
+        background: linear-gradient(180deg, rgba(49, 76, 95, 0.9), rgba(16, 29, 39, 0.96));
+        color: #eef6ff;
+        font: 700 11px/1.1 ui-monospace, "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        cursor: pointer;
+      }
+
+      .hud-radio-button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .hud-radio.is-transmitting .hud-radio-button {
+        background: linear-gradient(180deg, rgba(145, 42, 42, 0.96), rgba(83, 14, 14, 0.98));
+        border-color: rgba(255, 107, 102, 0.55);
+      }
+
+      .hud-radio.is-occupied:not(.is-transmitting) .hud-radio-button {
+        background: linear-gradient(180deg, rgba(88, 72, 34, 0.94), rgba(45, 34, 13, 0.98));
+        border-color: rgba(255, 209, 102, 0.46);
+      }
+
       .instr-event {
         min-height: 16px;
         margin-top: 4px;

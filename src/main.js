@@ -8,6 +8,7 @@ import { createHud, createRoundState, updateHud, updateRoundState } from './hud.
 import { findFlightLocation, getFlightLocations, setFlightLocations } from './flightLocations.js';
 import {
   ensureGuestPlayerIdentity,
+  fetchGameRuntimeConfig,
   fetchLaunches,
   fetchLaunchSession,
   fetchMatchCount,
@@ -20,6 +21,8 @@ import {
 import { createGameRealtimeClient } from './gameRealtimeClient.js';
 import { createOrographicLift } from './orographicLift.js';
 import { getVehicleProfile, Player } from './player.js?v=fp-cam-6';
+import { createRadioVoiceClient } from './radioVoiceClient.js';
+import { createInitialRadioState, RADIO_CLIENT_STATUS, reduceRadioState } from './radioState.js';
 import { RemotePlayer } from './remotePlayer.js';
 import { createCelebration, createFlightStats, updateFlightStats } from './celebration.js';
 import { createScoringState, initializeScoringForEntities, updateScoring } from './scoring.js';
@@ -217,8 +220,22 @@ const adventureMusic = createAdventureMusic({ trackUrl: '/assets/audio/adventure
 
 const clock = new THREE.Clock();
 const standbyPosition = new THREE.Vector3(0, 0, 0);
+const radioVoiceClient = createRadioVoiceClient({
+  onError(error) {
+    console.warn('Falha no cliente de radio por voz.', error);
+  }
+});
 const realtimeClient = createGameRealtimeClient({
   onSessionMessage: handleRealtimeSessionMessage,
+  onOpen() {
+    updateRadioState({ type: 'socket_connected' });
+  },
+  onClose() {
+    radioVoiceClient.stopBroadcast();
+    radioVoiceClient.stopListening();
+    adventureMusic.setDuckFactor(1);
+    updateRadioState({ type: 'socket_disconnected' });
+  },
   onError(error) {
     console.warn('Falha no canal realtime do jogo.', error);
   }
@@ -248,6 +265,8 @@ const appState = {
   guestIdentity: null,
   remotePlayers: new Map(),
   remoteRanking: [],
+  radioEnabled: false,
+  radio: createInitialRadioState(),
   lastRealtimeStateAtMs: 0,
   lastRealtimeResultSent: false
 };
@@ -279,6 +298,7 @@ window.addEventListener('beforeunload', () => {
 setupLayerPanel();
 setupCameraToggle();
 setupVehicleSelection();
+setupRadioControls();
 void initializeGameFront();
 
 function restartGame() {
@@ -291,6 +311,7 @@ async function initializeGameFront() {
     if (pilotNameInput) pilotNameInput.value = readStoredPilotDisplayName();
 
     await Promise.all([
+      loadRuntimeConfig(),
       loadMatchCount(),
       loadLaunchCatalog()
     ]);
@@ -312,6 +333,19 @@ async function loadLaunchCatalog() {
     console.warn('Nao foi possivel carregar o catalogo de rampas da API; usando fallback local.', error);
     renderLaunchOptions(getFlightLocations());
     appState.selectedLocation = getSelectedFlightLocation();
+  }
+}
+
+async function loadRuntimeConfig() {
+  try {
+    const runtimeConfig = await fetchGameRuntimeConfig();
+    appState.radioEnabled = Boolean(runtimeConfig.radioEnabled);
+    if (Array.isArray(runtimeConfig.iceServers) && runtimeConfig.iceServers.length) {
+      window.__GAME_WEBRTC_ICE_SERVERS = runtimeConfig.iceServers;
+    }
+  } catch (error) {
+    console.warn('Nao foi possivel carregar a configuracao runtime do jogo.', error);
+    appState.radioEnabled = false;
   }
 }
 
@@ -580,6 +614,7 @@ function applyLaunchSessionBundle(bundle) {
   appState.launchPresenceCount = Number(bundle?.session?.playerCount ?? 0);
   appState.launchStatusLabel = getLaunchStatusLabel(bundle?.session?.status);
   appState.remoteRanking = bundle?.session?.ranking ?? [];
+  syncRadioSession(bundle?.session ?? null);
   updateLaunchSessionUi();
 }
 
@@ -666,6 +701,13 @@ function connectSelectedLaunchRealtime({ vehicleType, canopyColor }) {
   if (!launchId || !appState.guestIdentity) return;
 
   try {
+    radioVoiceClient.setIdentity(appState.guestIdentity);
+    radioVoiceClient.setLaunchId(launchId);
+    updateRadioState({
+      type: 'session_joined',
+      launchId,
+      playerId: appState.guestIdentity.playerId
+    });
     realtimeClient.connect({
       launchId,
       playerIdentity: appState.guestIdentity,
@@ -682,6 +724,7 @@ function connectSelectedLaunchRealtime({ vehicleType, canopyColor }) {
 }
 
 async function disconnectRealtimeAndSession() {
+  endRadioTransmission('session_left');
   const launchId = appState.selectedLocation?.launchId ?? appState.selectedLocation?.id;
   if (launchId && appState.guestIdentity) {
     try {
@@ -689,10 +732,18 @@ async function disconnectRealtimeAndSession() {
     } catch {}
   }
   realtimeClient.disconnect({ notifyLeave: false });
+  radioVoiceClient.dispose();
+  updateRadioState({ type: 'session_left' });
 }
 
 function handleRealtimeSessionMessage(message) {
-  if (!message?.session) return;
+  if (!message) return;
+
+  if (message.type?.startsWith('radio_')) {
+    handleRadioRealtimeMessage(message);
+  }
+
+  if (!message.session) return;
   applyLaunchSessionBundle({ session: message.session });
   if (appState.round) {
     appState.round.remoteRanking = message.session.ranking ?? [];
@@ -742,6 +793,238 @@ function maybeSendRealtimePlayerState(nowMs) {
 
   appState.lastRealtimeStateAtMs = nowMs;
   realtimeClient.sendPlayerState(buildRealtimePlayerState());
+}
+
+function updateRadioState(event) {
+  appState.radio = reduceRadioState(appState.radio, event);
+}
+
+function syncRadioSession(session) {
+  updateRadioState({
+    type: 'session_radio_state',
+    radio: session?.radio ?? null
+  });
+
+  const isRemoteSpeaker = session?.radio?.status === 'occupied'
+    && session?.radio?.speakerPlayerId
+    && session.radio.speakerPlayerId !== appState.guestIdentity?.playerId;
+  if (!isRemoteSpeaker) {
+    radioVoiceClient.stopListening();
+  }
+  adventureMusic.setDuckFactor(session?.radio?.status === 'occupied' ? 0.5 : 1);
+}
+
+function setupRadioControls() {
+  const button = hud.radioButton;
+  if (!button) return;
+
+  button.addEventListener('pointerdown', (event) => {
+    event.preventDefault();
+    if (!appState.started) return;
+    try {
+      button.setPointerCapture?.(event.pointerId);
+    } catch {}
+    void beginRadioTransmission();
+  });
+
+  const release = () => endRadioTransmission('button_release');
+  button.addEventListener('pointerup', release);
+  button.addEventListener('pointercancel', release);
+  button.addEventListener('lostpointercapture', release);
+  button.addEventListener('contextmenu', (event) => event.preventDefault());
+
+  window.addEventListener('keydown', (event) => {
+    if (event.code !== 'KeyR' || event.repeat) return;
+    if (!appState.started) return;
+    void beginRadioTransmission();
+  });
+
+  window.addEventListener('keyup', (event) => {
+    if (event.code !== 'KeyR') return;
+    endRadioTransmission('button_release');
+  });
+}
+
+async function beginRadioTransmission() {
+  if (!appState.radioEnabled || !appState.started || !appState.guestIdentity) return;
+
+  try {
+    await radioVoiceClient.prepareMicrophone();
+    updateRadioState({ type: 'mic_ready' });
+  } catch (error) {
+    console.warn('Nao foi possivel acessar o microfone.', error);
+    updateRadioState({
+      type: 'mic_denied',
+      detail: error?.message ?? 'Falha ao acessar o microfone.'
+    });
+    return;
+  }
+
+  const previousStatus = appState.radio.channelStatus;
+  updateRadioState({ type: 'press_to_talk_start' });
+  if (previousStatus !== 'requesting' && appState.radio.channelStatus === 'requesting') {
+    realtimeClient.sendRadioRequestTalk();
+  }
+}
+
+function endRadioTransmission(reason = 'button_release') {
+  const wasSpeaker = appState.radio.speakerPlayerId === appState.guestIdentity?.playerId;
+  const wasRequesting = appState.radio.channelStatus === 'requesting';
+  updateRadioState({ type: 'press_to_talk_end' });
+
+  if (wasSpeaker) {
+    radioVoiceClient.stopBroadcast();
+    radioVoiceClient.stopListening();
+    realtimeClient.sendRadioReleaseTalk(reason);
+    adventureMusic.setDuckFactor(1);
+  } else if (wasRequesting) {
+    adventureMusic.setDuckFactor(1);
+  }
+}
+
+async function handleRadioRealtimeMessage(message) {
+  switch (message.type) {
+    case 'radio_talk_granted':
+      updateRadioState({
+        type: 'radio_granted',
+        speakerPlayerId: message.speakerPlayerId,
+        expiresAt: message.expiresAt
+      });
+      if (message.speakerPlayerId === appState.guestIdentity?.playerId) {
+        await startLocalRadioBroadcast(message.session?.players ?? []);
+      } else {
+        adventureMusic.setDuckFactor(0.5);
+      }
+      return;
+    case 'radio_talk_denied':
+      updateRadioState({
+        type: 'radio_busy',
+        speakerPlayerId: message.speakerPlayerId,
+        expiresAt: message.expiresAt
+      });
+      return;
+    case 'radio_talk_released':
+      radioVoiceClient.stopBroadcast();
+      radioVoiceClient.stopListening();
+      updateRadioState({
+        type: 'radio_released',
+        reason: message.reason
+      });
+      adventureMusic.setDuckFactor(1);
+      return;
+    case 'radio_force_stop':
+      radioVoiceClient.stopBroadcast();
+      radioVoiceClient.stopListening();
+      updateRadioState({
+        type: 'radio_force_stop',
+        reason: message.reason,
+        detail: message.detail
+      });
+      adventureMusic.setDuckFactor(1);
+      return;
+    case 'radio_offer':
+    case 'radio_answer':
+    case 'radio_ice_candidate':
+      try {
+        await radioVoiceClient.handleSignal(message, buildRadioSignaling());
+      } catch (error) {
+        console.warn('Falha ao processar sinalizacao de radio.', error);
+      }
+  }
+}
+
+async function startLocalRadioBroadcast(players) {
+  const listenerPlayerIds = players
+    .filter((player) => player?.playerId
+      && player.playerId !== appState.guestIdentity?.playerId
+      && player.status !== 'disconnected')
+    .map((player) => player.playerId);
+
+  try {
+    await radioVoiceClient.startBroadcast(listenerPlayerIds, buildRadioSignaling());
+    adventureMusic.setDuckFactor(0.5);
+  } catch (error) {
+    console.warn('Falha ao iniciar a transmissao de radio.', error);
+    updateRadioState({
+      type: 'radio_error',
+      code: 'broadcast_failed',
+      detail: error?.message ?? 'Falha ao iniciar a transmissao.'
+    });
+    endRadioTransmission('mic_error');
+  }
+}
+
+function buildRadioSignaling() {
+  return {
+    sendAnswer(targetPlayerId, sdp) {
+      realtimeClient.sendRadioAnswer(targetPlayerId, sdp);
+    },
+    sendIceCandidate(targetPlayerId, candidate) {
+      realtimeClient.sendRadioIceCandidate(targetPlayerId, candidate);
+    },
+    sendOffer(targetPlayerId, sdp) {
+      realtimeClient.sendRadioOffer(targetPlayerId, sdp);
+    }
+  };
+}
+
+function getRadioHudState() {
+  const radio = appState.radio;
+  const sessionRadio = appState.launchSession?.radio ?? null;
+  const speakerName = resolveRadioSpeakerName(sessionRadio?.speakerPlayerId);
+  const isConnected = radio.clientStatus !== RADIO_CLIENT_STATUS.DISCONNECTED;
+  const isRemoteSpeaker = sessionRadio?.status === 'occupied'
+    && sessionRadio?.speakerPlayerId
+    && sessionRadio.speakerPlayerId !== appState.guestIdentity?.playerId;
+
+  let hudLabel = 'Radio offline';
+  let buttonText = 'Conectando';
+  let buttonEnabled = false;
+
+  if (!appState.radioEnabled) {
+    hudLabel = 'Radio desativado';
+    buttonText = 'Indisponivel';
+    buttonEnabled = false;
+  } else if (radio.clientStatus === RADIO_CLIENT_STATUS.MIC_BLOCKED) {
+    hudLabel = 'Microfone bloqueado';
+    buttonText = 'Tentar microfone';
+    buttonEnabled = appState.started;
+  } else if (!isConnected) {
+    hudLabel = 'Radio offline';
+    buttonText = 'Conectando';
+  } else if (radio.channelStatus === 'requesting') {
+    hudLabel = 'Solicitando canal';
+    buttonText = 'Solicitando...';
+    buttonEnabled = true;
+  } else if (radio.clientStatus === RADIO_CLIENT_STATUS.TRANSMITTING) {
+    hudLabel = 'Transmitindo';
+    buttonText = 'Falando...';
+    buttonEnabled = true;
+  } else if (isRemoteSpeaker) {
+    hudLabel = 'Ouvindo radio';
+    buttonText = 'Radio ocupado';
+    buttonEnabled = false;
+  } else {
+    hudLabel = radio.isMicArmed ? 'Radio livre' : 'Radio pronto';
+    buttonText = 'Segure para falar';
+    buttonEnabled = appState.started;
+  }
+
+  return {
+    buttonEnabled,
+    buttonText,
+    channelStatus: sessionRadio?.status ?? radio.channelStatus,
+    clientStatus: radio.clientStatus,
+    hudLabel,
+    speakerName
+  };
+}
+
+function resolveRadioSpeakerName(playerId) {
+  if (!playerId) return '--';
+  if (playerId === appState.guestIdentity?.playerId) return 'Voce';
+  const player = appState.launchSession?.players?.find((entry) => entry.playerId === playerId);
+  return player?.displayName ?? 'Piloto';
 }
 
 function buildRealtimePlayerState() {
@@ -963,7 +1246,8 @@ renderer.setAnimationLoop(() => {
     round,
     wind,
     scoring: appState.scoring,
-    thermalAssistant: appState.thermalAssistant
+    thermalAssistant: appState.thermalAssistant,
+    radio: getRadioHudState()
   });
   updateFlightCamera(camera, player, delta, { terrain });
 

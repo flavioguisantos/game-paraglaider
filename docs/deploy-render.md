@@ -2,6 +2,11 @@
 
 O projeto nao usa backend permanente no MVP. O deploy recomendado e **Static Site**.
 
+Para a trilha pos-MVP de radio por voz, o jogo passa a depender tambem do backend realtime separado para:
+- `WSS` em `/api/game/realtime`
+- `GET /api/game/runtime-config`
+- configuracao de `STUN/TURN`
+
 ## Configuracao
 
 O arquivo `render.yaml` na raiz configura:
@@ -35,3 +40,24 @@ Depois confirme que `mapas/processed/BRA_SUDESTE_HighRes/` existe antes de rodar
 ```bash
 npm run build
 ```
+
+## Variaveis relevantes no backend do jogo para o radio
+
+- `GAME_RADIO_ENABLED`
+  - liga/desliga o radio por voz em runtime sem remover a presenca online
+- `GAME_WEBRTC_ICE_SERVERS`
+  - JSON array com os ICE servers entregues ao cliente
+  - exemplo:
+
+```json
+[
+  { "urls": "stun:stun.l.google.com:19302" },
+  {
+    "urls": ["turn:turn.seudominio.com:3478"],
+    "username": "usuario",
+    "credential": "senha"
+  }
+]
+```
+
+Sem `TURN`, o radio pode funcionar em algumas redes e falhar em outras.
