@@ -61,6 +61,14 @@ export async function fetchLaunches() {
   return payload?.dados?.launches ?? [];
 }
 
+export async function fetchGameRuntimeConfig() {
+  const payload = await requestGameJson('/api/game/runtime-config');
+  return {
+    radioEnabled: Boolean(payload?.dados?.radioEnabled),
+    iceServers: Array.isArray(payload?.dados?.iceServers) ? payload.dados.iceServers : []
+  };
+}
+
 export async function fetchLaunchSession(launchId) {
   const payload = await requestGameJson(`/api/game/launches/${encodeURIComponent(launchId)}/session`);
   return payload?.dados ?? null;

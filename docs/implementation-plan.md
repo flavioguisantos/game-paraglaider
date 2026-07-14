@@ -82,6 +82,18 @@
 - [ ] Planejar salas simples por codigo, sem login ou matchmaking complexo.
 - [ ] Definir criterio de entrada do multiplayer ao vivo no produto principal.
 
+## Trilha pos-MVP: radio por voz half-duplex por rampa
+- [x] Consolidar plano completo de implantacao em `docs/radio-voice-plan.md`.
+- [x] Fechar contrato funcional do radio e estados do canal.
+- [x] Definir protocolo realtime de controle e sinalizacao WebRTC.
+- [x] Estender backend da sessao para arbitrar um unico locutor por rampa.
+- [x] Integrar captura de microfone e conexoes WebRTC no cliente.
+- [x] Adicionar UI `segure para falar`, ocupacao do canal e nome do locutor.
+- [ ] Integrar radio com o sistema de audio atual do jogo.
+- [ ] Validar timeout, desconexao, troca de rampa e cleanup completo.
+- [ ] Publicar ambiente de teste com HTTPS/WSS e STUN/TURN.
+- [ ] Executar beta fechado antes de liberar por feature flag.
+
 ## Ordem de prioridade
 1. Cena 3D renderizando.
 2. Terreno legivel.
