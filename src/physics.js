@@ -100,6 +100,24 @@ export function createWindState(options = {}) {
   wind.directionVariationRadians = THREE.MathUtils.degToRad(
     options.directionVariationDegrees ?? WIND_CONFIG.directionVariationDegrees
   );
+  wind.baseSpeedKmh = Number.isFinite(options.baseSpeedKmh)
+    ? Number(options.baseSpeedKmh)
+    : (WIND_CONFIG.minSpeedKmh + WIND_CONFIG.maxSpeedKmh) / 2;
+  wind.speedVariationKmh = Number.isFinite(options.speedVariationKmh)
+    ? Number(options.speedVariationKmh)
+    : (WIND_CONFIG.maxSpeedKmh - WIND_CONFIG.minSpeedKmh) / 2;
+  wind.gustSpeedKmh = Number.isFinite(options.gustSpeedKmh)
+    ? Number(options.gustSpeedKmh)
+    : wind.baseSpeedKmh + wind.speedVariationKmh;
+  wind.cycleDurationSeconds = Number.isFinite(options.cycleDurationSeconds)
+    ? Number(options.cycleDurationSeconds)
+    : null;
+  wind.gustDurationSeconds = Number.isFinite(options.gustDurationSeconds)
+    ? Number(options.gustDurationSeconds)
+    : null;
+  wind.phaseOffsetSeconds = Number.isFinite(options.phaseOffsetSeconds)
+    ? Number(options.phaseOffsetSeconds)
+    : 0;
   wind.directionRadians = wind.baseDirectionRadians;
   wind.directionDegrees = 0;
   updateWindVector(wind, 0);
@@ -114,6 +132,24 @@ export function configureWind(wind, options = {}) {
   wind.directionVariationRadians = THREE.MathUtils.degToRad(
     options.directionVariationDegrees ?? WIND_CONFIG.directionVariationDegrees
   );
+  wind.baseSpeedKmh = Number.isFinite(options.baseSpeedKmh)
+    ? Number(options.baseSpeedKmh)
+    : (WIND_CONFIG.minSpeedKmh + WIND_CONFIG.maxSpeedKmh) / 2;
+  wind.speedVariationKmh = Number.isFinite(options.speedVariationKmh)
+    ? Number(options.speedVariationKmh)
+    : (WIND_CONFIG.maxSpeedKmh - WIND_CONFIG.minSpeedKmh) / 2;
+  wind.gustSpeedKmh = Number.isFinite(options.gustSpeedKmh)
+    ? Number(options.gustSpeedKmh)
+    : wind.baseSpeedKmh + wind.speedVariationKmh;
+  wind.cycleDurationSeconds = Number.isFinite(options.cycleDurationSeconds)
+    ? Number(options.cycleDurationSeconds)
+    : null;
+  wind.gustDurationSeconds = Number.isFinite(options.gustDurationSeconds)
+    ? Number(options.gustDurationSeconds)
+    : null;
+  wind.phaseOffsetSeconds = Number.isFinite(options.phaseOffsetSeconds)
+    ? Number(options.phaseOffsetSeconds)
+    : 0;
   updateWindVector(wind, 0);
 }
 
@@ -435,19 +471,39 @@ function metersPerSecondToKmh(value) {
 }
 
 function updateWindVector(wind, elapsedSeconds) {
+  const syncedElapsedSeconds = elapsedSeconds + (wind.phaseOffsetSeconds ?? 0);
+  const slowBaseRate = Number.isFinite(wind.cycleDurationSeconds) && wind.cycleDurationSeconds > 0
+    ? (Math.PI * 2) / wind.cycleDurationSeconds
+    : WIND_CONFIG.slowCycleRates[0];
+  const gustBaseRate = Number.isFinite(wind.gustDurationSeconds) && wind.gustDurationSeconds > 0
+    ? (Math.PI * 2) / wind.gustDurationSeconds
+    : WIND_CONFIG.gustCycleRates[0];
+  const slowA = slowBaseRate;
+  const slowB = slowBaseRate * 0.377;
+  const gustA = gustBaseRate;
+  const gustB = gustBaseRate * 2.652;
+  const minSpeedKmh = Math.max(
+    0,
+    (wind.baseSpeedKmh ?? ((WIND_CONFIG.minSpeedKmh + WIND_CONFIG.maxSpeedKmh) / 2))
+      - (wind.speedVariationKmh ?? ((WIND_CONFIG.maxSpeedKmh - WIND_CONFIG.minSpeedKmh) / 2))
+  );
+  const maxSpeedKmh = Math.max(
+    minSpeedKmh,
+    wind.gustSpeedKmh
+      ?? ((wind.baseSpeedKmh ?? ((WIND_CONFIG.minSpeedKmh + WIND_CONFIG.maxSpeedKmh) / 2))
+        + (wind.speedVariationKmh ?? ((WIND_CONFIG.maxSpeedKmh - WIND_CONFIG.minSpeedKmh) / 2)))
+  );
   // Massa de ar lenta + rajadas curtas; frequencias incomensuraveis evitam
   // que o padrao se repita de forma perceptivel.
-  const [slowA, slowB] = WIND_CONFIG.slowCycleRates;
-  const [gustA, gustB] = WIND_CONFIG.gustCycleRates;
-  const slowWave = (Math.sin(elapsedSeconds * slowA) * 0.6
-    + Math.sin(elapsedSeconds * slowB + 2.1) * 0.4 + 1) / 2;
-  const gustWave = (Math.sin(elapsedSeconds * gustA + 1.7) * 0.6
-    + Math.sin(elapsedSeconds * gustB + 0.4) * 0.4 + 1) / 2;
+  const slowWave = (Math.sin(syncedElapsedSeconds * slowA) * 0.6
+    + Math.sin(syncedElapsedSeconds * slowB + 2.1) * 0.4 + 1) / 2;
+  const gustWave = (Math.sin(syncedElapsedSeconds * gustA + 1.7) * 0.6
+    + Math.sin(syncedElapsedSeconds * gustB + 0.4) * 0.4 + 1) / 2;
   const mixedWave = slowWave * (1 - WIND_CONFIG.gustFraction) + gustWave * WIND_CONFIG.gustFraction;
-  const speedKmh = THREE.MathUtils.lerp(WIND_CONFIG.minSpeedKmh, WIND_CONFIG.maxSpeedKmh, mixedWave);
+  const speedKmh = THREE.MathUtils.lerp(minSpeedKmh, maxSpeedKmh, mixedWave);
   const [directionA, directionB] = WIND_CONFIG.directionChangeRates;
-  const directionWave = Math.sin(elapsedSeconds * directionA) * 0.7
-    + Math.sin(elapsedSeconds * directionB + 1.3) * 0.3;
+  const directionWave = Math.sin(syncedElapsedSeconds * directionA) * 0.7
+    + Math.sin(syncedElapsedSeconds * directionB + 1.3) * 0.3;
   const directionRadians = (wind.baseDirectionRadians ?? WIND_CONFIG.initialDirectionRadians)
     + directionWave
       * (wind.directionVariationRadians ?? THREE.MathUtils.degToRad(WIND_CONFIG.directionVariationDegrees));

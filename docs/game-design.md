@@ -15,13 +15,16 @@ Ganhar altitude e afastar-se do ponto de decolagem. A rodada nao tem limite de t
 ## Presenca por rampa
 - O prototipo passa a consultar o catalogo de rampas e o resumo da sessao da rampa pela API de jogo, em vez de depender apenas da lista local embutida.
 - O painel inicial deve mostrar quantos pilotos estao presentes na rampa atualmente e o status resumido da sessao selecionada.
+- Antes de iniciar o voo, o jogador deve informar obrigatoriamente o nome do piloto; esse nome identifica a identidade guest emitida pela API para a sessao.
 - Ao iniciar o voo, o cliente entra na sessao da rampa com uma identidade guest emitida pela API.
 - Enquanto voa, o cliente publica snapshots resumidos do proprio jogador e recebe snapshots dos outros pilotos presentes na mesma rampa.
 - Os outros jogadores devem aparecer voando na cena como participantes remotos visuais; eles nao substituem ainda a fisica local, os bots ou a simulacao autoritativa.
+- O nome do piloto deve aparecer acima da vela para que os demais participantes identifiquem quem esta voando na rampa.
 - Quando houver ranking realtime na sessao da rampa, o cartao de ranking do HUD deve priorizar esse ranking online.
+- Quando a sessao da rampa trouxer mundo autoritativo, todos os clientes dessa rampa devem usar a mesma rota, o mesmo conjunto de termicas e os mesmos parametros-base de vento.
 
 ## Controles iniciais
-Antes da rodada, o jogador escolhe o local de voo, escolhe entre `Parapente` e `Drone FPV`, define a cor principal do veiculo em uma paleta ampliada e inicia o voo por um botao de tela. No layout mobile da tela inicial, o painel continua exibindo a escolha de rampa/local, a escolha entre `Parapente` e `Drone FPV`, a paleta de cor e o botao de iniciar, com layout mais compacto e rolavel. Locais iniciais disponiveis:
+Antes da rodada, o jogador informa o nome do piloto, escolhe o local de voo, escolhe entre `Parapente` e `Drone FPV`, define a cor principal do veiculo em uma paleta ampliada e inicia o voo por um botao de tela. No layout mobile da tela inicial, o painel continua exibindo o campo de nome, a escolha de rampa/local, a escolha entre `Parapente` e `Drone FPV`, a paleta de cor e o botao de iniciar, com layout mais compacto e rolavel. Locais iniciais disponiveis:
 - Atibaia / Pedra Grande, Atibaia - SP.
 - Praia de Sao Vicente, Itarare, Sao Vicente - SP (`-23.964517, -46.363531`), com decolagem inicial mais alta, parapente apontado para o mar e vento vindo do mar.
 - Ao selecionar Sao Vicente na tela inicial, a camera de pre-voo tambem deve olhar de frente para o mar.
@@ -72,6 +75,8 @@ Quando o jogador pousa, o parapente deixa de voar, mas os comandos continuam ati
 ## Termicas
 Termicas sao colunas verticais invisiveis para a fisica, mas visiveis para o jogador por particulas, pontos subindo ou cilindros transparentes.
 
+Quando a sessao online da rampa trouxer um catalogo autoritativo de termicas, o cliente deve usar exatamente essas colunas em vez de gerar novas termicas localmente para a rodada.
+
 Regras iniciais:
 - Quanto mais perto do centro da termica, maior a sustentacao. O perfil radial e gaussiano (forte no nucleo, ~6% na borda do raio) e existe um anel de descendencia entre 1,0 e ~1,65 raios, onde o ar desce (~30% da forca da termica).
 - A forca cresce com a altura nos primeiros ~150 m acima do solo (termica desorganizada perto do chao) e enfraquece na faixa final antes do teto.
@@ -98,6 +103,7 @@ O variometro aparece no HUD em m/s e tambem emite bips quando o jogador esta sub
 O MVP passa a usar uma pontuacao estilo cross-country simplificada:
 - Pontos crescem com a distancia horizontal efetivamente voada e recebem bonus continuo pela velocidade sobre o solo acima do voo lento, recompensando quem avanca rapido sem transformar a fisica em arcade.
 - A rota tem waypoints visiveis no mapa (`TP1`, `TP2` e `GOL`). Ao cruzar o raio do checkpoint em ordem, o participante recebe bonus fixo mais bonus de tempo; completar a rota sinaliza `GOL` no HUD.
+- Quando a sessao online da rampa trouxer rota autoritativa, o cliente deve usar exatamente esses waypoints e os raios definidos pelo back-end.
 - Em locais costeiros, a geracao da rota deve rejeitar waypoints cujo centro ou area util do cilindro caiam sobre o mar aberto; o sorteio tenta novos pontos em terra antes de aceitar a perna.
 - Termicas fortes ou "quentes" pagam multiplicador de risco maior. Termicas normais pagam 1x, fortes pagam 1,5x e termicas raras/quentes pagam 2x nos pontos de subida.
 - Entrar em uma nova termica valida sem pousar aumenta o combo de altitude (`2x`, `3x`, ate `5x`). O combo multiplica distancia, subida e waypoints, e zera para `1x` ao pousar ou colidir.
@@ -136,6 +142,7 @@ Regras iniciais:
 - Move termicas ao longo do tempo.
 - Pode mudar de direcao/intensidade em intervalos definidos.
 - A interface exibe velocidade e direcao do vento no HUD, e a cena mostra marcadores 3D de direcao de vento proximos ao voo.
+- Quando a sessao online da rampa trouxer configuracao autoritativa de vento, o cliente deve usar pelo menos a mesma direcao base, a mesma janela de variacao e a mesma fase-base da rodada para reduzir divergencia entre instancias.
 
 ## Terreno
 O terreno deve ser baixo custo, procedural e legivel.

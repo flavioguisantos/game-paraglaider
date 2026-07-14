@@ -28,8 +28,10 @@ const SCORING_CONFIG = {
   waypointSeaClearanceMeters: 140
 };
 
-export async function createScoringState({ scene, terrain }) {
-  const route = await generateRoute(terrain);
+export async function createScoringState({ scene, terrain, routeDefinition = null }) {
+  const route = hasAuthoritativeRoute(routeDefinition)
+    ? normalizeAuthoritativeRoute(routeDefinition, terrain)
+    : await generateRoute(terrain);
   const markers = createWaypointMarkers(route);
   const routeLine = createRouteLine();
   if (scene) {
@@ -314,7 +316,9 @@ function updateWaypointScore(entity, state, terrain) {
   // Tocar a borda com a asa conta: raio do cilindro + meia envergadura.
   const touchRadiusMeters = SCORING_CONFIG.waypointRadiusMeters
     + SCORING_CONFIG.waypointWingMarginMeters;
-  if (distanceMeters > touchRadiusMeters) return;
+  const waypointTouchRadiusMeters = (waypoint.radiusMeters ?? SCORING_CONFIG.waypointRadiusMeters)
+    + SCORING_CONFIG.waypointWingMarginMeters;
+  if (distanceMeters > waypointTouchRadiusMeters) return;
 
   const timeBonus = Math.max(0, SCORING_CONFIG.waypointTimeBonusPoints - state.elapsedSeconds * 0.35);
   const comboMultiplier = Math.max(1, entity.thermalCombo ?? 1);
@@ -406,7 +410,7 @@ function createWaypointMarkers(route) {
     marker.userData.waypointIndex = index;
 
     const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(SCORING_CONFIG.waypointRadiusMeters, 3.5, 8, 72),
+      new THREE.TorusGeometry(waypoint.radiusMeters ?? SCORING_CONFIG.waypointRadiusMeters, 3.5, 8, 72),
       new THREE.MeshBasicMaterial({
         color: index === route.length - 1 ? 0x59d98c : 0xffd166,
         transparent: true,
@@ -478,4 +482,18 @@ function updateWaypointMarkers(state, terrain) {
     const groundHeight = terrain.getHeightAt(waypoint.x, waypoint.z);
     marker.position.set(waypoint.x, groundHeight + 18, waypoint.z);
   }
+}
+
+function hasAuthoritativeRoute(routeDefinition) {
+  return Array.isArray(routeDefinition?.waypoints) && routeDefinition.waypoints.length > 0;
+}
+
+function normalizeAuthoritativeRoute(routeDefinition, terrain) {
+  const worldUnitsPerMeter = terrain?.worldUnitsPerMeter ?? 1;
+  return routeDefinition.waypoints.map((waypoint, index) => ({
+    name: waypoint.label ?? waypoint.name ?? (index === routeDefinition.waypoints.length - 1 ? 'GOL' : `TP${index + 1}`),
+    x: Number(waypoint.x ?? 0) * worldUnitsPerMeter,
+    z: Number(waypoint.z ?? 0) * worldUnitsPerMeter,
+    radiusMeters: Number(waypoint.radiusMeters ?? SCORING_CONFIG.waypointRadiusMeters)
+  }));
 }

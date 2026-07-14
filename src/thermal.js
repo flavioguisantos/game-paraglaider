@@ -81,6 +81,7 @@ class ThermalField {
     this.group.name = 'Thermals';
     this.enabled = true;
     this.assistVisualsVisible = true;
+    this.authoritativeLayout = false;
     this.topAltitude = THERMAL_CONFIG.topAltitudeAboveSeaLevel;
     const hotThermalIndex = Math.floor(Math.random() * THERMAL_SEEDS.length);
     this.nextThermalId = 1;
@@ -123,7 +124,7 @@ class ThermalField {
     this.group.visible = this.enabled;
     if (!this.enabled) return;
 
-    if (referenceEntity) {
+    if (referenceEntity && !this.authoritativeLayout) {
       this.ensureAheadThermals(referenceEntity);
       this.pruneDistantThermals(referenceEntity);
     }
@@ -137,7 +138,7 @@ class ThermalField {
       thermal.cycleFactor = getThermalCycleFactor(thermal);
 
       if (thermal.age >= thermal.lifetimeSeconds) {
-        if (referenceEntity) {
+        if (referenceEntity && !this.authoritativeLayout) {
           // Termica morreu: remove; ensureAheadThermals repõe adiante.
           this.removeThermal(index);
           continue;
@@ -331,6 +332,73 @@ class ThermalField {
     this.enabled = Boolean(enabled);
     this.group.visible = this.enabled;
   }
+
+  applySessionThermals(sessionThermals) {
+    const hasAuthoritativeColumns = Array.isArray(sessionThermals?.columns) && sessionThermals.columns.length > 0;
+    this.authoritativeLayout = hasAuthoritativeColumns;
+    this.setCeiling(sessionThermals?.cloudBaseMeters ?? THERMAL_CONFIG.topAltitudeAboveSeaLevel);
+
+    if (!hasAuthoritativeColumns) {
+      this.resetLocalSeedThermals();
+      return;
+    }
+
+    this.replaceThermals(
+      sessionThermals.columns.map((column, index) => createThermal(
+        {
+          x: Number(column.x ?? 0),
+          z: Number(column.z ?? 0),
+          radius: Number(column.radiusMeters ?? THERMAL_CONFIG.dynamicRadiusMin),
+          strength: Number(column.strengthMetersPerSecond ?? THERMAL_CONFIG.dynamicStrengthMin)
+        },
+        index + 1,
+        this.terrain,
+        Number(column.strengthMetersPerSecond ?? 0) >= 4.8,
+        this.sunDirection,
+        this.topAltitude,
+        {
+          preserveStrength: true,
+          rampUpSeconds: Number(column.warmupSeconds ?? THERMAL_CONFIG.rampUpSeconds),
+          activeSeconds: Number(column.activeSeconds ?? 240),
+          decaySeconds: Number(column.decaySeconds ?? THERMAL_CONFIG.decaySeconds),
+          cycleOffsetSeconds: Number(column.cycleOffsetSeconds ?? 0)
+        }
+      ))
+    );
+  }
+
+  resetLocalSeedThermals() {
+    this.authoritativeLayout = false;
+    const hotThermalIndex = Math.floor(Math.random() * THERMAL_SEEDS.length);
+    this.nextThermalId = 1;
+    this.replaceThermals(
+      THERMAL_SEEDS.map((seed, index) => createThermal(
+        seed,
+        this.nextThermalId++,
+        this.terrain,
+        index === hotThermalIndex,
+        this.sunDirection,
+        this.topAltitude
+      ))
+    );
+    for (const thermal of this.thermals) {
+      thermal.age = Math.random() * thermal.lifetimeSeconds * 0.6;
+      thermal.cycleFactor = getThermalCycleFactor(thermal);
+    }
+  }
+
+  replaceThermals(nextThermals) {
+    for (const thermal of this.thermals) {
+      this.group.remove(thermal.visual);
+      disposeObject3D(thermal.visual);
+    }
+    this.thermals = nextThermals;
+    this.nextThermalId = this.thermals.length + 1;
+    for (const thermal of this.thermals) {
+      applyAssistVisibility(thermal, this.assistVisualsVisible);
+      this.group.add(thermal.visual);
+    }
+  }
 }
 
 function createThermal(
@@ -339,18 +407,23 @@ function createThermal(
   terrain,
   isHotThermal,
   sunDirection = DEFAULT_SUN_DIRECTION,
-  topAltitudeAboveSeaLevel = THERMAL_CONFIG.topAltitudeAboveSeaLevel
+  topAltitudeAboveSeaLevel = THERMAL_CONFIG.topAltitudeAboveSeaLevel,
+  options = {}
 ) {
   const position = new THREE.Vector3(seed.x, 0, seed.z);
   const visual = new THREE.Group();
   visual.name = `Thermal_${id}`;
-  const strengthMultiplier = isHotThermal
-    ? THREE.MathUtils.randFloat(THERMAL_CONFIG.hotStrengthMultiplierMin, THERMAL_CONFIG.hotStrengthMultiplierMax)
-    : THREE.MathUtils.randFloat(THERMAL_CONFIG.minStrengthMultiplier, THERMAL_CONFIG.maxStrengthMultiplier);
-  const strength = Math.min(
-    THERMAL_CONFIG.maxStrengthMetersPerSecond,
-    seed.strength * strengthMultiplier
-  );
+  const strengthMultiplier = options.preserveStrength
+    ? 1
+    : isHotThermal
+      ? THREE.MathUtils.randFloat(THERMAL_CONFIG.hotStrengthMultiplierMin, THERMAL_CONFIG.hotStrengthMultiplierMax)
+      : THREE.MathUtils.randFloat(THERMAL_CONFIG.minStrengthMultiplier, THERMAL_CONFIG.maxStrengthMultiplier);
+  const strength = options.preserveStrength
+    ? seed.strength
+    : Math.min(
+        THERMAL_CONFIG.maxStrengthMetersPerSecond,
+        seed.strength * strengthMultiplier
+      );
 
   const column = new THREE.Mesh(
     new THREE.CylinderGeometry(seed.radius, seed.radius * 0.72, 1, 24, 1, true),
@@ -421,10 +494,17 @@ function createThermal(
     isHotThermal,
     topAltitudeAboveSeaLevel,
     age: 0,
-    lifetimeSeconds: THREE.MathUtils.randFloat(
-      THERMAL_CONFIG.lifetimeMinSeconds,
-      THERMAL_CONFIG.lifetimeMaxSeconds
-    ),
+    lifetimeSeconds: options.preserveStrength
+      ? Number(options.rampUpSeconds ?? THERMAL_CONFIG.rampUpSeconds)
+        + Number(options.activeSeconds ?? 240)
+        + Number(options.decaySeconds ?? THERMAL_CONFIG.decaySeconds)
+      : THREE.MathUtils.randFloat(
+          THERMAL_CONFIG.lifetimeMinSeconds,
+          THERMAL_CONFIG.lifetimeMaxSeconds
+        ),
+    rampUpSeconds: Number(options.rampUpSeconds ?? THERMAL_CONFIG.rampUpSeconds),
+    activeSeconds: Number(options.activeSeconds ?? 240),
+    decaySeconds: Number(options.decaySeconds ?? THERMAL_CONFIG.decaySeconds),
     cycleFactor: 0,
     columnHeight: 0,
     tiltOffset: new THREE.Vector3(),
@@ -439,6 +519,9 @@ function createThermal(
     particles
   };
   visual.userData.tiltOffset = thermal.tiltOffset;
+  if (Number.isFinite(options.cycleOffsetSeconds) && options.cycleOffsetSeconds > 0) {
+    thermal.age = options.cycleOffsetSeconds % thermal.lifetimeSeconds;
+  }
 
   updateThermalVerticalLayout(thermal, groundHeight, new THREE.Vector3(), sunDirection, terrain);
 
@@ -615,9 +698,9 @@ function updateCloudShadow(thermal, groundHeight, sunDirection, terrain) {
 
 // Ciclo de vida: rampa ao nascer, plena no meio, decaimento antes de morrer.
 function getThermalCycleFactor(thermal) {
-  const rampUp = THREE.MathUtils.clamp(thermal.age / THERMAL_CONFIG.rampUpSeconds, 0, 1);
+  const rampUp = THREE.MathUtils.clamp(thermal.age / (thermal.rampUpSeconds ?? THERMAL_CONFIG.rampUpSeconds), 0, 1);
   const remaining = thermal.lifetimeSeconds - thermal.age;
-  const decay = THREE.MathUtils.clamp(remaining / THERMAL_CONFIG.decaySeconds, 0, 1);
+  const decay = THREE.MathUtils.clamp(remaining / (thermal.decaySeconds ?? THERMAL_CONFIG.decaySeconds), 0, 1);
   return Math.min(rampUp, decay);
 }
 

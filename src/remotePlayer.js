@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { setParagliderLandedPose } from './paragliderModel.js';
 import { getVehicleProfile } from './player.js?v=fp-cam-6';
+import { createPlayerNameTag } from './playerNameTag.js';
 
 export class RemotePlayer {
   constructor({ playerId, displayName, vehicleType, canopyColor, terrain }) {
@@ -9,6 +10,12 @@ export class RemotePlayer {
     this.vehicleType = vehicleType ?? 'paraglider';
     this.terrain = terrain;
     this.group = buildRemoteGroup(this.vehicleType, canopyColor);
+    this.nameTag = createPlayerNameTag(this.displayName, {
+      offsetY: this.vehicleType === 'drone' ? 1.2 : 10.8,
+      width: this.vehicleType === 'drone' ? 4.6 : 8.2,
+      height: this.vehicleType === 'drone' ? 1.2 : 2.05
+    });
+    this.group.add(this.nameTag.sprite);
     this.targetPosition = new THREE.Vector3();
     this.targetHeading = 0;
     this.status = 'connected';
@@ -17,6 +24,8 @@ export class RemotePlayer {
   }
 
   updateFromSnapshot(player) {
+    this.displayName = player.displayName ?? this.displayName;
+    this.nameTag.setText(this.displayName);
     this.status = player.status ?? this.status;
     this.metrics = player.metrics ?? this.metrics;
     this.targetPosition.set(
@@ -42,6 +51,7 @@ export class RemotePlayer {
   }
 
   dispose() {
+    this.nameTag.dispose();
     this.group.removeFromParent();
   }
 }
