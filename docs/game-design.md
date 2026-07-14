@@ -19,7 +19,7 @@ Ganhar altitude e afastar-se do ponto de decolagem. A rodada nao tem limite de t
 - Ao iniciar o voo, o cliente entra na sessao da rampa com uma identidade guest emitida pela API.
 - Enquanto voa, o cliente publica snapshots resumidos do proprio jogador e recebe snapshots dos outros pilotos presentes na mesma rampa.
 - Os outros jogadores devem aparecer voando na cena como participantes remotos visuais; eles nao substituem ainda a fisica local, os bots ou a simulacao autoritativa.
-- O nome do piloto deve aparecer acima da vela para que os demais participantes identifiquem quem esta voando na rampa.
+- O nome do piloto deve aparecer acima da vela apenas para os demais participantes, e nao para o proprio piloto local.
 - Quando houver ranking realtime na sessao da rampa, o cartao de ranking do HUD deve priorizar esse ranking online.
 - Quando a sessao da rampa trouxer mundo autoritativo, todos os clientes dessa rampa devem usar a mesma rota, o mesmo conjunto de termicas e os mesmos parametros-base de vento.
 

@@ -738,7 +738,7 @@ function clearRemotePlayers() {
 
 function maybeSendRealtimePlayerState(nowMs) {
   if (!appState.started || !appState.player || !appState.guestIdentity) return;
-  if (nowMs - appState.lastRealtimeStateAtMs < 100) return;
+  if (nowMs - appState.lastRealtimeStateAtMs < 50) return;
 
   appState.lastRealtimeStateAtMs = nowMs;
   realtimeClient.sendPlayerState(buildRealtimePlayerState());
