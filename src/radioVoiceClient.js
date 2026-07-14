@@ -1,6 +1,6 @@
 const DEFAULT_ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
 
-export function createRadioVoiceClient({ onError } = {}) {
+export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
   let identity = null;
   let launchId = null;
   let localStream = null;
@@ -31,11 +31,17 @@ export function createRadioVoiceClient({ onError } = {}) {
       video: false,
     });
     preparedMic = true;
+    onDebugEvent?.('mic_stream_ready', {
+      audioTracks: localStream.getAudioTracks().length
+    });
     return localStream;
   }
 
   async function startBroadcast(listenerPlayerIds, signaling) {
     const stream = await prepareMicrophone();
+    onDebugEvent?.('broadcast_start', {
+      listeners: listenerPlayerIds.length
+    });
     for (const playerId of listenerPlayerIds) {
       if (!playerId || playerId === identity?.playerId || peers.has(playerId)) continue;
       const peer = createPeerConnection(playerId, signaling);
@@ -44,6 +50,7 @@ export function createRadioVoiceClient({ onError } = {}) {
       }
       const offer = await peer.createOffer();
       await peer.setLocalDescription(offer);
+      onDebugEvent?.('offer_created', { targetPlayerId: playerId });
       signaling.sendOffer(playerId, offer.sdp);
     }
   }
@@ -54,20 +61,24 @@ export function createRadioVoiceClient({ onError } = {}) {
 
     switch (message.type) {
       case 'radio_offer': {
+        onDebugEvent?.('offer_received', { sourcePlayerId });
         const peer = createPeerConnection(sourcePlayerId, signaling);
         await peer.setRemoteDescription({ type: 'offer', sdp: message.sdp });
         const answer = await peer.createAnswer();
         await peer.setLocalDescription(answer);
+        onDebugEvent?.('answer_created', { targetPlayerId: sourcePlayerId });
         signaling.sendAnswer(sourcePlayerId, answer.sdp);
         return;
       }
       case 'radio_answer': {
+        onDebugEvent?.('answer_received', { sourcePlayerId });
         const peer = peers.get(sourcePlayerId);
         if (!peer) return;
         await peer.setRemoteDescription({ type: 'answer', sdp: message.sdp });
         return;
       }
       case 'radio_ice_candidate': {
+        onDebugEvent?.('ice_received', { sourcePlayerId });
         const peer = peers.get(sourcePlayerId);
         if (!peer || !message.candidate) return;
         await peer.addIceCandidate(message.candidate);
@@ -106,6 +117,7 @@ export function createRadioVoiceClient({ onError } = {}) {
     peer.addEventListener('icecandidate', (event) => {
       if (!event.candidate) return;
       try {
+        onDebugEvent?.('ice_sent', { targetPlayerId });
         signaling.sendIceCandidate(targetPlayerId, event.candidate.toJSON?.() ?? event.candidate);
       } catch (error) {
         onError?.(error);
@@ -115,13 +127,28 @@ export function createRadioVoiceClient({ onError } = {}) {
     peer.addEventListener('track', (event) => {
       const [stream] = event.streams;
       if (!stream) return;
+      onDebugEvent?.('remote_track', {
+        targetPlayerId,
+        audioTracks: stream.getAudioTracks().length
+      });
       attachRemoteStream(targetPlayerId, stream);
     });
 
     peer.addEventListener('connectionstatechange', () => {
+      onDebugEvent?.('peer_connection_state', {
+        targetPlayerId,
+        state: peer.connectionState
+      });
       if (['failed', 'closed', 'disconnected'].includes(peer.connectionState)) {
         detachPeer(targetPlayerId);
       }
+    });
+
+    peer.addEventListener('iceconnectionstatechange', () => {
+      onDebugEvent?.('peer_ice_state', {
+        targetPlayerId,
+        state: peer.iceConnectionState
+      });
     });
 
     return peer;
@@ -140,6 +167,7 @@ export function createRadioVoiceClient({ onError } = {}) {
     }
     if (audio.srcObject !== stream) {
       audio.srcObject = stream;
+      onDebugEvent?.('remote_audio_attached', { playerId });
       audio.play().catch((error) => onError?.(error));
     }
   }
@@ -149,6 +177,7 @@ export function createRadioVoiceClient({ onError } = {}) {
     if (peer) {
       peer.close();
       peers.delete(playerId);
+      onDebugEvent?.('peer_detached', { playerId });
     }
     const audio = audioElements.get(playerId);
     if (audio) {

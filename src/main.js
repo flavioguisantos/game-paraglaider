@@ -221,8 +221,14 @@ const adventureMusic = createAdventureMusic({ trackUrl: '/assets/audio/adventure
 const clock = new THREE.Clock();
 const standbyPosition = new THREE.Vector3(0, 0, 0);
 const radioVoiceClient = createRadioVoiceClient({
+  onDebugEvent(type, details = {}) {
+    recordRadioDebugEvent(type, details);
+  },
   onError(error) {
     console.warn('Falha no cliente de radio por voz.', error);
+    recordRadioDebugEvent('voice_client_error', {
+      message: error?.message ?? String(error)
+    });
   }
 });
 const realtimeClient = createGameRealtimeClient({
@@ -898,6 +904,11 @@ function endRadioTransmission(reason = 'button_release') {
 }
 
 async function handleRadioRealtimeMessage(message) {
+  recordRadioDebugEvent(`signal_${message.type}`, {
+    sourcePlayerId: message.sourcePlayerId ?? null,
+    targetPlayerId: message.targetPlayerId ?? null,
+    speakerPlayerId: message.speakerPlayerId ?? null
+  });
   switch (message.type) {
     case 'radio_talk_granted':
       updateRadioState({
