@@ -31,8 +31,8 @@ export function createHud(root) {
     <div class="hud-instrument">
       <div class="instr-top"><span data-hud="time">00:00</span><span data-hud="status">Voando</span></div>
       <div class="instr-alts">
-        <div class="instr-cell"><span>ALTITUDE</span><strong data-hud="altitude">0</strong><em>m nivel do mar</em></div>
-        <div class="instr-cell"><span>SOLO</span><strong data-hud="groundClearance">0</strong><em>m</em></div>
+        <div class="instr-cell instr-cell--altitude"><span>ALTITUDE</span><strong data-hud="altitude">0</strong><em>m nivel do mar</em></div>
+        <div class="instr-cell instr-cell--clearance"><span>SOLO</span><strong data-hud="groundClearance">0</strong><em>m</em></div>
       </div>
       <div class="instr-vario">
         <div class="vario-bar"><div class="vario-fill" data-hud="varioFill"></div></div>
@@ -46,9 +46,9 @@ export function createHud(root) {
         <div class="thermal-label" data-hud="thermalLabel">Centralize</div>
       </div>
       <div class="instr-row">
-        <div class="instr-cell"><span>VEL</span><strong data-hud="speed">0</strong><em>km/h solo</em></div>
-        <div class="instr-cell"><span>PLANEIO</span><strong data-hud="glide">--</strong><em>:1</em></div>
-        <div class="instr-cell"><span>VENTO</span><strong class="wind-readout"><span data-hud="windArrow">&#8593;</span><span data-hud="wind">0</span></strong><em>km/h</em></div>
+        <div class="instr-cell instr-cell--speed"><span>VEL</span><strong data-hud="speed">0</strong><em>km/h solo</em></div>
+        <div class="instr-cell instr-cell--glide"><span>PLANEIO</span><strong data-hud="glide">--</strong><em>:1</em></div>
+        <div class="instr-cell instr-cell--wind"><span>VENTO</span><strong class="wind-readout"><span data-hud="windArrow">&#8593;</span><span data-hud="wind">0</span></strong><em>km/h</em></div>
       </div>
       <div class="instr-compass">
         <div class="compass-tape" data-hud="compassTape"></div>
@@ -56,9 +56,9 @@ export function createHud(root) {
       </div>
       <div class="instr-distance"><span>DIST. DECOLAGEM</span><strong data-hud="distance">0 m</strong></div>
       <div class="instr-score">
-        <div><span>PONTOS</span><strong data-hud="score">0</strong></div>
-        <div><span>COMBO</span><strong data-hud="combo">1x</strong></div>
-        <div><span>ROTA</span><strong data-hud="waypoint">TP1</strong></div>
+        <div class="instr-score-card instr-score-card--score"><span>PONTOS</span><strong data-hud="score">0</strong></div>
+        <div class="instr-score-card instr-score-card--combo"><span>COMBO</span><strong data-hud="combo">1x</strong></div>
+        <div class="instr-score-card instr-score-card--waypoint"><span>ROTA</span><strong data-hud="waypoint">TP1</strong></div>
       </div>
       <div class="instr-meta"><span>PARTIDAS</span><strong data-hud="totalMatches">--</strong></div>
       <div class="instr-event" data-hud="scoreEvent"></div>
