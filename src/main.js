@@ -876,10 +876,10 @@ function updateVehicleSelectionUi() {
     );
   }
   if (touchLabelUp) {
-    touchLabelUp.textContent = 'Sobe';
+    touchLabelUp.textContent = vehicleType === 'drone' ? 'Sobe' : 'Acelera';
   }
   if (touchLabelDown) {
-    touchLabelDown.textContent = 'Desce';
+    touchLabelDown.textContent = vehicleType === 'drone' ? 'Desce' : 'Freia';
   }
   if (boostButton) {
     boostButton.hidden = vehicleType !== 'drone';

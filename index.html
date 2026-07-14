@@ -785,8 +785,8 @@
 
       .touch-joystick-shell {
         position: relative;
-        width: 156px;
-        height: 156px;
+        width: 136px;
+        height: 136px;
         pointer-events: auto;
       }
 
@@ -830,46 +830,46 @@
 
       .touch-joystick-ring {
         position: absolute;
-        inset: 14px;
+        inset: 12px;
         border: 1px solid rgba(255, 255, 255, 0.1);
         border-radius: 50%;
         pointer-events: none;
       }
 
       .touch-joystick-ring--inner {
-        inset: 42px;
+        inset: 36px;
       }
 
       .touch-joystick-label {
         position: absolute;
         color: #f7fbff;
-        font: 700 11px/1 Arial, Helvetica, sans-serif;
-        letter-spacing: 0.08em;
+        font: 700 10px/1 Arial, Helvetica, sans-serif;
+        letter-spacing: 0.06em;
         text-transform: uppercase;
         opacity: 0.72;
         pointer-events: none;
       }
 
       .touch-joystick-label--up {
-        top: 14px;
+        top: 12px;
         left: 50%;
         transform: translateX(-50%);
       }
 
       .touch-joystick-label--down {
-        bottom: 14px;
+        bottom: 12px;
         left: 50%;
         transform: translateX(-50%);
       }
 
       .touch-joystick-label--left {
-        left: 18px;
+        left: 15px;
         top: 50%;
         transform: translateY(-50%);
       }
 
       .touch-joystick-label--right {
-        right: 18px;
+        right: 15px;
         top: 50%;
         transform: translateY(-50%);
       }
@@ -880,8 +880,8 @@
         position: absolute;
         left: 50%;
         top: 50%;
-        width: 64px;
-        height: 64px;
+        width: 56px;
+        height: 56px;
         border-radius: 50%;
         background:
           radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.38), rgba(255, 255, 255, 0.06) 45%),
@@ -904,19 +904,19 @@
       .touch-actions {
         display: grid;
         align-items: end;
-        gap: 10px;
+        gap: 8px;
         pointer-events: auto;
       }
 
       .touch-control {
-        width: 58px;
-        height: 58px;
+        width: 50px;
+        height: 50px;
         color: #f7fbff;
         background: rgba(16, 31, 42, 0.62);
         border: 1px solid rgba(255, 255, 255, 0.26);
         border-radius: 50%;
         box-shadow: 0 10px 26px rgba(0, 0, 0, 0.22);
-        font: 700 18px/1 Arial, Helvetica, sans-serif;
+        font: 700 16px/1 Arial, Helvetica, sans-serif;
         touch-action: none;
         -webkit-touch-callout: none;
         -webkit-user-select: none;
@@ -1110,17 +1110,20 @@
         .hud-instrument {
           position: relative;
           display: grid;
-          grid-template-columns: minmax(0, 76px) minmax(0, 1fr);
-          align-items: start;
-          gap: 6px 8px;
-          padding: 8px 9px 9px;
+          grid-template-columns: 58px repeat(5, minmax(0, 1fr));
+          align-items: stretch;
+          gap: 4px;
+          padding: 18px 6px 6px;
         }
 
         .instr-top {
-          position: static;
-          grid-column: 1 / -1;
-          margin-bottom: 1px;
-          font-size: 9px;
+          position: absolute;
+          top: 4px;
+          left: 6px;
+          right: 6px;
+          grid-column: auto;
+          margin-bottom: 0;
+          font-size: 8px;
         }
 
         .instr-top span:first-child {
@@ -1130,67 +1133,63 @@
         .instr-vario {
           order: 1;
           grid-column: 1;
-          grid-row: 2 / span 2;
+          grid-row: 1;
           margin: 0;
-          padding: 5px 6px;
-          gap: 6px;
-          min-height: 78px;
+          padding: 4px 5px;
+          gap: 5px;
+          min-height: 0;
         }
 
         .vario-bar {
-          height: 42px;
-          width: 5px;
+          height: 30px;
+          width: 4px;
         }
 
         .vario-value strong {
-          font-size: 20px;
+          font-size: 15px;
         }
 
         .vario-value em {
-          font-size: 8px;
+          font-size: 7px;
         }
 
         .instr-alts {
           order: 2;
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
+          display: contents;
           margin: 0;
-          gap: 6px;
         }
 
         .instr-alts .instr-cell {
-          padding: 6px 7px;
+          padding: 4px 5px;
           background: rgba(255, 255, 255, 0.05);
           border: 1px solid rgba(255, 255, 255, 0.06);
-          border-radius: 7px;
+          border-radius: 6px;
         }
 
         .instr-cell span,
         .instr-score span {
-          font-size: 8px;
-          letter-spacing: 0.1em;
+          font-size: 7px;
+          letter-spacing: 0.08em;
         }
 
         .instr-cell strong {
-          font-size: 14px;
+          font-size: 11px;
         }
 
         .instr-cell em {
-          font-size: 8px;
+          font-size: 7px;
         }
 
         .instr-row {
           order: 3;
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 6px;
+          display: contents;
         }
 
         .instr-row .instr-cell {
-          padding: 6px 7px;
+          padding: 4px 5px;
           background: rgba(255, 255, 255, 0.05);
           border: 1px solid rgba(255, 255, 255, 0.06);
-          border-radius: 7px;
+          border-radius: 6px;
         }
 
         .instr-cell--altitude,
@@ -1203,15 +1202,16 @@
           display: none;
         }
 
-        /* Assistente de termica compacto: so aparece quando ha leitura ativa,
-           ocupando a linha inteira abaixo dos mostradores. */
         .instr-thermal {
           display: none;
-          order: 5;
           grid-column: 1 / -1;
-          margin: 0;
-          padding: 4px 8px;
-          gap: 10px;
+          align-items: center;
+          gap: 8px;
+          margin-top: 2px;
+          padding: 4px 6px;
+          background: rgba(255, 209, 102, 0.08);
+          border: 1px solid rgba(255, 209, 102, 0.18);
+          border-radius: 6px;
         }
 
         .instr-thermal.is-active {
@@ -1219,20 +1219,35 @@
         }
 
         .instr-thermal .thermal-ring {
-          transform: scale(0.72);
-          transform-origin: center;
-          margin: -8px;
+          width: 34px;
+          height: 34px;
+        }
+
+        .instr-thermal .thermal-sector {
+          width: 4px;
+          height: 4px;
+          margin: -2px 0 0 -2px;
+        }
+
+        .instr-thermal .thermal-arrow {
+          margin: -8px 0 0 -4px;
+          font-size: 14px;
+        }
+
+        .instr-thermal .thermal-core {
+          width: 4px;
+          height: 4px;
+          margin: -2px 0 0 -2px;
         }
 
         .instr-thermal .thermal-label {
-          font-size: 11px;
+          font-size: 10px;
         }
 
         .instr-score {
           order: 4;
-          grid-column: 1 / -1;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 6px;
+          grid-column: auto;
+          display: contents;
           margin-top: 0;
           padding-top: 0;
           border-top: 0;
@@ -1240,30 +1255,44 @@
 
         .instr-score-card {
           min-width: 0;
-          padding: 6px 7px;
+          padding: 4px 5px;
           background: rgba(255, 209, 102, 0.08);
           border: 1px solid rgba(255, 209, 102, 0.18);
-          border-radius: 7px;
+          border-radius: 6px;
         }
 
         .instr-score strong {
           display: block;
           min-width: 0;
-          font-size: 12px;
-          line-height: 1.15;
+          font-size: 11px;
+          line-height: 1.05;
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
         }
 
+        .instr-cell--clearance {
+          grid-column: 2;
+        }
+
+        .instr-cell--speed {
+          grid-column: 3;
+        }
+
+        .instr-score-card--score {
+          grid-column: 4;
+        }
+
+        .instr-score-card--combo {
+          grid-column: 5;
+        }
+
         .instr-score-card--waypoint {
-          grid-column: 1 / -1;
+          grid-column: 6;
         }
 
         .instr-score-card--waypoint strong {
-          white-space: normal;
-          overflow: visible;
-          text-overflow: clip;
+          white-space: nowrap;
         }
 
         .hud-ranking {
@@ -1280,7 +1309,7 @@
         }
 
         .score-pop {
-          top: calc(max(8px, env(safe-area-inset-top)) + 160px);
+          top: calc(max(8px, env(safe-area-inset-top)) + 92px);
           min-width: 168px;
           padding: 10px 14px 12px;
         }
@@ -1358,7 +1387,7 @@
         }
 
         body.mobile-paraglider .camera-toggle {
-          bottom: calc(max(14px, env(safe-area-inset-bottom)) + 182px);
+          bottom: calc(max(14px, env(safe-area-inset-bottom)) + 154px);
         }
 
         .touch-controls {
@@ -1366,7 +1395,7 @@
         }
 
         .restart-button {
-          top: calc(max(8px, env(safe-area-inset-top)) + 76px);
+          top: calc(max(8px, env(safe-area-inset-top)) + 56px);
           right: max(10px, env(safe-area-inset-right));
           width: 34px;
           height: 34px;
@@ -1386,19 +1415,19 @@
         }
 
         .touch-joystick-shell {
-          width: 138px;
-          height: 138px;
+          width: 124px;
+          height: 124px;
         }
 
         .touch-joystick-knob {
-          width: 58px;
-          height: 58px;
+          width: 52px;
+          height: 52px;
         }
 
         .touch-control {
-          width: 52px;
-          height: 52px;
-          font-size: 17px;
+          width: 46px;
+          height: 46px;
+          font-size: 15px;
         }
 
         .restart-button {
