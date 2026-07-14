@@ -275,6 +275,8 @@ class AdventureMusic {
     this.externalAudio = null;
     this.externalAudioSource = null;
     this.duckFactor = 1;
+    this.pausedForRadio = false;
+    this.wasPlayingBeforeRadioPause = false;
   }
 
   start() {
@@ -327,6 +329,49 @@ class AdventureMusic {
       this.externalAudio.volume = 0;
     }
     recordAudioDebug('musicStopped', { state: this.context?.state ?? null, track: this.trackUrl ? 'external' : 'procedural' });
+  }
+
+  pauseForRadio() {
+    if (this.pausedForRadio) return;
+    this.pausedForRadio = true;
+    this.wasPlayingBeforeRadioPause = this.enabled;
+    if (!this.enabled) return;
+
+    this.enabled = false;
+    if (this.timerId) {
+      window.clearInterval(this.timerId);
+      this.timerId = null;
+    }
+    if (this.externalAudio) {
+      this.externalAudio.pause();
+    }
+    recordAudioDebug('musicPausedForRadio', { track: this.trackUrl ? 'external' : 'procedural' });
+  }
+
+  resumeAfterRadio() {
+    if (!this.pausedForRadio) return;
+    const shouldResume = this.wasPlayingBeforeRadioPause;
+    this.pausedForRadio = false;
+    this.wasPlayingBeforeRadioPause = false;
+    if (!shouldResume) return;
+
+    if (this.externalAudio) {
+      this.enabled = true;
+      const playPromise = this.externalAudio.play();
+      if (playPromise?.catch) {
+        playPromise.catch((error) => {
+          recordAudioDebug('musicResumeFailed', { reason: getErrorMessage(error), track: this.trackUrl });
+        });
+      }
+      recordAudioDebug('musicResumedAfterRadio', { track: this.trackUrl });
+      return;
+    }
+
+    this.enabled = true;
+    this.nextNoteTime = this.context.currentTime + 0.05;
+    this.timerId = window.setInterval(() => this.schedule(), MUSIC_CONFIG.lookAheadSeconds * 1000);
+    this.schedule();
+    recordAudioDebug('musicResumedAfterRadio', { track: 'procedural' });
   }
 
   setDuckFactor(factor = 1) {
