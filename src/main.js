@@ -476,6 +476,14 @@ async function startFlight() {
     startButton.disabled = false;
     return;
   }
+  const joinedSession = await ensureSelectedLaunchSession({
+    vehicleType: selectedVehicleType,
+    canopyColor: `#${selectedColor.toString(16).padStart(6, '0')}`
+  });
+  if (joinedSession?.session) {
+    applyLaunchSessionBundle(joinedSession);
+  }
+  applySelectedFlightLocation();
   const selectedVehicleProfile = getVehicleProfile(selectedVehicleType);
   setCameraMode(selectedVehicleProfile.cameraPreference === 'first-person-only' ? 'first-person' : 'third-person');
   updateVehicleSelectionUi();
@@ -498,7 +506,11 @@ async function startFlight() {
   }
 
   appState.flyers = [appState.player, ...appState.bots];
-  appState.scoring = await createScoringState({ scene, terrain });
+  appState.scoring = await createScoringState({
+    scene,
+    terrain,
+    routeDefinition: appState.launchSession?.route ?? null
+  });
   initializeScoringForEntities(appState.flyers);
   appState.lastScoreFeedbackAudioId = null;
   appState.round = createRoundState();
@@ -512,7 +524,7 @@ async function startFlight() {
   clearRemotePlayers();
   appState.started = true;
   void updateGlobalMatchCounterOnStart();
-  void joinSelectedLaunchRealtime({
+  connectSelectedLaunchRealtime({
     vehicleType: selectedVehicleType,
     canopyColor: `#${selectedColor.toString(16).padStart(6, '0')}`
   });
@@ -551,9 +563,10 @@ function applySelectedFlightLocation() {
   });
   terrain.setSeaEnabled(Boolean(location.hasSea));
   vegetation.reset();
-  configureWind(wind, location.wind);
-  thermals.setEnabled(location.liftMode !== 'orographic');
-  thermals.setCeiling(location.cloudBaseMeters ?? 2200);
+  configureWind(wind, buildWindConfig(location, appState.launchSession));
+  thermals.setEnabled(resolveThermalsEnabled(location, appState.launchSession));
+  thermals.setCeiling(appState.launchSession?.thermals?.cloudBaseMeters ?? location.cloudBaseMeters ?? 2200);
+  thermals.applySessionThermals(appState.launchSession?.thermals ?? null);
   orographicLift.configure(location.orographicLift);
   orographicLift.setAssistVisuals(appState.assistVisuals);
 }
@@ -631,17 +644,28 @@ function formatGlobalMatchCount(totalMatches) {
   return Math.round(totalMatches).toLocaleString('pt-BR');
 }
 
-async function joinSelectedLaunchRealtime({ vehicleType, canopyColor }) {
+async function ensureSelectedLaunchSession({ vehicleType, canopyColor }) {
   const launchId = appState.selectedLocation?.launchId ?? appState.selectedLocation?.id;
-  if (!launchId || !appState.guestIdentity) return;
+  if (!launchId || !appState.guestIdentity) return null;
 
   try {
-    await joinLaunchSession(launchId, appState.guestIdentity, {
+    return await joinLaunchSession(launchId, appState.guestIdentity, {
       displayName: appState.guestIdentity.displayName,
       vehicleType,
       canopyColor,
       status: 'connected'
     });
+  } catch (error) {
+    console.warn('Nao foi possivel entrar na sessao da rampa.', error);
+    return null;
+  }
+}
+
+function connectSelectedLaunchRealtime({ vehicleType, canopyColor }) {
+  const launchId = appState.selectedLocation?.launchId ?? appState.selectedLocation?.id;
+  if (!launchId || !appState.guestIdentity) return;
+
+  try {
     realtimeClient.connect({
       launchId,
       playerIdentity: appState.guestIdentity,
@@ -653,7 +677,7 @@ async function joinSelectedLaunchRealtime({ vehicleType, canopyColor }) {
       }
     });
   } catch (error) {
-    console.warn('Nao foi possivel entrar na sessao da rampa.', error);
+    console.warn('Nao foi possivel conectar o canal realtime da rampa.', error);
   }
 }
 
@@ -786,6 +810,39 @@ function maybeSendRealtimeResult(round) {
 function getSelectedCanopyColorHex() {
   const selectedColor = colorInputs.find((input) => input.checked)?.value ?? '0xa8dff2';
   return `#${selectedColor.replace(/^0x/i, '').padStart(6, '0')}`;
+}
+
+function resolveThermalsEnabled(location, session) {
+  if (typeof session?.thermals?.enabled === 'boolean') return session.thermals.enabled;
+  return location.liftMode !== 'orographic';
+}
+
+function buildWindConfig(location, session) {
+  const sessionWind = session?.wind ?? {};
+  return {
+    directionRadians: sessionWind.baseDirectionRadians ?? sessionWind.directionRadians ?? location.wind?.directionRadians,
+    directionVariationDegrees: sessionWind.directionVariationDegrees ?? location.wind?.directionVariationDegrees,
+    baseSpeedKmh: sessionWind.baseSpeedKmh,
+    speedVariationKmh: sessionWind.speedVariationKmh,
+    gustSpeedKmh: sessionWind.gustSpeedKmh,
+    cycleDurationSeconds: sessionWind.cycleDurationSeconds,
+    gustDurationSeconds: sessionWind.gustDurationSeconds,
+    phaseOffsetSeconds: getSessionWindPhaseOffsetSeconds(session)
+  };
+}
+
+function getSessionWindPhaseOffsetSeconds(session) {
+  const startedAtMs = Date.parse(session?.startedAt ?? '');
+  if (Number.isFinite(startedAtMs)) {
+    return Math.max(0, (Date.now() - startedAtMs) / 1000);
+  }
+
+  const seed = session?.wind?.seed ?? session?.worldSeed ?? '';
+  let hash = 0;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash = ((hash << 5) - hash + seed.charCodeAt(index)) | 0;
+  }
+  return Math.abs(hash % 600);
 }
 
 function updateVehicleSelectionUi() {
