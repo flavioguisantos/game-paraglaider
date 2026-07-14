@@ -272,6 +272,7 @@ const appState = {
 };
 // Hook de inspecao/testes (ex.: teleportar o piloto em testes automatizados).
 window.__appState = appState;
+window.__radioDebug = window.__radioDebug ?? { events: [], counts: {} };
 
 camera.position.set(0, 1760, 2250);
 camera.lookAt(0, 1320, 0);
@@ -294,6 +295,14 @@ startButton.addEventListener('click', startFlight);
 restartButton?.addEventListener('click', restartGame);
 window.addEventListener('beforeunload', () => {
   void disconnectRealtimeAndSession();
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    endRadioTransmission('visibility_hidden');
+  }
+});
+window.addEventListener('offline', () => {
+  endRadioTransmission('network_offline');
 });
 setupLayerPanel();
 setupCameraToggle();
@@ -797,6 +806,12 @@ function maybeSendRealtimePlayerState(nowMs) {
 
 function updateRadioState(event) {
   appState.radio = reduceRadioState(appState.radio, event);
+  recordRadioDebugEvent(event.type, {
+    channelStatus: appState.radio.channelStatus,
+    clientStatus: appState.radio.clientStatus,
+    speakerPlayerId: appState.radio.speakerPlayerId,
+    errorCode: appState.radio.errorCode
+  });
 }
 
 function syncRadioSession(session) {
@@ -811,7 +826,7 @@ function syncRadioSession(session) {
   if (!isRemoteSpeaker) {
     radioVoiceClient.stopListening();
   }
-  adventureMusic.setDuckFactor(session?.radio?.status === 'occupied' ? 0.5 : 1);
+  applyRadioAudioMix(session?.radio?.status === 'occupied');
 }
 
 function setupRadioControls() {
@@ -876,9 +891,9 @@ function endRadioTransmission(reason = 'button_release') {
     radioVoiceClient.stopBroadcast();
     radioVoiceClient.stopListening();
     realtimeClient.sendRadioReleaseTalk(reason);
-    adventureMusic.setDuckFactor(1);
+    applyRadioAudioMix(false);
   } else if (wasRequesting) {
-    adventureMusic.setDuckFactor(1);
+    applyRadioAudioMix(false);
   }
 }
 
@@ -893,7 +908,7 @@ async function handleRadioRealtimeMessage(message) {
       if (message.speakerPlayerId === appState.guestIdentity?.playerId) {
         await startLocalRadioBroadcast(message.session?.players ?? []);
       } else {
-        adventureMusic.setDuckFactor(0.5);
+        applyRadioAudioMix(true);
       }
       return;
     case 'radio_talk_denied':
@@ -910,7 +925,7 @@ async function handleRadioRealtimeMessage(message) {
         type: 'radio_released',
         reason: message.reason
       });
-      adventureMusic.setDuckFactor(1);
+      applyRadioAudioMix(false);
       return;
     case 'radio_force_stop':
       radioVoiceClient.stopBroadcast();
@@ -920,7 +935,7 @@ async function handleRadioRealtimeMessage(message) {
         reason: message.reason,
         detail: message.detail
       });
-      adventureMusic.setDuckFactor(1);
+      applyRadioAudioMix(false);
       return;
     case 'radio_offer':
     case 'radio_answer':
@@ -942,7 +957,7 @@ async function startLocalRadioBroadcast(players) {
 
   try {
     await radioVoiceClient.startBroadcast(listenerPlayerIds, buildRadioSignaling());
-    adventureMusic.setDuckFactor(0.5);
+    applyRadioAudioMix(true);
   } catch (error) {
     console.warn('Falha ao iniciar a transmissao de radio.', error);
     updateRadioState({
@@ -976,6 +991,7 @@ function getRadioHudState() {
   const isRemoteSpeaker = sessionRadio?.status === 'occupied'
     && sessionRadio?.speakerPlayerId
     && sessionRadio.speakerPlayerId !== appState.guestIdentity?.playerId;
+  const remainingText = getRadioRemainingTimeText(sessionRadio?.expiresAt);
 
   let hudLabel = 'Radio offline';
   let buttonText = 'Conectando';
@@ -1016,6 +1032,7 @@ function getRadioHudState() {
     channelStatus: sessionRadio?.status ?? radio.channelStatus,
     clientStatus: radio.clientStatus,
     hudLabel,
+    remainingText,
     speakerName
   };
 }
@@ -1025,6 +1042,77 @@ function resolveRadioSpeakerName(playerId) {
   if (playerId === appState.guestIdentity?.playerId) return 'Voce';
   const player = appState.launchSession?.players?.find((entry) => entry.playerId === playerId);
   return player?.displayName ?? 'Piloto';
+}
+
+function getRadioRemainingTimeText(expiresAt) {
+  const endMs = Date.parse(expiresAt ?? '');
+  if (!Number.isFinite(endMs)) return '';
+  const remainingSeconds = Math.max(0, Math.ceil((endMs - Date.now()) / 1000));
+  if (remainingSeconds <= 0) return '';
+  return `${remainingSeconds}s`;
+}
+
+function applyRadioAudioMix(radioActive) {
+  const duckFactor = radioActive ? 0.5 : 1;
+  const varioDuck = radioActive ? 0.34 : 1;
+  const scoreDuck = radioActive ? 0.45 : 1;
+  adventureMusic.setDuckFactor(duckFactor);
+  varioAudio.setDuckFactor(varioDuck);
+  scoreAudio.setDuckFactor(scoreDuck);
+}
+
+function recordRadioDebugEvent(type, details = {}) {
+  const debug = window.__radioDebug ?? {
+    events: [],
+    counts: {}
+  };
+  debug.counts[type] = (debug.counts[type] ?? 0) + 1;
+  debug.last = {
+    type,
+    ...details,
+    time: Math.round(performance.now())
+  };
+  debug.events.push(debug.last);
+  debug.events = debug.events.slice(-32);
+  window.__radioDebug = debug;
+  updateRadioDebugOverlay(debug);
+}
+
+function updateRadioDebugOverlay(debug) {
+  if (!new URLSearchParams(window.location.search).has('radioDebug')) return;
+
+  let overlay = document.querySelector('[data-radio-debug]');
+  if (!overlay) {
+    overlay = document.createElement('pre');
+    overlay.dataset.radioDebug = 'true';
+    overlay.style.cssText = [
+      'position:fixed',
+      'left:8px',
+      'right:8px',
+      'bottom:8px',
+      'z-index:31',
+      'max-height:34vh',
+      'overflow:auto',
+      'margin:0',
+      'padding:8px',
+      'color:#f7fbff',
+      'background:rgba(9,15,22,0.84)',
+      'font:11px/1.3 monospace',
+      'white-space:pre-wrap',
+      'pointer-events:none',
+      '-webkit-user-select:none',
+      'user-select:none'
+    ].join(';');
+    document.body.appendChild(overlay);
+  }
+
+  overlay.textContent = JSON.stringify({
+    radioEnabled: appState.radioEnabled,
+    state: appState.radio,
+    launchId: appState.selectedLocation?.launchId ?? appState.selectedLocation?.id ?? null,
+    sessionRadio: appState.launchSession?.radio ?? null,
+    ...debug
+  }, null, 2);
 }
 
 function buildRealtimePlayerState() {

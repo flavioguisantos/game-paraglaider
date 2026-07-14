@@ -205,8 +205,9 @@ export function updateHud(elements, { player, bots = [], terrain, round, wind, s
 function updateRadioHud(elements, radio) {
   const label = radio?.hudLabel ?? 'Radio indisponivel';
   const speaker = radio?.speakerName ?? '--';
+  const remaining = radio?.remainingText ?? '';
   elements.radioLabel.textContent = label;
-  elements.radioSpeaker.textContent = speaker;
+  elements.radioSpeaker.textContent = remaining ? `${speaker} · ${remaining}` : speaker;
   elements.radioRoot.classList.toggle('is-occupied', radio?.channelStatus === 'occupied');
   elements.radioRoot.classList.toggle('is-transmitting', radio?.clientStatus === 'transmitting');
   elements.radioButton.disabled = !radio?.buttonEnabled;

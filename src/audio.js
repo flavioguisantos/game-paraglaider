@@ -76,6 +76,7 @@ class VarioAudio {
     this.masterConnected = false;
     this.enabled = false;
     this.timeUntilNextBeep = 0;
+    this.duckFactor = 1;
 
     this.unlock = this.unlock.bind(this);
     window.addEventListener('pointerdown', this.unlock, { once: true });
@@ -86,7 +87,7 @@ class VarioAudio {
     this.context = this.context || unlockGameAudio();
     if (!this.context) return;
     this.masterGain = this.masterGain || this.context.createGain();
-    this.masterGain.gain.value = VARIO_AUDIO_CONFIG.volume;
+    this.masterGain.gain.value = VARIO_AUDIO_CONFIG.volume * this.duckFactor;
     if (!this.masterConnected) {
       this.masterGain.connect(this.context.destination);
       this.masterConnected = true;
@@ -94,6 +95,15 @@ class VarioAudio {
 
     this.enabled = true;
     recordAudioDebug('varioUnlocked', { state: this.context.state });
+  }
+
+  setDuckFactor(factor = 1) {
+    this.duckFactor = clamp(factor, 0.18, 1);
+    if (!this.masterGain || !this.context) return;
+    this.masterGain.gain.setValueAtTime(
+      VARIO_AUDIO_CONFIG.volume * this.duckFactor,
+      this.context.currentTime
+    );
   }
 
   update(delta, verticalSpeed, landed) {
@@ -177,6 +187,7 @@ class ScoreAudio {
     this.context = null;
     this.masterGain = null;
     this.masterConnected = false;
+    this.duckFactor = 1;
   }
 
   play() {
@@ -184,7 +195,10 @@ class ScoreAudio {
     if (!this.context) return;
 
     this.masterGain = this.masterGain || this.context.createGain();
-    this.masterGain.gain.setValueAtTime(SCORE_AUDIO_CONFIG.volume, this.context.currentTime);
+    this.masterGain.gain.setValueAtTime(
+      SCORE_AUDIO_CONFIG.volume * this.duckFactor,
+      this.context.currentTime
+    );
     if (!this.masterConnected) {
       this.masterGain.connect(this.context.destination);
       this.masterConnected = true;
@@ -201,6 +215,15 @@ class ScoreAudio {
     }
 
     recordAudioDebug('scoreFanfare', { state: this.context.state });
+  }
+
+  setDuckFactor(factor = 1) {
+    this.duckFactor = clamp(factor, 0.18, 1);
+    if (!this.masterGain || !this.context) return;
+    this.masterGain.gain.setValueAtTime(
+      SCORE_AUDIO_CONFIG.volume * this.duckFactor,
+      this.context.currentTime
+    );
   }
 
   playNote({ note, startTime, duration, gain }) {
