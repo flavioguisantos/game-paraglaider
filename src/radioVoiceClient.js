@@ -42,8 +42,21 @@ export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
     onDebugEvent?.('broadcast_start', {
       listeners: listenerPlayerIds.length
     });
+    closeAllPeers();
     for (const playerId of listenerPlayerIds) {
-      if (!playerId || playerId === identity?.playerId || peers.has(playerId)) continue;
+      if (!playerId) {
+        onDebugEvent?.('broadcast_listener_skipped', {
+          reason: 'missing_player_id'
+        });
+        continue;
+      }
+      if (playerId === identity?.playerId) {
+        onDebugEvent?.('broadcast_listener_skipped', {
+          reason: 'self_target',
+          targetPlayerId: playerId
+        });
+        continue;
+      }
       const peer = createPeerConnection(playerId, signaling);
       for (const track of stream.getTracks()) {
         peer.addTrack(track, stream);
