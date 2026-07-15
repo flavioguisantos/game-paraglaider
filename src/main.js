@@ -7,6 +7,7 @@ import {
   getCameraMode,
   initializeThirdPersonCamera,
   resetFirstPersonLook,
+  setFirstPersonLookNormalized,
   setCameraMode,
   toggleCameraMode,
   updateFlightCamera,
@@ -55,6 +56,9 @@ const touchRadioRoot = document.querySelector('[data-touch-radio]');
 const touchRadioKnob = document.querySelector('[data-touch-radio-knob]');
 const touchRadioLabel = document.querySelector('[data-touch-radio-label]');
 const touchRadioHint = document.querySelector('[data-touch-radio-hint]');
+const touchCameraShell = document.querySelector('.touch-camera-shell');
+const touchCameraRoot = document.querySelector('[data-touch-camera-joystick]');
+const touchCameraKnob = document.querySelector('[data-touch-camera-knob]');
 const scene = new THREE.Scene();
 const SKY_BLUE = 0x77bdf0;
 scene.background = new THREE.Color(SKY_BLUE);
@@ -326,6 +330,7 @@ window.addEventListener('offline', () => {
 setupLayerPanel();
 setupCameraToggle();
 setupFirstPersonMouseLook();
+setupTouchCameraLook();
 setupVehicleSelection();
 setupRadioControls();
 void initializeGameFront();
@@ -467,12 +472,80 @@ function setupFirstPersonMouseLook() {
   });
 }
 
-function canUseFirstPersonMouseLook() {
+function setupTouchCameraLook() {
+  if (!touchCameraRoot || !touchCameraKnob) return;
+
+  let activePointerId = null;
+  const knobTravelPx = 17;
+
+  const setStick = (x, y) => {
+    const signedX = THREE.MathUtils.clamp(x, -1, 1);
+    const signedY = THREE.MathUtils.clamp(y, -1, 1);
+    touchCameraKnob.style.setProperty('--stick-x', `${(signedX * knobTravelPx).toFixed(2)}px`);
+    touchCameraKnob.style.setProperty('--stick-y', `${(signedY * knobTravelPx).toFixed(2)}px`);
+    touchCameraRoot.classList.toggle('is-active', signedX !== 0 || signedY !== 0);
+    setFirstPersonLookNormalized(signedX, signedY);
+  };
+
+  const resetStick = () => {
+    activePointerId = null;
+    setStick(0, 0);
+    resetFirstPersonLook();
+  };
+
+  const updateFromPointer = (event) => {
+    const rect = touchCameraRoot.getBoundingClientRect();
+    const radius = Math.max(1, Math.min(rect.width, rect.height) * 0.5);
+    const centerX = rect.left + rect.width * 0.5;
+    const centerY = rect.top + rect.height * 0.5;
+    const offsetX = event.clientX - centerX;
+    const offsetY = event.clientY - centerY;
+    const distance = Math.hypot(offsetX, offsetY);
+    const normalized = distance > radius ? radius / distance : 1;
+    setStick(
+      (offsetX * normalized) / radius,
+      (offsetY * normalized) / radius
+    );
+  };
+
+  touchCameraRoot.addEventListener('pointerdown', (event) => {
+    if (!canUseTouchCameraLook()) return;
+    event.preventDefault();
+    activePointerId = event.pointerId;
+    touchCameraRoot.setPointerCapture?.(event.pointerId);
+    updateFromPointer(event);
+  });
+
+  touchCameraRoot.addEventListener('pointermove', (event) => {
+    if (event.pointerId !== activePointerId) return;
+    event.preventDefault();
+    updateFromPointer(event);
+  });
+
+  touchCameraRoot.addEventListener('pointerup', (event) => {
+    if (event.pointerId !== activePointerId) return;
+    event.preventDefault();
+    resetStick();
+  });
+
+  touchCameraRoot.addEventListener('pointercancel', resetStick);
+  touchCameraRoot.addEventListener('lostpointercapture', resetStick);
+  touchCameraRoot.addEventListener('contextmenu', (event) => event.preventDefault());
+}
+
+function isFirstPersonLookActive() {
   const player = appState.player;
   if (!player || !appState.started) return false;
-  if (isMobileViewport()) return false;
   if (player.landed || player.entangled) return false;
   return player.cameraPreference === 'first-person-only' || getCameraMode() === 'first-person';
+}
+
+function canUseFirstPersonMouseLook() {
+  return isFirstPersonLookActive() && !isMobileViewport();
+}
+
+function canUseTouchCameraLook() {
+  return isFirstPersonLookActive() && isMobileViewport();
 }
 
 function requestFirstPersonPointerLock() {
@@ -487,9 +560,14 @@ function exitFirstPersonPointerLock() {
 }
 
 function syncFirstPersonMouseLookState() {
-  if (canUseFirstPersonMouseLook()) return;
-  exitFirstPersonPointerLock();
-  resetFirstPersonLook();
+  if (!isFirstPersonLookActive()) {
+    exitFirstPersonPointerLock();
+    resetFirstPersonLook();
+    return;
+  }
+  if (isMobileViewport()) {
+    exitFirstPersonPointerLock();
+  }
 }
 
 function setupVehicleSelection() {
@@ -1017,6 +1095,18 @@ function updateTouchRadioControlState(radioHudState) {
   }
   if (touchRadioHint) {
     touchRadioHint.textContent = getTouchRadioHint(radioHudState);
+  }
+}
+
+function updateTouchCameraControlState() {
+  if (!touchCameraRoot || !touchCameraShell) return;
+  const isVisible = canUseTouchCameraLook();
+  touchCameraShell.hidden = !isVisible;
+  if (!isVisible) {
+    touchCameraRoot.classList.remove('is-active');
+    touchCameraKnob?.style.setProperty('--stick-x', '0px');
+    touchCameraKnob?.style.setProperty('--stick-y', '0px');
+    resetFirstPersonLook();
   }
 }
 
@@ -1591,6 +1681,7 @@ renderer.setAnimationLoop(() => {
     radio: radioHudState
   });
   updateTouchRadioControlState(radioHudState);
+  updateTouchCameraControlState();
   updateFlightCamera(camera, player, delta, { terrain });
 
   renderer.render(scene, camera);
