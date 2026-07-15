@@ -232,6 +232,9 @@ Objetivo:
 Validar:
 - abrir com `?radioDebug=1`
 - conferir estados e erros do radio
+- confirmar que o texto do overlay pode ser selecionado e copiado
+- conferir o evento `broadcast_targets_resolved` para saber quantos ouvintes foram resolvidos antes de criar as ofertas WebRTC
+- se houver `radio_offer` ou `radio_answer` sem audio, verificar no console se apareceu erro de `setRemoteDescription` ou `Invalid SDP line`
 
 Evidencia:
 - captura do overlay

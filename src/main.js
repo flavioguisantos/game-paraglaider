@@ -960,11 +960,11 @@ async function handleRadioRealtimeMessage(message) {
 }
 
 async function startLocalRadioBroadcast(players) {
-  const listenerPlayerIds = players
-    .filter((player) => player?.playerId
-      && player.playerId !== appState.guestIdentity?.playerId
-      && player.status !== 'disconnected')
-    .map((player) => player.playerId);
+  const listenerPlayerIds = resolveRadioListenerPlayerIds(players);
+  recordRadioDebugEvent('broadcast_targets_resolved', {
+    listeners: listenerPlayerIds.length,
+    listenerPlayerIds
+  });
 
   try {
     await radioVoiceClient.startBroadcast(listenerPlayerIds, buildRadioSignaling());
@@ -992,6 +992,30 @@ function buildRadioSignaling() {
       realtimeClient.sendRadioOffer(targetPlayerId, sdp);
     }
   };
+}
+
+function resolveRadioListenerPlayerIds(players) {
+  const listenerIds = new Set();
+  const addPlayerId = (playerId) => {
+    if (!playerId || playerId === appState.guestIdentity?.playerId) return;
+    listenerIds.add(playerId);
+  };
+
+  for (const player of players ?? []) {
+    if (!player || player.status === 'disconnected') continue;
+    addPlayerId(player.playerId);
+  }
+
+  for (const player of appState.launchSession?.players ?? []) {
+    if (!player || player.status === 'disconnected') continue;
+    addPlayerId(player.playerId);
+  }
+
+  for (const playerId of appState.remotePlayers.keys()) {
+    addPlayerId(playerId);
+  }
+
+  return [...listenerIds];
 }
 
 function getRadioHudState() {
@@ -1114,9 +1138,9 @@ function updateRadioDebugOverlay(debug) {
       'background:rgba(9,15,22,0.84)',
       'font:11px/1.3 monospace',
       'white-space:pre-wrap',
-      'pointer-events:none',
-      '-webkit-user-select:none',
-      'user-select:none'
+      'pointer-events:auto',
+      '-webkit-user-select:text',
+      'user-select:text'
     ].join(';');
     document.body.appendChild(overlay);
   }
