@@ -59,7 +59,6 @@ const touchRadioHint = document.querySelector('[data-touch-radio-hint]');
 const touchCameraShell = document.querySelector('.touch-camera-shell');
 const touchCameraRoot = document.querySelector('[data-touch-camera-joystick]');
 const touchCameraKnob = document.querySelector('[data-touch-camera-knob]');
-let lastDesktopLookPointer = null;
 const scene = new THREE.Scene();
 const SKY_BLUE = 0x77bdf0;
 scene.background = new THREE.Color(SKY_BLUE);
@@ -432,7 +431,6 @@ function setupCameraToggle() {
     if (appState.player?.cameraPreference === 'first-person-only') return;
     const mode = toggleCameraMode();
     syncFirstPersonMouseLookState();
-    if (mode === 'first-person') requestFirstPersonPointerLock();
     if (button) {
       button.classList.toggle('is-first-person', mode === 'first-person');
       button.title = mode === 'first-person'
@@ -458,31 +456,6 @@ function setupFirstPersonMouseLook() {
     requestFirstPersonPointerLock();
   });
 
-  canvas.addEventListener('mouseenter', (event) => {
-    lastDesktopLookPointer = { x: event.clientX, y: event.clientY };
-  });
-
-  canvas.addEventListener('mouseleave', () => {
-    lastDesktopLookPointer = null;
-  });
-
-  canvas.addEventListener('mousemove', (event) => {
-    if (!canUseFirstPersonMouseLook()) {
-      lastDesktopLookPointer = null;
-      return;
-    }
-    if (document.pointerLockElement === canvas) return;
-
-    const previous = lastDesktopLookPointer;
-    lastDesktopLookPointer = { x: event.clientX, y: event.clientY };
-    if (!previous) return;
-
-    applyFirstPersonLookDelta(
-      event.clientX - previous.x,
-      event.clientY - previous.y
-    );
-  });
-
   document.addEventListener('mousemove', (event) => {
     if (document.pointerLockElement !== canvas) return;
     if (!canUseFirstPersonMouseLook()) {
@@ -494,7 +467,6 @@ function setupFirstPersonMouseLook() {
 
   document.addEventListener('pointerlockchange', () => {
     if (document.pointerLockElement === canvas) return;
-    lastDesktopLookPointer = null;
     resetFirstPersonLook();
   });
 }
@@ -589,13 +561,11 @@ function exitFirstPersonPointerLock() {
 function syncFirstPersonMouseLookState() {
   if (!isFirstPersonLookActive()) {
     exitFirstPersonPointerLock();
-    lastDesktopLookPointer = null;
     resetFirstPersonLook();
     return;
   }
   if (isMobileViewport()) {
     exitFirstPersonPointerLock();
-    lastDesktopLookPointer = null;
   }
 }
 
