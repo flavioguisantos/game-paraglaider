@@ -49,9 +49,10 @@ export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
         peer.addTrack(track, stream);
       }
       const offer = await peer.createOffer();
-      await peer.setLocalDescription(offer);
+      const normalizedOfferSdp = normalizeSessionDescriptionSdp(offer.sdp);
+      await peer.setLocalDescription({ type: 'offer', sdp: normalizedOfferSdp });
       onDebugEvent?.('offer_created', { targetPlayerId: playerId });
-      signaling.sendOffer(playerId, offer.sdp);
+      signaling.sendOffer(playerId, normalizedOfferSdp);
     }
   }
 
@@ -63,18 +64,25 @@ export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
       case 'radio_offer': {
         onDebugEvent?.('offer_received', { sourcePlayerId });
         const peer = createPeerConnection(sourcePlayerId, signaling);
-        await peer.setRemoteDescription({ type: 'offer', sdp: message.sdp });
+        await peer.setRemoteDescription({
+          type: 'offer',
+          sdp: normalizeSessionDescriptionSdp(message.sdp)
+        });
         const answer = await peer.createAnswer();
-        await peer.setLocalDescription(answer);
+        const normalizedAnswerSdp = normalizeSessionDescriptionSdp(answer.sdp);
+        await peer.setLocalDescription({ type: 'answer', sdp: normalizedAnswerSdp });
         onDebugEvent?.('answer_created', { targetPlayerId: sourcePlayerId });
-        signaling.sendAnswer(sourcePlayerId, answer.sdp);
+        signaling.sendAnswer(sourcePlayerId, normalizedAnswerSdp);
         return;
       }
       case 'radio_answer': {
         onDebugEvent?.('answer_received', { sourcePlayerId });
         const peer = peers.get(sourcePlayerId);
         if (!peer) return;
-        await peer.setRemoteDescription({ type: 'answer', sdp: message.sdp });
+        await peer.setRemoteDescription({
+          type: 'answer',
+          sdp: normalizeSessionDescriptionSdp(message.sdp)
+        });
         return;
       }
       case 'radio_ice_candidate': {
@@ -225,4 +233,21 @@ export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
 function getIceServers() {
   const configured = window.__GAME_WEBRTC_ICE_SERVERS;
   return Array.isArray(configured) && configured.length ? configured : DEFAULT_ICE_SERVERS;
+}
+
+function normalizeSessionDescriptionSdp(sdp) {
+  if (typeof sdp !== 'string') {
+    throw new Error('SDP invalido para sinalizacao de radio.');
+  }
+
+  const normalizedLines = sdp
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .split('\n');
+
+  while (normalizedLines.length && normalizedLines.at(-1) === '') {
+    normalizedLines.pop();
+  }
+
+  return `${normalizedLines.join('\r\n')}\r\n`;
 }
