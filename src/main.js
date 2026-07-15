@@ -1135,7 +1135,9 @@ function updateTouchCameraControlState() {
     touchCameraRoot.classList.remove('is-active');
     touchCameraKnob?.style.setProperty('--stick-x', '0px');
     touchCameraKnob?.style.setProperty('--stick-y', '0px');
-    resetFirstPersonLook();
+    if (isMobileViewport()) {
+      resetFirstPersonLook();
+    }
   }
 }
 
