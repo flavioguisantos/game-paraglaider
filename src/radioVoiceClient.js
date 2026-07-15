@@ -160,6 +160,10 @@ export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
     return preparedMic;
   }
 
+  function getListeningSpeakerPlayerId() {
+    return activeListeningSpeakerId;
+  }
+
   function createPeerConnection(targetPlayerId, signaling, { role, replaceExisting = false } = {}) {
     if (replaceExisting && peers.has(targetPlayerId)) {
       detachPeer(targetPlayerId);
@@ -436,6 +440,7 @@ export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
 
   return {
     dispose,
+    getListeningSpeakerPlayerId,
     handleSignal,
     isMicrophonePrepared,
     prepareMicrophone,

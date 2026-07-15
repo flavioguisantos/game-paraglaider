@@ -830,7 +830,9 @@ function syncRadioSession(session) {
     && session?.radio?.speakerPlayerId
     && session.radio.speakerPlayerId !== appState.guestIdentity?.playerId;
   if (isRemoteSpeaker) {
-    void startListeningToRemoteSpeaker(session.radio.speakerPlayerId, 'session_sync');
+    if (radioVoiceClient.getListeningSpeakerPlayerId() !== session.radio.speakerPlayerId) {
+      void startListeningToRemoteSpeaker(session.radio.speakerPlayerId, 'session_sync');
+    }
   } else {
     radioVoiceClient.stopListening();
   }
@@ -984,6 +986,7 @@ async function startLocalRadioBroadcast(players) {
 
 async function startListeningToRemoteSpeaker(speakerPlayerId, source) {
   if (!speakerPlayerId || speakerPlayerId === appState.guestIdentity?.playerId) return;
+  if (radioVoiceClient.getListeningSpeakerPlayerId() === speakerPlayerId) return;
 
   recordRadioDebugEvent('listen_remote_speaker_requested', {
     speakerPlayerId,
