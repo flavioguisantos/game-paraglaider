@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { applyFlightPhysics, POLAR_SPEEDS, updateAltitudeMetrics } from './physics.js?v=hot-b-1';
-import { createParagliderModel, setParagliderLandedPose } from './paragliderModel.js?v=pilot-pose-8';
+import { createParagliderModel, setParagliderLandedPose, updateParagliderBrakePose } from './paragliderModel.js?v=pilot-pose-9';
 import { createFirstPersonRig, updateFirstPersonRig } from './firstPersonRig.js?v=8';
 import { getCameraMode } from './camera.js?v=camera-modes-7';
 import { createPlayerNameTag } from './playerNameTag.js';
@@ -231,6 +231,7 @@ export class Player {
         getVisualPitch(this.vehicleProfile, altitudeInput, this.smoothedSurge),
         1 - Math.exp(-delta * 5)
       );
+      updateParagliderBrakePose(this.group, getPilotBrakeControls(this.input), delta);
     }
   }
 
@@ -324,6 +325,14 @@ function getVisualPitch(profile, altitudeInput, smoothedSurge) {
   }
 
   return -altitudeInput * profile.visualPitch + smoothedSurge;
+}
+
+function getPilotBrakeControls(input) {
+  return {
+    left: Number(input.left) || 0,
+    right: Number(input.right) || 0,
+    symmetricBrake: Math.max(Number(input.backward) || 0, Number(input.descend) || 0)
+  };
 }
 
 // Cada veiculo interpreta o eixo de velocidade no proprio perfil.
