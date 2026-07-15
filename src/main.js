@@ -45,10 +45,7 @@ const vehicleInputs = [...document.querySelectorAll('input[name="vehicle-type"]'
 const touchRadioRoot = document.querySelector('[data-touch-radio]');
 const touchRadioKnob = document.querySelector('[data-touch-radio-knob]');
 const touchRadioLabel = document.querySelector('[data-touch-radio-label]');
-const TOUCH_RADIO_MAX_OFFSET_PX = 22;
-const TOUCH_RADIO_ACTIVATION_OFFSET_PX = 10;
 let touchRadioPointerId = null;
-let touchRadioActivated = false;
 const scene = new THREE.Scene();
 const SKY_BLUE = 0x77bdf0;
 scene.background = new THREE.Color(SKY_BLUE);
@@ -868,25 +865,12 @@ function setupRadioControls() {
   if (touchRadioRoot) {
     touchRadioRoot.addEventListener('pointerdown', (event) => {
       event.preventDefault();
-      if (!canStartTouchRadioDrag()) return;
+      if (!canUseTouchRadioButton()) return;
       touchRadioPointerId = event.pointerId;
-      touchRadioActivated = false;
-      setTouchRadioOffset(0);
       try {
         touchRadioRoot.setPointerCapture?.(event.pointerId);
       } catch {}
-    });
-
-    touchRadioRoot.addEventListener('pointermove', (event) => {
-      if (event.pointerId !== touchRadioPointerId) return;
-      event.preventDefault();
-      const offsetX = clampTouchRadioOffset(event);
-      setTouchRadioOffset(offsetX);
-
-      if (!touchRadioActivated && Math.abs(offsetX) >= TOUCH_RADIO_ACTIVATION_OFFSET_PX) {
-        touchRadioActivated = true;
-        void beginRadioTransmission();
-      }
+      void beginRadioTransmission();
     });
 
     const releaseTouchRadio = (event) => {
@@ -953,27 +937,13 @@ function endRadioTransmission(reason = 'button_release') {
   }
 }
 
-function canStartTouchRadioDrag() {
+function canUseTouchRadioButton() {
   const radioHudState = getRadioHudState();
   return Boolean(radioHudState?.buttonEnabled && appState.started);
 }
 
-function clampTouchRadioOffset(event) {
-  const rect = touchRadioRoot?.getBoundingClientRect();
-  if (!rect) return 0;
-  const centerX = rect.left + rect.width / 2;
-  const offsetX = event.clientX - centerX;
-  return Math.max(-TOUCH_RADIO_MAX_OFFSET_PX, Math.min(TOUCH_RADIO_MAX_OFFSET_PX, offsetX));
-}
-
-function setTouchRadioOffset(offsetX) {
-  touchRadioRoot?.style.setProperty('--radio-offset-x', `${Math.round(offsetX)}px`);
-}
-
 function resetTouchRadioInteraction() {
   touchRadioPointerId = null;
-  touchRadioActivated = false;
-  setTouchRadioOffset(0);
 }
 
 function updateTouchRadioControlState(radioHudState) {
@@ -986,9 +956,6 @@ function updateTouchRadioControlState(radioHudState) {
   touchRadioRoot.classList.toggle('is-disabled', isDisabled);
   touchRadioRoot.classList.toggle('is-occupied', isOccupied);
   touchRadioRoot.classList.toggle('is-active', isActive);
-  if (!touchRadioPointerId && !isActive) {
-    setTouchRadioOffset(0);
-  }
   if (touchRadioKnob) {
     touchRadioKnob.hidden = false;
   }

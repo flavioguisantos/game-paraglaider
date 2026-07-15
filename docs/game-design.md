@@ -42,7 +42,7 @@ Antes da rodada, o jogador informa o nome do piloto, escolhe o local de voo, esc
 - `C` ou o botao de camera (📷) alterna entre a camera externa (terceira pessoa) e a visao do piloto (primeira pessoa). Na visao do piloto, a camera fica presa ao capacete sem atraso de posicao, herda a orientacao do modelo (inclina com a asa na curva e no pendulo) com leve olhar para baixo, e o near plane cai para 0.06 m para nao cortar as maos/batoques quando o freio e puxado perto do corpo (restaurado no modo externo). Apos o pouso, a camera orbital de pouso vale para os dois modos.
 - No `Drone FPV`, a camera fica sempre em primeira pessoa e o toggle/botao de camera nao deve aparecer na interface.
 - No mobile, quando `Parapente` estiver selecionado, o botao de camera deve subir e ficar acima dos controles touch para nao conflitar com os botoes de voo.
-- No mobile, o radio deve sair do card do HUD e virar um controle touch proprio no canto inferior direito, menor que o joystick principal. O piloto arrasta lateralmente o knob para ativar a transmissao e ela para imediatamente ao soltar.
+- No mobile, o radio deve sair do card do HUD e virar um controle touch proprio no canto inferior direito, menor que o joystick principal. O piloto toca e segura para transmitir e, ao soltar, a transmissao para imediatamente.
 - A interface touch deve bloquear selecao de texto e callout nativo enquanto o jogador arrasta o joystick ou segura os comandos.
 - O botao discreto de reinicio (`↻`) aparece durante a rodada e recarrega o prototipo para iniciar uma nova tentativa. Em telas touch, fica no canto superior para nao cobrir os comandos de virar, acelerar ou frear.
 
