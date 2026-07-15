@@ -8,6 +8,7 @@ export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
   let launchId = null;
   let localStream = null;
   let preparedMic = false;
+  let peerInstanceCounter = 0;
   const peers = new Map();
   const audioElements = new Map();
 
@@ -85,7 +86,7 @@ export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
       }
       case 'radio_answer': {
         onDebugEvent?.('answer_received', { sourcePlayerId });
-        const peer = peers.get(sourcePlayerId);
+        const peer = getActivePeer(sourcePlayerId);
         if (!peer) return;
         await peer.setRemoteDescription({
           type: 'answer',
@@ -95,7 +96,7 @@ export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
       }
       case 'radio_ice_candidate': {
         onDebugEvent?.('ice_received', { sourcePlayerId });
-        const peer = peers.get(sourcePlayerId);
+        const peer = getActivePeer(sourcePlayerId);
         if (!peer || !message.candidate) return;
         await peer.addIceCandidate(message.candidate);
       }
@@ -128,15 +129,20 @@ export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
       detachPeer(targetPlayerId);
     }
 
-    let peer = peers.get(targetPlayerId);
-    if (peer) return peer;
+    const currentEntry = peers.get(targetPlayerId);
+    if (currentEntry?.peer) return currentEntry.peer;
 
-    peer = new RTCPeerConnection({ iceServers: getIceServers() });
-    peers.set(targetPlayerId, peer);
+    const peer = new RTCPeerConnection({ iceServers: getIceServers() });
+    const peerEntry = {
+      peer,
+      targetPlayerId,
+      instanceId: ++peerInstanceCounter
+    };
+    peers.set(targetPlayerId, peerEntry);
 
     peer.addEventListener('icecandidate', (event) => {
       if (!event.candidate) return;
-      if (peers.get(targetPlayerId) !== peer) return;
+      if (!isCurrentPeerInstance(targetPlayerId, peerEntry.instanceId, peer)) return;
       try {
         onDebugEvent?.('ice_sent', { targetPlayerId });
         signaling.sendIceCandidate(targetPlayerId, event.candidate.toJSON?.() ?? event.candidate);
@@ -146,7 +152,7 @@ export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
     });
 
     peer.addEventListener('track', (event) => {
-      if (peers.get(targetPlayerId) !== peer) return;
+      if (!isCurrentPeerInstance(targetPlayerId, peerEntry.instanceId, peer)) return;
       const [stream] = event.streams;
       if (!stream) return;
       onDebugEvent?.('remote_track', {
@@ -157,18 +163,18 @@ export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
     });
 
     peer.addEventListener('connectionstatechange', () => {
-      if (peers.get(targetPlayerId) !== peer) return;
+      if (!isCurrentPeerInstance(targetPlayerId, peerEntry.instanceId, peer)) return;
       onDebugEvent?.('peer_connection_state', {
         targetPlayerId,
         state: peer.connectionState
       });
       if (['failed', 'closed', 'disconnected'].includes(peer.connectionState)) {
-        detachPeer(targetPlayerId, { expectedPeer: peer });
+        detachPeer(targetPlayerId, { expectedPeer: peer, expectedInstanceId: peerEntry.instanceId });
       }
     });
 
     peer.addEventListener('iceconnectionstatechange', () => {
-      if (peers.get(targetPlayerId) !== peer) return;
+      if (!isCurrentPeerInstance(targetPlayerId, peerEntry.instanceId, peer)) return;
       onDebugEvent?.('peer_ice_state', {
         targetPlayerId,
         state: peer.iceConnectionState
@@ -196,16 +202,24 @@ export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
     }
   }
 
-  function detachPeer(playerId, { expectedPeer = null } = {}) {
-    const peer = peers.get(playerId);
+  function detachPeer(playerId, { expectedPeer = null, expectedInstanceId = null } = {}) {
+    const peerEntry = peers.get(playerId);
+    const peer = peerEntry?.peer ?? null;
     if (expectedPeer && peer !== expectedPeer) {
       expectedPeer.close();
+      return;
+    }
+    if (expectedInstanceId && peerEntry?.instanceId !== expectedInstanceId) {
+      expectedPeer?.close();
       return;
     }
     if (peer) {
       peer.close();
       peers.delete(playerId);
-      onDebugEvent?.('peer_detached', { playerId });
+      onDebugEvent?.('peer_detached', {
+        playerId,
+        instanceId: peerEntry?.instanceId ?? null
+      });
     }
     const audio = audioElements.get(playerId);
     if (audio) {
@@ -235,6 +249,15 @@ export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
     }
     localStream = null;
     preparedMic = false;
+  }
+
+  function getActivePeer(playerId) {
+    return peers.get(playerId)?.peer ?? null;
+  }
+
+  function isCurrentPeerInstance(playerId, instanceId, peer) {
+    const currentEntry = peers.get(playerId);
+    return currentEntry?.instanceId === instanceId && currentEntry.peer === peer;
   }
 
   async function startBroadcastForListener(targetPlayerId, signaling) {
