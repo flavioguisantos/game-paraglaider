@@ -484,7 +484,7 @@ function setupTouchCameraLook() {
     touchCameraKnob.style.setProperty('--stick-x', `${(signedX * knobTravelPx).toFixed(2)}px`);
     touchCameraKnob.style.setProperty('--stick-y', `${(signedY * knobTravelPx).toFixed(2)}px`);
     touchCameraRoot.classList.toggle('is-active', signedX !== 0 || signedY !== 0);
-    setFirstPersonLookNormalized(signedX, signedY);
+    setFirstPersonLookNormalized(-signedX, signedY);
   };
 
   const resetStick = () => {
