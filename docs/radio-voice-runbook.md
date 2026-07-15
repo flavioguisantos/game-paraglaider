@@ -236,6 +236,7 @@ Validar:
 - conferir o evento `broadcast_targets_resolved` para saber quantos ouvintes foram resolvidos antes de criar as ofertas WebRTC
 - se houver `radio_offer` ou `radio_answer` sem audio, verificar no console se apareceu erro de `setRemoteDescription` ou `Invalid SDP line`
 - se o canal for concedido mas nao houver `offer_created`, conferir no overlay os blocos `sessionPlayers`, `remotePlayers`, `remoteRanking` e o evento `broadcast_targets_retry`
+- se ainda nao houver `offer_created`, conferir a sequencia `broadcast_listener_begin`, `broadcast_peer_ready`, `broadcast_track_added`, `broadcast_offer_creating`, `broadcast_offer_created_raw`, `broadcast_local_description_set` e `broadcast_listener_failed`
 
 Evidencia:
 - captura do overlay

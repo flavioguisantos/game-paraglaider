@@ -57,15 +57,51 @@ export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
         });
         continue;
       }
-      const peer = createPeerConnection(playerId, signaling);
-      for (const track of stream.getTracks()) {
-        peer.addTrack(track, stream);
+      try {
+        onDebugEvent?.('broadcast_listener_begin', {
+          targetPlayerId: playerId
+        });
+        const peer = createPeerConnection(playerId, signaling);
+        onDebugEvent?.('broadcast_peer_ready', {
+          targetPlayerId: playerId
+        });
+        for (const track of stream.getTracks()) {
+          peer.addTrack(track, stream);
+          onDebugEvent?.('broadcast_track_added', {
+            targetPlayerId: playerId,
+            trackKind: track.kind,
+            trackState: track.readyState
+          });
+        }
+        onDebugEvent?.('broadcast_offer_creating', {
+          targetPlayerId: playerId
+        });
+        const offer = await peer.createOffer();
+        onDebugEvent?.('broadcast_offer_created_raw', {
+          targetPlayerId: playerId,
+          sdpLength: typeof offer.sdp === 'string' ? offer.sdp.length : 0
+        });
+        const normalizedOfferSdp = normalizeSessionDescriptionSdp(offer.sdp);
+        onDebugEvent?.('broadcast_offer_normalized', {
+          targetPlayerId: playerId,
+          sdpLength: normalizedOfferSdp.length
+        });
+        await peer.setLocalDescription({ type: 'offer', sdp: normalizedOfferSdp });
+        onDebugEvent?.('broadcast_local_description_set', {
+          targetPlayerId: playerId
+        });
+        onDebugEvent?.('offer_created', { targetPlayerId: playerId });
+        signaling.sendOffer(playerId, normalizedOfferSdp);
+        onDebugEvent?.('broadcast_offer_sent', {
+          targetPlayerId: playerId
+        });
+      } catch (error) {
+        onDebugEvent?.('broadcast_listener_failed', {
+          targetPlayerId: playerId,
+          message: error?.message ?? String(error)
+        });
+        onError?.(error);
       }
-      const offer = await peer.createOffer();
-      const normalizedOfferSdp = normalizeSessionDescriptionSdp(offer.sdp);
-      await peer.setLocalDescription({ type: 'offer', sdp: normalizedOfferSdp });
-      onDebugEvent?.('offer_created', { targetPlayerId: playerId });
-      signaling.sendOffer(playerId, normalizedOfferSdp);
     }
   }
 
