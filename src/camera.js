@@ -67,6 +67,11 @@ export function applyFirstPersonLookDelta(deltaX, deltaY) {
   );
 }
 
+export function setFirstPersonLookNormalized(x, y) {
+  firstPersonLookYaw = THREE.MathUtils.clamp(x, -1, 1) * FIRST_PERSON_MOUSE_LOOK_CONFIG.yawLimit;
+  firstPersonLookPitch = THREE.MathUtils.clamp(-y, -1, 1) * FIRST_PERSON_MOUSE_LOOK_CONFIG.pitchLimit;
+}
+
 export function resetFirstPersonLook() {
   firstPersonLookYaw = 0;
   firstPersonLookPitch = 0;
