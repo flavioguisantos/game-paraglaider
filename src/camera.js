@@ -30,6 +30,11 @@ const FIRST_PERSON_CONFIG = {
   // precisao do depth buffer.
   nearPlane: 0.06
 };
+const FIRST_PERSON_MOUSE_LOOK_CONFIG = {
+  yawLimit: Math.PI,
+  pitchLimit: Math.PI * 0.5,
+  sensitivity: 0.0024
+};
 const THIRD_PERSON_NEAR_PLANE = 2;
 
 let cameraMode = 'third-person';
@@ -49,12 +54,32 @@ export function toggleCameraMode() {
   return cameraMode;
 }
 
+export function applyFirstPersonLookDelta(deltaX, deltaY) {
+  firstPersonLookYaw = THREE.MathUtils.clamp(
+    firstPersonLookYaw - deltaX * FIRST_PERSON_MOUSE_LOOK_CONFIG.sensitivity,
+    -FIRST_PERSON_MOUSE_LOOK_CONFIG.yawLimit,
+    FIRST_PERSON_MOUSE_LOOK_CONFIG.yawLimit
+  );
+  firstPersonLookPitch = THREE.MathUtils.clamp(
+    firstPersonLookPitch - deltaY * FIRST_PERSON_MOUSE_LOOK_CONFIG.sensitivity,
+    -FIRST_PERSON_MOUSE_LOOK_CONFIG.pitchLimit,
+    FIRST_PERSON_MOUSE_LOOK_CONFIG.pitchLimit
+  );
+}
+
+export function resetFirstPersonLook() {
+  firstPersonLookYaw = 0;
+  firstPersonLookPitch = 0;
+}
+
 const desiredPosition = new THREE.Vector3();
 const desiredLookAt = new THREE.Vector3();
 const currentLookAt = new THREE.Vector3();
 const standbyForward = new THREE.Vector3();
 const firstPersonPosition = new THREE.Vector3();
 const firstPersonQuaternion = new THREE.Quaternion();
+const firstPersonLookQuaternion = new THREE.Quaternion();
+const firstPersonLookEuler = new THREE.Euler(0, 0, 0, 'YXZ');
 const firstPersonPitchAdjust = new THREE.Quaternion().setFromAxisAngle(
   new THREE.Vector3(1, 0, 0),
   -FIRST_PERSON_CONFIG.lookDownPitch
@@ -64,6 +89,8 @@ const landedCamera = {
   angle: 0,
   distance: 30
 };
+let firstPersonLookYaw = 0;
+let firstPersonLookPitch = 0;
 
 export function initializeThirdPersonCamera(camera, target, context = {}) {
   const forward = target.getForwardVector();
@@ -114,7 +141,12 @@ function updateFirstPersonCamera(camera, target, delta, cameraProfile = FIRST_PE
     new THREE.Vector3(1, 0, 0),
     -(cameraProfile.lookDownPitch ?? FIRST_PERSON_CONFIG.lookDownPitch)
   );
-  firstPersonQuaternion.copy(target.group.quaternion).multiply(firstPersonPitchAdjust);
+  firstPersonLookEuler.set(firstPersonLookPitch, firstPersonLookYaw, 0, 'YXZ');
+  firstPersonLookQuaternion.setFromEuler(firstPersonLookEuler);
+  firstPersonQuaternion
+    .copy(target.group.quaternion)
+    .multiply(firstPersonLookQuaternion)
+    .multiply(firstPersonPitchAdjust);
   camera.quaternion.slerp(
     firstPersonQuaternion,
     1 - Math.exp(-delta * (cameraProfile.orientationSmoothing ?? FIRST_PERSON_CONFIG.orientationSmoothing))

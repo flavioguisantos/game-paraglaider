@@ -2,7 +2,16 @@ import * as THREE from 'three';
 import { createCloudBillboard } from './clouds.js';
 import { createAdventureMusic, createScoreAudio, createVarioAudio, unlockGameAudio } from './audio.js';
 import { createBots } from './bot.js?v=hot-b-4';
-import { initializeThirdPersonCamera, setCameraMode, toggleCameraMode, updateFlightCamera, updateStandbyCamera } from './camera.js?v=camera-modes-7';
+import {
+  applyFirstPersonLookDelta,
+  getCameraMode,
+  initializeThirdPersonCamera,
+  resetFirstPersonLook,
+  setCameraMode,
+  toggleCameraMode,
+  updateFlightCamera,
+  updateStandbyCamera
+} from './camera.js?v=camera-modes-7';
 import { configureWind, createWindVector, detectParagliderCollisions, detectVegetationCollisions, updateEntangledParagliders, updateWind } from './physics.js?v=hot-b-1';
 import { createHud, createRoundState, updateHud, updateRoundState } from './hud.js?v=hud-instrument-5';
 import { findFlightLocation, getFlightLocations, setFlightLocations } from './flightLocations.js';
@@ -316,6 +325,7 @@ window.addEventListener('offline', () => {
 });
 setupLayerPanel();
 setupCameraToggle();
+setupFirstPersonMouseLook();
 setupVehicleSelection();
 setupRadioControls();
 void initializeGameFront();
@@ -415,6 +425,8 @@ function setupCameraToggle() {
     if (!appState.started) return;
     if (appState.player?.cameraPreference === 'first-person-only') return;
     const mode = toggleCameraMode();
+    syncFirstPersonMouseLookState();
+    if (mode === 'first-person') requestFirstPersonPointerLock();
     if (button) {
       button.classList.toggle('is-first-person', mode === 'first-person');
       button.title = mode === 'first-person'
@@ -433,6 +445,51 @@ function setupCameraToggle() {
     applyToggle();
     button.blur();
   });
+}
+
+function setupFirstPersonMouseLook() {
+  canvas.addEventListener('click', () => {
+    requestFirstPersonPointerLock();
+  });
+
+  document.addEventListener('mousemove', (event) => {
+    if (document.pointerLockElement !== canvas) return;
+    if (!canUseFirstPersonMouseLook()) {
+      exitFirstPersonPointerLock();
+      return;
+    }
+    applyFirstPersonLookDelta(event.movementX ?? 0, event.movementY ?? 0);
+  });
+
+  document.addEventListener('pointerlockchange', () => {
+    if (document.pointerLockElement === canvas) return;
+    resetFirstPersonLook();
+  });
+}
+
+function canUseFirstPersonMouseLook() {
+  const player = appState.player;
+  if (!player || !appState.started) return false;
+  if (isMobileViewport()) return false;
+  if (player.landed || player.entangled) return false;
+  return player.cameraPreference === 'first-person-only' || getCameraMode() === 'first-person';
+}
+
+function requestFirstPersonPointerLock() {
+  if (!canUseFirstPersonMouseLook()) return;
+  if (document.pointerLockElement === canvas) return;
+  canvas.requestPointerLock?.();
+}
+
+function exitFirstPersonPointerLock() {
+  if (document.pointerLockElement !== canvas) return;
+  document.exitPointerLock?.();
+}
+
+function syncFirstPersonMouseLookState() {
+  if (canUseFirstPersonMouseLook()) return;
+  exitFirstPersonPointerLock();
+  resetFirstPersonLook();
 }
 
 function setupVehicleSelection() {
@@ -1467,6 +1524,7 @@ renderer.setAnimationLoop(() => {
   updateWindMarkers(windMarkers, wind, referencePosition, terrain);
 
   if (!appState.started) {
+    syncFirstPersonMouseLookState();
     for (const remotePlayer of appState.remotePlayers.values()) {
       remotePlayer.update(delta);
     }
@@ -1481,6 +1539,7 @@ renderer.setAnimationLoop(() => {
   }
 
   const { player, bots, flyers, round } = appState;
+  syncFirstPersonMouseLookState();
   thermals.update(delta, wind, player);
   orographicLift.update(delta, { referencePosition: player.position, terrain, wind });
 
