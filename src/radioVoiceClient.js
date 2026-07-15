@@ -1,4 +1,6 @@
 const DEFAULT_ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
+const OFFER_CREATE_TIMEOUT_MS = 5000;
+const LOCAL_DESCRIPTION_TIMEOUT_MS = 5000;
 
 export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
   let identity = null;
@@ -57,11 +59,12 @@ export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
         });
         continue;
       }
+      let peer = null;
       try {
         onDebugEvent?.('broadcast_listener_begin', {
           targetPlayerId: playerId
         });
-        const peer = createPeerConnection(playerId, signaling);
+        peer = createPeerConnection(playerId, signaling);
         onDebugEvent?.('broadcast_peer_ready', {
           targetPlayerId: playerId
         });
@@ -76,7 +79,19 @@ export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
         onDebugEvent?.('broadcast_offer_creating', {
           targetPlayerId: playerId
         });
-        const offer = await peer.createOffer();
+        const offer = await withTimeout(
+          peer.createOffer(),
+          OFFER_CREATE_TIMEOUT_MS,
+          () => {
+            onDebugEvent?.('broadcast_offer_timeout', {
+              targetPlayerId: playerId,
+              signalingState: peer.signalingState,
+              connectionState: peer.connectionState,
+              iceConnectionState: peer.iceConnectionState
+            });
+          },
+          'Timeout ao criar oferta WebRTC do radio.'
+        );
         onDebugEvent?.('broadcast_offer_created_raw', {
           targetPlayerId: playerId,
           sdpLength: typeof offer.sdp === 'string' ? offer.sdp.length : 0
@@ -86,7 +101,19 @@ export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
           targetPlayerId: playerId,
           sdpLength: normalizedOfferSdp.length
         });
-        await peer.setLocalDescription({ type: 'offer', sdp: normalizedOfferSdp });
+        await withTimeout(
+          peer.setLocalDescription({ type: 'offer', sdp: normalizedOfferSdp }),
+          LOCAL_DESCRIPTION_TIMEOUT_MS,
+          () => {
+            onDebugEvent?.('broadcast_local_description_timeout', {
+              targetPlayerId: playerId,
+              signalingState: peer.signalingState,
+              connectionState: peer.connectionState,
+              iceConnectionState: peer.iceConnectionState
+            });
+          },
+          'Timeout ao aplicar localDescription WebRTC do radio.'
+        );
         onDebugEvent?.('broadcast_local_description_set', {
           targetPlayerId: playerId
         });
@@ -98,7 +125,10 @@ export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
       } catch (error) {
         onDebugEvent?.('broadcast_listener_failed', {
           targetPlayerId: playerId,
-          message: error?.message ?? String(error)
+          message: error?.message ?? String(error),
+          signalingState: typeof peer?.signalingState === 'string' ? peer.signalingState : null,
+          connectionState: typeof peer?.connectionState === 'string' ? peer.connectionState : null,
+          iceConnectionState: typeof peer?.iceConnectionState === 'string' ? peer.iceConnectionState : null
         });
         onError?.(error);
       }
@@ -299,4 +329,32 @@ function normalizeSessionDescriptionSdp(sdp) {
   }
 
   return `${normalizedLines.join('\r\n')}\r\n`;
+}
+
+function withTimeout(promise, timeoutMs, onTimeout, message) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const timer = window.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      try {
+        onTimeout?.();
+      } catch {}
+      reject(new Error(message));
+    }, timeoutMs);
+
+    Promise.resolve(promise)
+      .then((value) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        reject(error);
+      });
+  });
 }
