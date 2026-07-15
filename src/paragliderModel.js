@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 
 const DEFAULT_COLORS = {
   canopy: 0x9ed8f0,
@@ -55,13 +54,11 @@ const OBJ_TO_GAME_AXIS_MATRIX = new THREE.Matrix4().makeBasis(
 const objCanopyCache = new Map();
 const unavailableObjUrls = new Set();
 
-// Piloto 3D com selete, conectores e batoques. O asset preferencial agora e o
-// experimento rigado `image/pilot-rigged.glb`, com ossos para cabeca e bracos,
-// e o `pilot-pod.glb` permanece como fallback visual caso o GLB novo falhe.
-// No GLB o piloto olha para +Z; o jogo voa para -Z, dai o rotationY de meia-volta.
+// Piloto 3D com selete, conectores e batoques (image/pilot-pod.glb, decimado
+// de image/pilot.glb por scripts/generate-pilot-model.js). No GLB o piloto
+// olha para +Z; o jogo voa para -Z, dai o rotationY de meia-volta.
 const PILOT_POD_CONFIG = {
-  assetUrl: '/image/pilot-rigged.glb',
-  fallbackAssetUrl: '/image/pilot-pod.glb',
+  assetUrl: '/image/pilot-pod.glb',
   scale: 1.5,
   rotationY: Math.PI,
   flightPosition: new THREE.Vector3(0, 0.15, 0.1),
@@ -76,49 +73,8 @@ const PILOT_POD_CONFIG = {
   fistLocal: new THREE.Vector3(0.21, 0.095, -0.04)
 };
 
-const PILOT_BONE_NAMES = [
-  'head',
-  'upper_arm.L',
-  'forearm.L',
-  'hand.L',
-  'upper_arm.R',
-  'forearm.R',
-  'hand.R'
-];
-
-const PILOT_RIG_POSE_CONFIG = {
-  response: 10,
-  lookResponse: 6,
-  leftRest: {
-    upperArm: new THREE.Euler(0, 0, 0),
-    forearm: new THREE.Euler(0, 0, 0),
-    hand: new THREE.Euler(0, 0, 0)
-  },
-  leftPulled: {
-    upperArm: new THREE.Euler(0.16, -0.08, -0.32),
-    forearm: new THREE.Euler(0.3, -0.14, -0.4),
-    hand: new THREE.Euler(0.1, 0, -0.14)
-  },
-  rightRest: {
-    upperArm: new THREE.Euler(0, 0, 0),
-    forearm: new THREE.Euler(0, 0, 0),
-    hand: new THREE.Euler(0, 0, 0)
-  },
-  rightPulled: {
-    upperArm: new THREE.Euler(0.16, 0.08, 0.32),
-    forearm: new THREE.Euler(0.3, 0.14, 0.4),
-    hand: new THREE.Euler(0.1, 0, 0.14)
-  },
-  headTurnScale: 0.2,
-  headPitchWhenBraking: -0.08
-};
-
 let pilotPodTemplatePromise = null;
 let pilotPodUnavailable = false;
-const pilotGlbWorldPosition = new THREE.Vector3();
-const pilotGlbLocalPosition = new THREE.Vector3();
-const pilotBrakeAnchor = new THREE.Vector3();
-const pilotBrakeLook = new THREE.Vector3();
 
 export function createParagliderModel(options = {}) {
   const config = {
@@ -400,48 +356,6 @@ export function setParagliderLandedPose(model, options = {}) {
   parts.suspensionLines.visible = false;
   setPilotStandingPose(parts.pilot);
   model.userData.pose = 'landed';
-}
-
-export function updateParagliderBrakePose(model, controls = {}, delta = 1 / 60) {
-  const pilot = model.userData.parts?.pilot;
-  if (!pilot || pilot.userData.poseName !== 'flight') return;
-
-  const leftInput = THREE.MathUtils.clamp(Number(controls.left) || 0, 0, 1);
-  const rightInput = THREE.MathUtils.clamp(Number(controls.right) || 0, 0, 1);
-  const symmetricBrake = THREE.MathUtils.clamp(Number(controls.symmetricBrake) || 0, 0, 1);
-  const leftTarget = Math.max(leftInput, symmetricBrake);
-  const rightTarget = Math.max(rightInput, symmetricBrake);
-  const response = 1 - Math.exp(-delta * PILOT_RIG_POSE_CONFIG.response);
-  const lookResponse = 1 - Math.exp(-delta * PILOT_RIG_POSE_CONFIG.lookResponse);
-
-  if (!pilot.userData.brakeState) {
-    pilot.userData.brakeState = { left: 0, right: 0, look: 0 };
-  }
-  const brakeState = pilot.userData.brakeState;
-  brakeState.left += (leftTarget - brakeState.left) * response;
-  brakeState.right += (rightTarget - brakeState.right) * response;
-  const lookTarget = THREE.MathUtils.clamp(leftTarget - rightTarget, -1, 1);
-  brakeState.look += (lookTarget - brakeState.look) * lookResponse;
-
-  if (pilot.userData.rigBones) {
-    applyPilotRigBrakePose(pilot, brakeState);
-    updatePilotRigBrakeLines(pilot);
-    return;
-  }
-
-  const parts = pilot.userData.parts;
-  if (!parts) return;
-  parts.leftArm.rotation.set(
-    THREE.MathUtils.lerp(-0.32, -0.16, brakeState.left),
-    0,
-    THREE.MathUtils.lerp(-0.5, -0.82, brakeState.left)
-  );
-  parts.rightArm.rotation.set(
-    THREE.MathUtils.lerp(-0.32, -0.16, brakeState.right),
-    0,
-    THREE.MathUtils.lerp(0.5, 0.82, brakeState.right)
-  );
-  parts.helmet.position.x = brakeState.look * 0.035;
 }
 
 function createCanopy(color, zOffset = 0, liftOffset = 0, options = {}) {
@@ -753,34 +667,28 @@ function loadPilotPod(pilot) {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
 
   if (!pilotPodTemplatePromise) {
-    const loader = new GLTFLoader();
-    pilotPodTemplatePromise = loader.loadAsync(PILOT_POD_CONFIG.assetUrl)
-      .catch((primaryError) => loader.loadAsync(PILOT_POD_CONFIG.fallbackAssetUrl)
-        .catch((fallbackError) => {
-          throw new Error(
-            `falha ao carregar ${PILOT_POD_CONFIG.assetUrl} e fallback ${PILOT_POD_CONFIG.fallbackAssetUrl}: ${primaryError}; ${fallbackError}`
-          );
-        }));
+    pilotPodTemplatePromise = new GLTFLoader().loadAsync(PILOT_POD_CONFIG.assetUrl);
   }
 
   pilotPodTemplatePromise
     .then((gltf) => {
-      const template = gltf.scene;
-      if (!template) throw new Error('scene do piloto GLB nao encontrada');
+      const template = gltf.scene.getObjectByName('PilotPod');
+      if (!template) throw new Error('no PilotPod no GLB nao encontrado');
 
-      const pod = SkeletonUtils.clone(template);
+      const pod = template.clone();
       pod.name = 'PilotPodAsset';
       pod.traverse((child) => {
         if (!child.isMesh) return;
         child.castShadow = true;
-        if (child.material?.color) child.material.color.multiplyScalar(0.9);
+        // A textura do asset e um cinza medio uniforme; o tint multiplicativo
+        // escurece para o tom de equipamento do jogo sem perder o detalhe.
+        // DoubleSide fecha os furos deixados pela decimacao da malha.
+        child.material.color.set(0x5b636d);
         child.material.side = THREE.DoubleSide;
-        child.frustumCulled = false;
       });
       addPilotPodToggles(pod);
       pilot.add(pod);
       pilot.userData.glbPilot = pod;
-      pilot.userData.rigBones = getPilotRigBones(pod);
 
       for (const mesh of Object.values(pilot.userData.parts ?? {})) {
         mesh.visible = false;
@@ -806,12 +714,6 @@ function loadPilotPod(pilot) {
 // Batoques (asset vem com as maos vazias): barra vermelha em cada punho, no
 // espaco local do GLB, para a linha de comando ter onde chegar.
 function addPilotPodToggles(pod) {
-  const rigBones = getPilotRigBones(pod);
-  if (rigBones) {
-    pod.userData.toggleAnchors = createPilotRigToggleAnchors(rigBones);
-    return;
-  }
-
   const toggleMaterial = new THREE.MeshStandardMaterial({ color: 0xc0392b, roughness: 0.82 });
   const toggleGeometry = new THREE.CylinderGeometry(0.0072, 0.0072, 0.066, 10);
   toggleGeometry.rotateZ(Math.PI / 2);
@@ -847,9 +749,10 @@ function attachLinesToPilotPod(pilot) {
 
   for (const line of suspensionLines.userData.canopyLines ?? []) {
     const side = line.userData.harnessPoint.x < 0 ? -1 : 1;
-    const endPoint = line.userData.isBrakeLine
-      ? getPilotBrakeAttachPoint(pilot, side)
-      : pilotPodAttachPoint(PILOT_POD_CONFIG.harnessAttachLocal, side);
+    const local = line.userData.isBrakeLine
+      ? PILOT_POD_CONFIG.toggleAttachLocal
+      : PILOT_POD_CONFIG.harnessAttachLocal;
+    const endPoint = pilotPodAttachPoint(local, side);
 
     // Preserva a ancora atual na vela (vertice 0), que pode ja ter sido
     // ajustada pelo snap a superficie do OBJ.
@@ -877,8 +780,6 @@ function setPilotFlightPose(pilot) {
     glbPilot.scale.setScalar(PILOT_POD_CONFIG.scale);
     glbPilot.rotation.set(0, PILOT_POD_CONFIG.rotationY, 0);
     glbPilot.position.copy(PILOT_POD_CONFIG.flightPosition);
-    resetPilotRigBones(pilot);
-    updatePilotRigBrakeLines(pilot);
     return;
   }
 
@@ -916,7 +817,6 @@ function setPilotStandingPose(pilot) {
     glbPilot.scale.setScalar(PILOT_POD_CONFIG.scale);
     glbPilot.rotation.set(PILOT_POD_CONFIG.standingRotationX, PILOT_POD_CONFIG.rotationY, 0);
     glbPilot.position.copy(PILOT_POD_CONFIG.standingPosition);
-    resetPilotRigBones(pilot);
     return;
   }
 
@@ -935,98 +835,4 @@ function setPilotStandingPose(pilot) {
 
   parts.harness.rotation.set(0.2, 0, 0);
   parts.harness.position.set(0, 0.12, 0.14);
-}
-
-function getPilotRigBones(pod) {
-  const bones = {};
-  for (const boneName of PILOT_BONE_NAMES) {
-    const bone = pod.getObjectByName(boneName);
-    if (!bone) return null;
-    bone.rotation.order = 'XYZ';
-    bones[boneName] = bone;
-  }
-  return bones;
-}
-
-function createPilotRigToggleAnchors(rigBones) {
-  const anchors = {};
-  for (const side of ['L', 'R']) {
-    const anchor = new THREE.Object3D();
-    anchor.name = `ToggleAnchor_${side}`;
-    anchor.position.set(side === 'L' ? -0.03 : 0.03, 0.06, 0.03);
-    rigBones[`hand.${side}`].add(anchor);
-    anchors[side] = anchor;
-  }
-  return anchors;
-}
-
-function getPilotBrakeAttachPoint(pilot, side) {
-  const anchors = pilot.userData.glbPilot?.userData?.toggleAnchors;
-  const anchor = anchors?.[side < 0 ? 'L' : 'R'];
-  if (!anchor) return pilotPodAttachPoint(PILOT_POD_CONFIG.toggleAttachLocal, side);
-
-  anchor.updateWorldMatrix(true, false);
-  anchor.getWorldPosition(pilotGlbWorldPosition);
-  pilotBrakeAnchor.copy(pilotGlbWorldPosition);
-  pilot.parent.worldToLocal(pilotBrakeAnchor);
-  return pilotBrakeAnchor.clone();
-}
-
-function applyPilotRigBrakePose(pilot, brakeState) {
-  const rigBones = pilot.userData.rigBones;
-  if (!rigBones) return;
-
-  applyInterpolatedBonePose(rigBones['upper_arm.L'], PILOT_RIG_POSE_CONFIG.leftRest.upperArm, PILOT_RIG_POSE_CONFIG.leftPulled.upperArm, brakeState.left);
-  applyInterpolatedBonePose(rigBones['forearm.L'], PILOT_RIG_POSE_CONFIG.leftRest.forearm, PILOT_RIG_POSE_CONFIG.leftPulled.forearm, brakeState.left);
-  applyInterpolatedBonePose(rigBones['hand.L'], PILOT_RIG_POSE_CONFIG.leftRest.hand, PILOT_RIG_POSE_CONFIG.leftPulled.hand, brakeState.left);
-  applyInterpolatedBonePose(rigBones['upper_arm.R'], PILOT_RIG_POSE_CONFIG.rightRest.upperArm, PILOT_RIG_POSE_CONFIG.rightPulled.upperArm, brakeState.right);
-  applyInterpolatedBonePose(rigBones['forearm.R'], PILOT_RIG_POSE_CONFIG.rightRest.forearm, PILOT_RIG_POSE_CONFIG.rightPulled.forearm, brakeState.right);
-  applyInterpolatedBonePose(rigBones['hand.R'], PILOT_RIG_POSE_CONFIG.rightRest.hand, PILOT_RIG_POSE_CONFIG.rightPulled.hand, brakeState.right);
-
-  pilotBrakeLook.set(
-    PILOT_RIG_POSE_CONFIG.headPitchWhenBraking * Math.max(brakeState.left, brakeState.right),
-    0,
-    brakeState.look * PILOT_RIG_POSE_CONFIG.headTurnScale
-  );
-  rigBones.head.rotation.set(pilotBrakeLook.x, pilotBrakeLook.y, pilotBrakeLook.z);
-}
-
-function resetPilotRigBones(pilot) {
-  const rigBones = pilot.userData.rigBones;
-  if (!rigBones) return;
-
-  for (const boneName of PILOT_BONE_NAMES) {
-    rigBones[boneName].rotation.set(0, 0, 0);
-  }
-  if (!pilot.userData.brakeState) {
-    pilot.userData.brakeState = { left: 0, right: 0, look: 0 };
-    return;
-  }
-  pilot.userData.brakeState.left = 0;
-  pilot.userData.brakeState.right = 0;
-  pilot.userData.brakeState.look = 0;
-}
-
-function updatePilotRigBrakeLines(pilot) {
-  const suspensionLines = pilot.parent?.userData?.parts?.suspensionLines;
-  if (!suspensionLines) return;
-
-  for (const line of suspensionLines.userData.canopyLines ?? []) {
-    if (!line.userData.isBrakeLine) continue;
-
-    const side = line.userData.harnessPoint.x < 0 ? -1 : 1;
-    const anchor = new THREE.Vector3().fromBufferAttribute(line.geometry.getAttribute('position'), 0);
-    const endPoint = getPilotBrakeAttachPoint(pilot, side);
-    line.geometry.dispose();
-    line.geometry = new THREE.BufferGeometry().setFromPoints([anchor, endPoint]);
-    line.userData.harnessPoint = endPoint.clone();
-  }
-}
-
-function applyInterpolatedBonePose(bone, restEuler, pulledEuler, alpha) {
-  bone.rotation.set(
-    THREE.MathUtils.lerp(restEuler.x, pulledEuler.x, alpha),
-    THREE.MathUtils.lerp(restEuler.y, pulledEuler.y, alpha),
-    THREE.MathUtils.lerp(restEuler.z, pulledEuler.z, alpha)
-  );
 }
