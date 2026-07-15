@@ -960,7 +960,7 @@ async function handleRadioRealtimeMessage(message) {
 }
 
 async function startLocalRadioBroadcast(players) {
-  const listenerPlayerIds = resolveRadioListenerPlayerIds(players);
+  const listenerPlayerIds = await resolveRadioListenerPlayerIdsWithRetry(players);
   recordRadioDebugEvent('broadcast_targets_resolved', {
     listeners: listenerPlayerIds.length,
     listenerPlayerIds
@@ -1015,7 +1015,58 @@ function resolveRadioListenerPlayerIds(players) {
     addPlayerId(playerId);
   }
 
+  for (const player of appState.remoteRanking ?? []) {
+    if (!player || player.status === 'disconnected') continue;
+    addPlayerId(player.playerId);
+  }
+
   return [...listenerIds];
+}
+
+async function resolveRadioListenerPlayerIdsWithRetry(players) {
+  const attempts = [];
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const listenerPlayerIds = resolveRadioListenerPlayerIds(players);
+    attempts.push({
+      attempt: attempt + 1,
+      listeners: listenerPlayerIds.length,
+      sessionPlayers: summarizeRadioPlayers(appState.launchSession?.players),
+      remotePlayers: [...appState.remotePlayers.keys()],
+      rankingPlayers: summarizeRadioPlayers(appState.remoteRanking)
+    });
+
+    if (listenerPlayerIds.length > 0) {
+      recordRadioDebugEvent('broadcast_targets_retry', {
+        attempts,
+        resolvedOnAttempt: attempt + 1
+      });
+      return listenerPlayerIds;
+    }
+
+    realtimeClient.requestSnapshot();
+    await waitForRadioPresenceRefresh(180);
+  }
+
+  recordRadioDebugEvent('broadcast_targets_retry', {
+    attempts,
+    resolvedOnAttempt: null
+  });
+  return [];
+}
+
+function waitForRadioPresenceRefresh(delayMs) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, delayMs);
+  });
+}
+
+function summarizeRadioPlayers(players) {
+  return (players ?? []).map((player) => ({
+    playerId: player?.playerId ?? null,
+    displayName: player?.displayName ?? null,
+    status: player?.status ?? null
+  }));
 }
 
 function getRadioHudState() {
@@ -1150,6 +1201,9 @@ function updateRadioDebugOverlay(debug) {
     state: appState.radio,
     launchId: appState.selectedLocation?.launchId ?? appState.selectedLocation?.id ?? null,
     sessionRadio: appState.launchSession?.radio ?? null,
+    sessionPlayers: summarizeRadioPlayers(appState.launchSession?.players),
+    remotePlayers: [...appState.remotePlayers.keys()],
+    remoteRanking: summarizeRadioPlayers(appState.remoteRanking),
     ...debug
   }, null, 2);
 }
