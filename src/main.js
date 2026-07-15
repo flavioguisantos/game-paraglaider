@@ -829,7 +829,9 @@ function syncRadioSession(session) {
   const isRemoteSpeaker = session?.radio?.status === 'occupied'
     && session?.radio?.speakerPlayerId
     && session.radio.speakerPlayerId !== appState.guestIdentity?.playerId;
-  if (!isRemoteSpeaker) {
+  if (isRemoteSpeaker) {
+    void startListeningToRemoteSpeaker(session.radio.speakerPlayerId, 'session_sync');
+  } else {
     radioVoiceClient.stopListening();
   }
   applyRadioAudioMix(session?.radio?.status === 'occupied');
@@ -919,7 +921,7 @@ async function handleRadioRealtimeMessage(message) {
       if (message.speakerPlayerId === appState.guestIdentity?.playerId) {
         await startLocalRadioBroadcast(message.session?.players ?? []);
       } else {
-        applyRadioAudioMix(true);
+        await startListeningToRemoteSpeaker(message.speakerPlayerId, 'talk_granted');
       }
       return;
     case 'radio_talk_denied':
@@ -977,6 +979,27 @@ async function startLocalRadioBroadcast(players) {
       detail: error?.message ?? 'Falha ao iniciar a transmissao.'
     });
     endRadioTransmission('mic_error');
+  }
+}
+
+async function startListeningToRemoteSpeaker(speakerPlayerId, source) {
+  if (!speakerPlayerId || speakerPlayerId === appState.guestIdentity?.playerId) return;
+
+  recordRadioDebugEvent('listen_remote_speaker_requested', {
+    speakerPlayerId,
+    source
+  });
+
+  try {
+    await radioVoiceClient.startListeningToSpeaker(speakerPlayerId, buildRadioSignaling());
+    applyRadioAudioMix(true);
+  } catch (error) {
+    console.warn('Falha ao iniciar a escuta do radio.', error);
+    updateRadioState({
+      type: 'radio_error',
+      code: 'listen_failed',
+      detail: error?.message ?? 'Falha ao iniciar a escuta do radio.'
+    });
   }
 }
 

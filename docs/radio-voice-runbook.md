@@ -236,8 +236,9 @@ Validar:
 - conferir o evento `broadcast_targets_resolved` para saber quantos ouvintes foram resolvidos antes de criar as ofertas WebRTC
 - se houver `radio_offer` ou `radio_answer` sem audio, verificar no console se apareceu erro de `setRemoteDescription` ou `Invalid SDP line`
 - se o canal for concedido mas nao houver `offer_created`, conferir no overlay os blocos `sessionPlayers`, `remotePlayers`, `remoteRanking` e o evento `broadcast_targets_retry`
-- se ainda nao houver `offer_created`, conferir a sequencia `broadcast_listener_begin`, `broadcast_peer_ready`, `broadcast_track_added`, `broadcast_offer_creating`, `broadcast_offer_created_raw`, `broadcast_local_description_set` e `broadcast_listener_failed`
-- se parar em `broadcast_offer_creating` ou `broadcast_offer_normalized`, conferir `broadcast_offer_timeout` e `broadcast_local_description_timeout` com `signalingState`, `connectionState` e `iceConnectionState`
+- no fluxo atual, quem cria a oferta WebRTC e o ouvinte. Se houver grant remoto sem audio, conferir a sequencia `listen_remote_speaker_requested`, `listen_speaker_begin`, `listen_offer_creating`, `listen_offer_sent`, `offer_received`, `broadcast_track_added`, `answer_created`, `answer_received`, `remote_track` e `remote_audio_attached`
+- se parar no lado do ouvinte, conferir `listen_offer_timeout`, `listen_local_description_timeout`, `listen_speaker_failed` e `listen_speaker_retry` com `signalingState`, `connectionState` e `iceConnectionState`
+- se parar no lado do locutor, conferir `offer_received`, `broadcast_track_added` e `answer_created`; se esses eventos existirem mas nao houver audio, verificar ICE (`ice_sent` e `ice_received`) e a presenca de `remote_track`
 
 Evidencia:
 - captura do overlay

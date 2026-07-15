@@ -1,7 +1,7 @@
 const DEFAULT_ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
 const OFFER_CREATE_TIMEOUT_MS = 5000;
 const LOCAL_DESCRIPTION_TIMEOUT_MS = 5000;
-const BROADCAST_OFFER_RETRY_LIMIT = 1;
+const LISTEN_OFFER_RETRY_LIMIT = 1;
 
 export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
   let identity = null;
@@ -9,10 +9,11 @@ export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
   let localStream = null;
   let preparedMic = false;
   let peerInstanceCounter = 0;
-  let broadcastSetupInFlight = 0;
-  let pendingBroadcastStop = false;
+  let activeListeningSpeakerId = null;
+  let activeListeningPromise = null;
   const peers = new Map();
   const audioElements = new Map();
+  const outboundAudioSenders = new WeakMap();
 
   function setIdentity(nextIdentity) {
     identity = nextIdentity ?? null;
@@ -45,26 +46,47 @@ export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
 
   async function startBroadcast(listenerPlayerIds, signaling) {
     await prepareMicrophone();
-    pendingBroadcastStop = false;
+    closePeersByRole('speaker');
     onDebugEvent?.('broadcast_start', {
-      listeners: listenerPlayerIds.length
+      listeners: listenerPlayerIds.length,
+      launchId
     });
-    closeAllPeers();
+
     for (const playerId of listenerPlayerIds) {
-      if (!playerId) {
-        onDebugEvent?.('broadcast_listener_skipped', {
-          reason: 'missing_player_id'
-        });
-        continue;
+      if (!playerId || playerId === identity?.playerId) continue;
+      onDebugEvent?.('broadcast_listener_ready', {
+        targetPlayerId: playerId
+      });
+    }
+
+    void signaling;
+  }
+
+  async function startListeningToSpeaker(speakerPlayerId, signaling) {
+    if (!speakerPlayerId || speakerPlayerId === identity?.playerId) return;
+
+    const currentEntry = peers.get(speakerPlayerId);
+    if (activeListeningSpeakerId === speakerPlayerId) {
+      if (activeListeningPromise) {
+        await activeListeningPromise;
+        return;
       }
-      if (playerId === identity?.playerId) {
-        onDebugEvent?.('broadcast_listener_skipped', {
-          reason: 'self_target',
-          targetPlayerId: playerId
-        });
-        continue;
+      if (currentEntry?.role === 'listener' && currentEntry.peer.signalingState !== 'closed') {
+        return;
       }
-      await startBroadcastForListener(playerId, signaling);
+    }
+
+    stopListening();
+    activeListeningSpeakerId = speakerPlayerId;
+    const promise = negotiateListeningPeer(speakerPlayerId, signaling);
+    activeListeningPromise = promise;
+
+    try {
+      await promise;
+    } finally {
+      if (activeListeningPromise === promise) {
+        activeListeningPromise = null;
+      }
     }
   }
 
@@ -75,11 +97,16 @@ export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
     switch (message.type) {
       case 'radio_offer': {
         onDebugEvent?.('offer_received', { sourcePlayerId });
-        const peer = createPeerConnection(sourcePlayerId, signaling);
+        const peer = createPeerConnection(sourcePlayerId, signaling, {
+          role: 'speaker',
+          replaceExisting: true
+        });
+        assertPeerOpen(peer, 'Peer fechado antes de receber oferta de radio.');
         await peer.setRemoteDescription({
           type: 'offer',
           sdp: normalizeSessionDescriptionSdp(message.sdp)
         });
+        await attachOutboundTrack(sourcePlayerId, peer);
         const answer = await peer.createAnswer();
         const normalizedAnswerSdp = normalizeSessionDescriptionSdp(answer.sdp);
         await peer.setLocalDescription({ type: 'answer', sdp: normalizedAnswerSdp });
@@ -89,43 +116,42 @@ export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
       }
       case 'radio_answer': {
         onDebugEvent?.('answer_received', { sourcePlayerId });
-        const peer = getActivePeer(sourcePlayerId);
-        if (!peer) return;
+        const peer = getActivePeer(sourcePlayerId, 'listener');
+        if (!peer || peer.signalingState === 'closed') return;
         await peer.setRemoteDescription({
           type: 'answer',
           sdp: normalizeSessionDescriptionSdp(message.sdp)
+        });
+        onDebugEvent?.('listen_remote_description_set', {
+          sourcePlayerId
         });
         return;
       }
       case 'radio_ice_candidate': {
         onDebugEvent?.('ice_received', { sourcePlayerId });
         const peer = getActivePeer(sourcePlayerId);
-        if (!peer || !message.candidate) return;
+        if (!peer || !message.candidate || peer.signalingState === 'closed') return;
         await peer.addIceCandidate(message.candidate);
       }
     }
   }
 
   function stopBroadcast() {
-    if (broadcastSetupInFlight > 0) {
-      pendingBroadcastStop = true;
-      onDebugEvent?.('broadcast_stop_deferred', {
-        inFlight: broadcastSetupInFlight
-      });
-      return;
-    }
     stopTracks();
-    closeAllPeers();
+    closePeersByRole('speaker');
   }
 
   function stopListening() {
-    closeAllPeers();
+    activeListeningSpeakerId = null;
+    activeListeningPromise = null;
+    closePeersByRole('listener');
     removeAllAudioElements();
   }
 
   function dispose() {
     stopBroadcast();
     stopListening();
+    closeAllPeers();
     identity = null;
     launchId = null;
   }
@@ -134,17 +160,20 @@ export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
     return preparedMic;
   }
 
-  function createPeerConnection(targetPlayerId, signaling, { replaceExisting = false } = {}) {
+  function createPeerConnection(targetPlayerId, signaling, { role, replaceExisting = false } = {}) {
     if (replaceExisting && peers.has(targetPlayerId)) {
       detachPeer(targetPlayerId);
     }
 
     const currentEntry = peers.get(targetPlayerId);
-    if (currentEntry?.peer) return currentEntry.peer;
+    if (currentEntry?.peer && currentEntry.role === role) {
+      return currentEntry.peer;
+    }
 
     const peer = new RTCPeerConnection({ iceServers: getIceServers() });
     const peerEntry = {
       peer,
+      role,
       targetPlayerId,
       instanceId: ++peerInstanceCounter
     };
@@ -154,7 +183,10 @@ export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
       if (!event.candidate) return;
       if (!isCurrentPeerInstance(targetPlayerId, peerEntry.instanceId, peer)) return;
       try {
-        onDebugEvent?.('ice_sent', { targetPlayerId });
+        onDebugEvent?.('ice_sent', {
+          targetPlayerId,
+          role
+        });
         signaling.sendIceCandidate(targetPlayerId, event.candidate.toJSON?.() ?? event.candidate);
       } catch (error) {
         onError?.(error);
@@ -167,6 +199,7 @@ export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
       if (!stream) return;
       onDebugEvent?.('remote_track', {
         targetPlayerId,
+        role,
         audioTracks: stream.getAudioTracks().length
       });
       attachRemoteStream(targetPlayerId, stream);
@@ -176,6 +209,7 @@ export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
       if (!isCurrentPeerInstance(targetPlayerId, peerEntry.instanceId, peer)) return;
       onDebugEvent?.('peer_connection_state', {
         targetPlayerId,
+        role,
         state: peer.connectionState
       });
       if (['failed', 'closed', 'disconnected'].includes(peer.connectionState)) {
@@ -187,6 +221,7 @@ export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
       if (!isCurrentPeerInstance(targetPlayerId, peerEntry.instanceId, peer)) return;
       onDebugEvent?.('peer_ice_state', {
         targetPlayerId,
+        role,
         state: peer.iceConnectionState
       });
     });
@@ -228,6 +263,7 @@ export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
       peers.delete(playerId);
       onDebugEvent?.('peer_detached', {
         playerId,
+        role: peerEntry?.role ?? null,
         instanceId: peerEntry?.instanceId ?? null
       });
     }
@@ -238,6 +274,16 @@ export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
       audio.remove();
       audioElements.delete(playerId);
     }
+    if (activeListeningSpeakerId === playerId) {
+      activeListeningSpeakerId = null;
+    }
+  }
+
+  function closePeersByRole(role) {
+    for (const [playerId, entry] of peers.entries()) {
+      if (entry.role !== role) continue;
+      detachPeer(playerId);
+    }
   }
 
   function closeAllPeers() {
@@ -247,9 +293,12 @@ export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
   }
 
   function removeAllAudioElements() {
-    for (const [playerId] of audioElements.entries()) {
-      detachPeer(playerId);
+    for (const audio of audioElements.values()) {
+      audio.pause();
+      audio.srcObject = null;
+      audio.remove();
     }
+    audioElements.clear();
   }
 
   function stopTracks() {
@@ -261,8 +310,11 @@ export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
     preparedMic = false;
   }
 
-  function getActivePeer(playerId) {
-    return peers.get(playerId)?.peer ?? null;
+  function getActivePeer(playerId, role = null) {
+    const entry = peers.get(playerId);
+    if (!entry) return null;
+    if (role && entry.role !== role) return null;
+    return entry.peer;
   }
 
   function isCurrentPeerInstance(playerId, instanceId, peer) {
@@ -270,134 +322,110 @@ export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
     return currentEntry?.instanceId === instanceId && currentEntry.peer === peer;
   }
 
-  async function startBroadcastForListener(targetPlayerId, signaling) {
-    broadcastSetupInFlight += 1;
-    try {
-      for (let attempt = 0; attempt <= BROADCAST_OFFER_RETRY_LIMIT; attempt += 1) {
-        let peer = null;
-        try {
-          onDebugEvent?.('broadcast_listener_begin', {
-            targetPlayerId,
-            attempt: attempt + 1
-          });
-          peer = createPeerConnection(targetPlayerId, signaling, { replaceExisting: true });
-          onDebugEvent?.('broadcast_peer_ready', {
-            targetPlayerId,
-            attempt: attempt + 1
-          });
+  async function negotiateListeningPeer(targetPlayerId, signaling) {
+    for (let attempt = 0; attempt <= LISTEN_OFFER_RETRY_LIMIT; attempt += 1) {
+      let peer = null;
+      try {
+        onDebugEvent?.('listen_speaker_begin', {
+          targetPlayerId,
+          attempt: attempt + 1
+        });
+        peer = createPeerConnection(targetPlayerId, signaling, {
+          role: 'listener',
+          replaceExisting: true
+        });
+        assertPeerOpen(peer, 'Peer fechado antes da negociacao de escuta.');
+        peer.addTransceiver('audio', { direction: 'recvonly' });
+        onDebugEvent?.('listen_offer_creating', {
+          targetPlayerId,
+          attempt: attempt + 1
+        });
 
-          const track = await getBroadcastAudioTrack({ forceRefresh: attempt > 0 });
-          const transceiver = peer.addTransceiver('audio', { direction: 'sendonly' });
-          await transceiver.sender.replaceTrack(track);
-          onDebugEvent?.('broadcast_track_added', {
-            targetPlayerId,
-            attempt: attempt + 1,
-            trackKind: track.kind,
-            trackState: track.readyState
-          });
-
-          onDebugEvent?.('broadcast_offer_creating', {
-            targetPlayerId,
-            attempt: attempt + 1
-          });
-          const offer = await withTimeout(
-            peer.createOffer({
-              offerToReceiveAudio: false,
-              offerToReceiveVideo: false
-            }),
-            OFFER_CREATE_TIMEOUT_MS,
-            () => {
-              onDebugEvent?.('broadcast_offer_timeout', {
-                targetPlayerId,
-                attempt: attempt + 1,
-                signalingState: peer.signalingState,
-                connectionState: peer.connectionState,
-                iceConnectionState: peer.iceConnectionState
-              });
-            },
-            'Timeout ao criar oferta WebRTC do radio.'
-          );
-          onDebugEvent?.('broadcast_offer_created_raw', {
-            targetPlayerId,
-            attempt: attempt + 1,
-            sdpLength: typeof offer.sdp === 'string' ? offer.sdp.length : 0
-          });
-
-          const normalizedOfferSdp = normalizeSessionDescriptionSdp(offer.sdp);
-          onDebugEvent?.('broadcast_offer_normalized', {
-            targetPlayerId,
-            attempt: attempt + 1,
-            sdpLength: normalizedOfferSdp.length
-          });
-
-          await withTimeout(
-            peer.setLocalDescription({ type: 'offer', sdp: normalizedOfferSdp }),
-            LOCAL_DESCRIPTION_TIMEOUT_MS,
-            () => {
-              onDebugEvent?.('broadcast_local_description_timeout', {
-                targetPlayerId,
-                attempt: attempt + 1,
-                signalingState: peer.signalingState,
-                connectionState: peer.connectionState,
-                iceConnectionState: peer.iceConnectionState
-              });
-            },
-            'Timeout ao aplicar localDescription WebRTC do radio.'
-          );
-          onDebugEvent?.('broadcast_local_description_set', {
-            targetPlayerId,
-            attempt: attempt + 1
-          });
-          onDebugEvent?.('offer_created', {
-            targetPlayerId,
-            attempt: attempt + 1
-          });
-          signaling.sendOffer(targetPlayerId, normalizedOfferSdp);
-          onDebugEvent?.('broadcast_offer_sent', {
-            targetPlayerId,
-            attempt: attempt + 1
-          });
-          return;
-        } catch (error) {
-          onDebugEvent?.('broadcast_listener_failed', {
-            targetPlayerId,
-            attempt: attempt + 1,
-            message: error?.message ?? String(error),
-            signalingState: typeof peer?.signalingState === 'string' ? peer.signalingState : null,
-            connectionState: typeof peer?.connectionState === 'string' ? peer.connectionState : null,
-            iceConnectionState: typeof peer?.iceConnectionState === 'string' ? peer.iceConnectionState : null
-          });
-          detachPeer(targetPlayerId);
-
-          if (attempt < BROADCAST_OFFER_RETRY_LIMIT && shouldRetryBroadcastOffer(error)) {
-            onDebugEvent?.('broadcast_listener_retry', {
+        const offer = await withTimeout(
+          peer.createOffer({
+            offerToReceiveAudio: true,
+            offerToReceiveVideo: false
+          }),
+          OFFER_CREATE_TIMEOUT_MS,
+          () => {
+            onDebugEvent?.('listen_offer_timeout', {
               targetPlayerId,
-              nextAttempt: attempt + 2,
-              reason: error?.message ?? String(error)
+              attempt: attempt + 1,
+              signalingState: peer.signalingState,
+              connectionState: peer.connectionState,
+              iceConnectionState: peer.iceConnectionState
             });
-            continue;
-          }
+          },
+          'Timeout ao criar oferta WebRTC do ouvinte.'
+        );
 
-          onError?.(error);
-          return;
+        const normalizedOfferSdp = normalizeSessionDescriptionSdp(offer.sdp);
+        await withTimeout(
+          peer.setLocalDescription({ type: 'offer', sdp: normalizedOfferSdp }),
+          LOCAL_DESCRIPTION_TIMEOUT_MS,
+          () => {
+            onDebugEvent?.('listen_local_description_timeout', {
+              targetPlayerId,
+              attempt: attempt + 1,
+              signalingState: peer.signalingState,
+              connectionState: peer.connectionState,
+              iceConnectionState: peer.iceConnectionState
+            });
+          },
+          'Timeout ao aplicar localDescription WebRTC do ouvinte.'
+        );
+
+        onDebugEvent?.('listen_offer_sent', {
+          targetPlayerId,
+          attempt: attempt + 1
+        });
+        signaling.sendOffer(targetPlayerId, normalizedOfferSdp);
+        return;
+      } catch (error) {
+        onDebugEvent?.('listen_speaker_failed', {
+          targetPlayerId,
+          attempt: attempt + 1,
+          message: error?.message ?? String(error),
+          signalingState: typeof peer?.signalingState === 'string' ? peer.signalingState : null,
+          connectionState: typeof peer?.connectionState === 'string' ? peer.connectionState : null,
+          iceConnectionState: typeof peer?.iceConnectionState === 'string' ? peer.iceConnectionState : null
+        });
+        detachPeer(targetPlayerId);
+
+        if (attempt < LISTEN_OFFER_RETRY_LIMIT && shouldRetryNegotiation(error)) {
+          onDebugEvent?.('listen_speaker_retry', {
+            targetPlayerId,
+            nextAttempt: attempt + 2,
+            reason: error?.message ?? String(error)
+          });
+          continue;
         }
-      }
-    } finally {
-      broadcastSetupInFlight = Math.max(0, broadcastSetupInFlight - 1);
-      if (broadcastSetupInFlight === 0 && pendingBroadcastStop) {
-        pendingBroadcastStop = false;
-        onDebugEvent?.('broadcast_stop_flushed', {});
-        stopTracks();
-        closeAllPeers();
+
+        activeListeningSpeakerId = null;
+        onError?.(error);
+        return;
       }
     }
   }
 
-  async function getBroadcastAudioTrack({ forceRefresh = false } = {}) {
-    if (forceRefresh) {
-      stopTracks();
+  async function attachOutboundTrack(targetPlayerId, peer) {
+    const track = await getBroadcastAudioTrack();
+    const stream = await prepareMicrophone();
+    let sender = outboundAudioSenders.get(peer);
+    if (!sender) {
+      sender = peer.addTrack(track, stream);
+      outboundAudioSenders.set(peer, sender);
+    } else {
+      await sender.replaceTrack(track);
     }
+    onDebugEvent?.('broadcast_track_added', {
+      targetPlayerId,
+      trackKind: track.kind,
+      trackState: track.readyState
+    });
+  }
 
+  async function getBroadcastAudioTrack() {
     const stream = await prepareMicrophone();
     const track = stream.getAudioTracks().find((entry) => entry.readyState === 'live');
     if (!track) {
@@ -414,6 +442,7 @@ export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
     setIdentity,
     setLaunchId,
     startBroadcast,
+    startListeningToSpeaker,
     stopBroadcast,
     stopListening,
   };
@@ -469,9 +498,16 @@ function withTimeout(promise, timeoutMs, onTimeout, message) {
   });
 }
 
-function shouldRetryBroadcastOffer(error) {
+function shouldRetryNegotiation(error) {
   const message = String(error?.message ?? '').toLowerCase();
   return message.includes('timeout')
     || message.includes('setlocaldescription')
-    || message.includes('criar oferta webrtc');
+    || message.includes('criar oferta webrtc')
+    || message.includes('peer fechado');
+}
+
+function assertPeerOpen(peer, message) {
+  if (!peer || peer.signalingState === 'closed') {
+    throw new Error(message);
+  }
 }
