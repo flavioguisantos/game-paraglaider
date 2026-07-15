@@ -9,6 +9,8 @@ export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
   let localStream = null;
   let preparedMic = false;
   let peerInstanceCounter = 0;
+  let broadcastSetupInFlight = 0;
+  let pendingBroadcastStop = false;
   const peers = new Map();
   const audioElements = new Map();
 
@@ -43,6 +45,7 @@ export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
 
   async function startBroadcast(listenerPlayerIds, signaling) {
     await prepareMicrophone();
+    pendingBroadcastStop = false;
     onDebugEvent?.('broadcast_start', {
       listeners: listenerPlayerIds.length
     });
@@ -104,6 +107,13 @@ export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
   }
 
   function stopBroadcast() {
+    if (broadcastSetupInFlight > 0) {
+      pendingBroadcastStop = true;
+      onDebugEvent?.('broadcast_stop_deferred', {
+        inFlight: broadcastSetupInFlight
+      });
+      return;
+    }
     stopTracks();
     closeAllPeers();
   }
@@ -261,113 +271,124 @@ export function createRadioVoiceClient({ onError, onDebugEvent } = {}) {
   }
 
   async function startBroadcastForListener(targetPlayerId, signaling) {
-    for (let attempt = 0; attempt <= BROADCAST_OFFER_RETRY_LIMIT; attempt += 1) {
-      let peer = null;
-      try {
-        onDebugEvent?.('broadcast_listener_begin', {
-          targetPlayerId,
-          attempt: attempt + 1
-        });
-        peer = createPeerConnection(targetPlayerId, signaling, { replaceExisting: true });
-        onDebugEvent?.('broadcast_peer_ready', {
-          targetPlayerId,
-          attempt: attempt + 1
-        });
-
-        const track = await getBroadcastAudioTrack({ forceRefresh: attempt > 0 });
-        const transceiver = peer.addTransceiver('audio', { direction: 'sendonly' });
-        await transceiver.sender.replaceTrack(track);
-        onDebugEvent?.('broadcast_track_added', {
-          targetPlayerId,
-          attempt: attempt + 1,
-          trackKind: track.kind,
-          trackState: track.readyState
-        });
-
-        onDebugEvent?.('broadcast_offer_creating', {
-          targetPlayerId,
-          attempt: attempt + 1
-        });
-        const offer = await withTimeout(
-          peer.createOffer({
-            offerToReceiveAudio: false,
-            offerToReceiveVideo: false
-          }),
-          OFFER_CREATE_TIMEOUT_MS,
-          () => {
-            onDebugEvent?.('broadcast_offer_timeout', {
-              targetPlayerId,
-              attempt: attempt + 1,
-              signalingState: peer.signalingState,
-              connectionState: peer.connectionState,
-              iceConnectionState: peer.iceConnectionState
-            });
-          },
-          'Timeout ao criar oferta WebRTC do radio.'
-        );
-        onDebugEvent?.('broadcast_offer_created_raw', {
-          targetPlayerId,
-          attempt: attempt + 1,
-          sdpLength: typeof offer.sdp === 'string' ? offer.sdp.length : 0
-        });
-
-        const normalizedOfferSdp = normalizeSessionDescriptionSdp(offer.sdp);
-        onDebugEvent?.('broadcast_offer_normalized', {
-          targetPlayerId,
-          attempt: attempt + 1,
-          sdpLength: normalizedOfferSdp.length
-        });
-
-        await withTimeout(
-          peer.setLocalDescription({ type: 'offer', sdp: normalizedOfferSdp }),
-          LOCAL_DESCRIPTION_TIMEOUT_MS,
-          () => {
-            onDebugEvent?.('broadcast_local_description_timeout', {
-              targetPlayerId,
-              attempt: attempt + 1,
-              signalingState: peer.signalingState,
-              connectionState: peer.connectionState,
-              iceConnectionState: peer.iceConnectionState
-            });
-          },
-          'Timeout ao aplicar localDescription WebRTC do radio.'
-        );
-        onDebugEvent?.('broadcast_local_description_set', {
-          targetPlayerId,
-          attempt: attempt + 1
-        });
-        onDebugEvent?.('offer_created', {
-          targetPlayerId,
-          attempt: attempt + 1
-        });
-        signaling.sendOffer(targetPlayerId, normalizedOfferSdp);
-        onDebugEvent?.('broadcast_offer_sent', {
-          targetPlayerId,
-          attempt: attempt + 1
-        });
-        return;
-      } catch (error) {
-        onDebugEvent?.('broadcast_listener_failed', {
-          targetPlayerId,
-          attempt: attempt + 1,
-          message: error?.message ?? String(error),
-          signalingState: typeof peer?.signalingState === 'string' ? peer.signalingState : null,
-          connectionState: typeof peer?.connectionState === 'string' ? peer.connectionState : null,
-          iceConnectionState: typeof peer?.iceConnectionState === 'string' ? peer.iceConnectionState : null
-        });
-        detachPeer(targetPlayerId);
-
-        if (attempt < BROADCAST_OFFER_RETRY_LIMIT && shouldRetryBroadcastOffer(error)) {
-          onDebugEvent?.('broadcast_listener_retry', {
+    broadcastSetupInFlight += 1;
+    try {
+      for (let attempt = 0; attempt <= BROADCAST_OFFER_RETRY_LIMIT; attempt += 1) {
+        let peer = null;
+        try {
+          onDebugEvent?.('broadcast_listener_begin', {
             targetPlayerId,
-            nextAttempt: attempt + 2,
-            reason: error?.message ?? String(error)
+            attempt: attempt + 1
           });
-          continue;
-        }
+          peer = createPeerConnection(targetPlayerId, signaling, { replaceExisting: true });
+          onDebugEvent?.('broadcast_peer_ready', {
+            targetPlayerId,
+            attempt: attempt + 1
+          });
 
-        onError?.(error);
-        return;
+          const track = await getBroadcastAudioTrack({ forceRefresh: attempt > 0 });
+          const transceiver = peer.addTransceiver('audio', { direction: 'sendonly' });
+          await transceiver.sender.replaceTrack(track);
+          onDebugEvent?.('broadcast_track_added', {
+            targetPlayerId,
+            attempt: attempt + 1,
+            trackKind: track.kind,
+            trackState: track.readyState
+          });
+
+          onDebugEvent?.('broadcast_offer_creating', {
+            targetPlayerId,
+            attempt: attempt + 1
+          });
+          const offer = await withTimeout(
+            peer.createOffer({
+              offerToReceiveAudio: false,
+              offerToReceiveVideo: false
+            }),
+            OFFER_CREATE_TIMEOUT_MS,
+            () => {
+              onDebugEvent?.('broadcast_offer_timeout', {
+                targetPlayerId,
+                attempt: attempt + 1,
+                signalingState: peer.signalingState,
+                connectionState: peer.connectionState,
+                iceConnectionState: peer.iceConnectionState
+              });
+            },
+            'Timeout ao criar oferta WebRTC do radio.'
+          );
+          onDebugEvent?.('broadcast_offer_created_raw', {
+            targetPlayerId,
+            attempt: attempt + 1,
+            sdpLength: typeof offer.sdp === 'string' ? offer.sdp.length : 0
+          });
+
+          const normalizedOfferSdp = normalizeSessionDescriptionSdp(offer.sdp);
+          onDebugEvent?.('broadcast_offer_normalized', {
+            targetPlayerId,
+            attempt: attempt + 1,
+            sdpLength: normalizedOfferSdp.length
+          });
+
+          await withTimeout(
+            peer.setLocalDescription({ type: 'offer', sdp: normalizedOfferSdp }),
+            LOCAL_DESCRIPTION_TIMEOUT_MS,
+            () => {
+              onDebugEvent?.('broadcast_local_description_timeout', {
+                targetPlayerId,
+                attempt: attempt + 1,
+                signalingState: peer.signalingState,
+                connectionState: peer.connectionState,
+                iceConnectionState: peer.iceConnectionState
+              });
+            },
+            'Timeout ao aplicar localDescription WebRTC do radio.'
+          );
+          onDebugEvent?.('broadcast_local_description_set', {
+            targetPlayerId,
+            attempt: attempt + 1
+          });
+          onDebugEvent?.('offer_created', {
+            targetPlayerId,
+            attempt: attempt + 1
+          });
+          signaling.sendOffer(targetPlayerId, normalizedOfferSdp);
+          onDebugEvent?.('broadcast_offer_sent', {
+            targetPlayerId,
+            attempt: attempt + 1
+          });
+          return;
+        } catch (error) {
+          onDebugEvent?.('broadcast_listener_failed', {
+            targetPlayerId,
+            attempt: attempt + 1,
+            message: error?.message ?? String(error),
+            signalingState: typeof peer?.signalingState === 'string' ? peer.signalingState : null,
+            connectionState: typeof peer?.connectionState === 'string' ? peer.connectionState : null,
+            iceConnectionState: typeof peer?.iceConnectionState === 'string' ? peer.iceConnectionState : null
+          });
+          detachPeer(targetPlayerId);
+
+          if (attempt < BROADCAST_OFFER_RETRY_LIMIT && shouldRetryBroadcastOffer(error)) {
+            onDebugEvent?.('broadcast_listener_retry', {
+              targetPlayerId,
+              nextAttempt: attempt + 2,
+              reason: error?.message ?? String(error)
+            });
+            continue;
+          }
+
+          onError?.(error);
+          return;
+        }
+      }
+    } finally {
+      broadcastSetupInFlight = Math.max(0, broadcastSetupInFlight - 1);
+      if (broadcastSetupInFlight === 0 && pendingBroadcastStop) {
+        pendingBroadcastStop = false;
+        onDebugEvent?.('broadcast_stop_flushed', {});
+        stopTracks();
+        closeAllPeers();
       }
     }
   }
