@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { applyFlightPhysics, updateAltitudeMetrics } from './physics.js?v=hot-b-1';
-import { createParagliderModel, setParagliderLandedPose, updateParagliderBrakePose } from './paragliderModel.js?v=pilot-pose-9';
+import { createParagliderModel, setParagliderLandedPose } from './paragliderModel.js?v=pilot-pose-8';
 
 const BOT_CONFIG = {
   // Como pilotos reais: mais devagar circulando (minimo afundamento),
@@ -97,7 +97,6 @@ export class Bot {
       this.bankAngle * 0.85,
       1 - Math.exp(-delta * 3)
     );
-    updateParagliderBrakePose(this.group, getBotBrakeControls(this), delta);
   }
 
   // Maquina de estados: transitar ate a termica escolhida, circular subindo
@@ -229,13 +228,4 @@ function getHeadingTo(from, to) {
 
 function normalizeAngle(angle) {
   return Math.atan2(Math.sin(angle), Math.cos(angle));
-}
-
-function getBotBrakeControls(bot) {
-  const normalizedTurn = THREE.MathUtils.clamp(Math.abs(bot.turnRate) / BOT_CONFIG.maxTurnRate, 0, 1);
-  return {
-    left: bot.turnRate > 0 ? normalizedTurn : 0,
-    right: bot.turnRate < 0 ? normalizedTurn : 0,
-    symmetricBrake: bot.landed ? 1 : 0
-  };
 }

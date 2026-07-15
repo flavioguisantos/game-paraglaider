@@ -3,6 +3,3 @@ node_modules/
 mapas/*_extracted/
 mapas/_xcm_inspect/
 dist/
-*.blend
-blender-*.txt
-blender-*.png
