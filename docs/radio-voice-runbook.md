@@ -235,6 +235,7 @@ Validar:
 - confirmar que o texto do overlay pode ser selecionado e copiado
 - conferir o evento `broadcast_targets_resolved` para saber quantos ouvintes foram resolvidos antes de criar as ofertas WebRTC
 - se houver `radio_offer` ou `radio_answer` sem audio, verificar no console se apareceu erro de `setRemoteDescription` ou `Invalid SDP line`
+- se o canal for concedido mas nao houver `offer_created`, conferir no overlay os blocos `sessionPlayers`, `remotePlayers`, `remoteRanking` e o evento `broadcast_targets_retry`
 
 Evidencia:
 - captura do overlay
