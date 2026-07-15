@@ -45,7 +45,7 @@ const vehicleInputs = [...document.querySelectorAll('input[name="vehicle-type"]'
 const touchRadioRoot = document.querySelector('[data-touch-radio]');
 const touchRadioKnob = document.querySelector('[data-touch-radio-knob]');
 const touchRadioLabel = document.querySelector('[data-touch-radio-label]');
-let touchRadioPointerId = null;
+const touchRadioHint = document.querySelector('[data-touch-radio-hint]');
 const scene = new THREE.Scene();
 const SKY_BLUE = 0x77bdf0;
 scene.background = new THREE.Color(SKY_BLUE);
@@ -863,25 +863,10 @@ function setupRadioControls() {
   }
 
   if (touchRadioRoot) {
-    touchRadioRoot.addEventListener('pointerdown', (event) => {
+    touchRadioRoot.addEventListener('click', (event) => {
       event.preventDefault();
-      if (!canUseTouchRadioButton()) return;
-      touchRadioPointerId = event.pointerId;
-      try {
-        touchRadioRoot.setPointerCapture?.(event.pointerId);
-      } catch {}
-      void beginRadioTransmission();
+      toggleTouchRadioTransmission();
     });
-
-    const releaseTouchRadio = (event) => {
-      if (event?.pointerId != null && event.pointerId !== touchRadioPointerId) return;
-      resetTouchRadioInteraction();
-      endRadioTransmission('button_release');
-    };
-
-    touchRadioRoot.addEventListener('pointerup', releaseTouchRadio);
-    touchRadioRoot.addEventListener('pointercancel', releaseTouchRadio);
-    touchRadioRoot.addEventListener('lostpointercapture', releaseTouchRadio);
     touchRadioRoot.addEventListener('contextmenu', (event) => event.preventDefault());
   }
 
@@ -922,7 +907,6 @@ async function beginRadioTransmission() {
 }
 
 function endRadioTransmission(reason = 'button_release') {
-  resetTouchRadioInteraction();
   const wasSpeaker = appState.radio.speakerPlayerId === appState.guestIdentity?.playerId;
   const wasRequesting = appState.radio.channelStatus === 'requesting';
   updateRadioState({ type: 'press_to_talk_end' });
@@ -942,8 +926,20 @@ function canUseTouchRadioButton() {
   return Boolean(radioHudState?.buttonEnabled && appState.started);
 }
 
-function resetTouchRadioInteraction() {
-  touchRadioPointerId = null;
+function toggleTouchRadioTransmission() {
+  if (!appState.radioEnabled || !appState.started) return;
+
+  const isLocalRequesting = appState.radio.channelStatus === RADIO_CHANNEL_STATUS.REQUESTING;
+  const isLocalTransmitting = appState.radio.clientStatus === RADIO_CLIENT_STATUS.TRANSMITTING
+    && appState.radio.speakerPlayerId === appState.guestIdentity?.playerId;
+
+  if (isLocalRequesting || isLocalTransmitting) {
+    endRadioTransmission('button_release');
+    return;
+  }
+
+  if (!canUseTouchRadioButton()) return;
+  void beginRadioTransmission();
 }
 
 function updateTouchRadioControlState(radioHudState) {
@@ -962,15 +958,27 @@ function updateTouchRadioControlState(radioHudState) {
   if (touchRadioLabel) {
     touchRadioLabel.textContent = getTouchRadioLabel(radioHudState);
   }
+  if (touchRadioHint) {
+    touchRadioHint.textContent = getTouchRadioHint(radioHudState);
+  }
 }
 
 function getTouchRadioLabel(radioHudState) {
-  if (!appState.radioEnabled) return 'Off';
+  if (!appState.radioEnabled) return 'Radio';
   if (appState.radio.clientStatus === RADIO_CLIENT_STATUS.MIC_BLOCKED) return 'Mic';
   if (appState.radio.channelStatus === RADIO_CHANNEL_STATUS.REQUESTING) return 'Abrindo';
-  if (appState.radio.clientStatus === RADIO_CLIENT_STATUS.TRANSMITTING) return 'Falando';
+  if (appState.radio.clientStatus === RADIO_CLIENT_STATUS.TRANSMITTING) return 'Ligado';
   if (appState.radio.channelStatus === RADIO_CHANNEL_STATUS.OCCUPIED) return 'Ouvindo';
-  return radioHudState?.buttonEnabled ? 'Falar' : 'Radio';
+  return radioHudState?.buttonEnabled ? 'Radio' : 'Radio';
+}
+
+function getTouchRadioHint(radioHudState) {
+  if (!appState.radioEnabled) return 'Off';
+  if (appState.radio.clientStatus === RADIO_CLIENT_STATUS.MIC_BLOCKED) return 'Microfone';
+  if (appState.radio.channelStatus === RADIO_CHANNEL_STATUS.REQUESTING) return 'Conectando';
+  if (appState.radio.clientStatus === RADIO_CLIENT_STATUS.TRANSMITTING) return 'Desligar';
+  if (appState.radio.channelStatus === RADIO_CHANNEL_STATUS.OCCUPIED) return 'Ocupado';
+  return radioHudState?.buttonEnabled ? 'Desligado' : 'Indisponivel';
 }
 
 async function handleRadioRealtimeMessage(message) {

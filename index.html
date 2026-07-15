@@ -975,8 +975,8 @@
 
       .touch-radio-shell {
         position: relative;
-        width: 96px;
-        height: 96px;
+        width: 104px;
+        height: 68px;
         pointer-events: auto;
       }
 
@@ -984,17 +984,29 @@
         position: relative;
         width: 100%;
         height: 100%;
-        border-radius: 50%;
+        border-radius: 999px;
         background:
-          radial-gradient(circle at 50% 50%, rgba(255, 107, 102, 0.1), rgba(255, 107, 102, 0) 48%),
-          radial-gradient(circle at 50% 50%, rgba(16, 31, 42, 0.88), rgba(8, 15, 22, 0.76));
+          linear-gradient(180deg, rgba(16, 31, 42, 0.92), rgba(8, 15, 22, 0.8));
         border: 1px solid rgba(255, 255, 255, 0.14);
         box-shadow:
-          0 12px 28px rgba(0, 0, 0, 0.24),
+          0 10px 24px rgba(0, 0, 0, 0.22),
           inset 0 0 0 1px rgba(255, 255, 255, 0.04);
         touch-action: none;
         -webkit-touch-callout: none;
         overflow: hidden;
+      }
+
+      .touch-radio-track {
+        position: absolute;
+        left: 10px;
+        right: 10px;
+        bottom: 9px;
+        height: 28px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        transition: background 120ms ease, border-color 120ms ease;
+        pointer-events: none;
       }
 
       .touch-radio-label,
@@ -1011,32 +1023,37 @@
       }
 
       .touch-radio-label {
-        top: 18px;
+        top: 12px;
       }
 
       .touch-radio-hint {
-        bottom: 18px;
+        bottom: 13px;
         font-size: 9px;
-        opacity: 0.5;
+        opacity: 0.58;
       }
 
       .touch-radio-knob {
         position: absolute;
-        left: 50%;
-        top: 50%;
-        width: 38px;
-        height: 38px;
+        left: 24px;
+        bottom: 13px;
+        width: 20px;
+        height: 20px;
         border-radius: 50%;
         background:
           radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.38), rgba(255, 255, 255, 0.06) 45%),
           linear-gradient(180deg, rgba(255, 209, 102, 0.92), rgba(223, 162, 53, 0.94));
         border: 1px solid rgba(255, 255, 255, 0.4);
         box-shadow:
-          0 12px 22px rgba(0, 0, 0, 0.28),
+          0 8px 16px rgba(0, 0, 0, 0.26),
           inset 0 2px 6px rgba(255, 255, 255, 0.24);
-        transform: translate(-50%, -50%);
-        transition: transform 90ms ease, box-shadow 120ms ease, background 120ms ease;
+        transform: translateX(0);
+        transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
         pointer-events: none;
+      }
+
+      .touch-radio.is-active .touch-radio-track {
+        background: rgba(255, 107, 102, 0.28);
+        border-color: rgba(255, 107, 102, 0.42);
       }
 
       .touch-radio.is-active .touch-radio-knob {
@@ -1044,9 +1061,9 @@
           radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.06) 45%),
           linear-gradient(180deg, rgba(255, 107, 102, 0.96), rgba(168, 45, 45, 0.96));
         box-shadow:
-          0 14px 24px rgba(0, 0, 0, 0.3),
+          0 10px 18px rgba(0, 0, 0, 0.28),
           inset 0 2px 6px rgba(255, 255, 255, 0.24);
-        transform: translate(-50%, -50%) scale(1.08);
+        transform: translateX(48px);
       }
 
       .touch-radio.is-disabled {
@@ -1057,6 +1074,11 @@
         background:
           radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.03) 45%),
           linear-gradient(180deg, rgba(99, 115, 128, 0.9), rgba(56, 66, 74, 0.94));
+      }
+
+      .touch-radio.is-occupied:not(.is-active) .touch-radio-track {
+        background: rgba(255, 209, 102, 0.2);
+        border-color: rgba(255, 209, 102, 0.3);
       }
 
       .touch-radio.is-occupied:not(.is-active) .touch-radio-knob {
@@ -1581,8 +1603,8 @@
         }
 
         .touch-radio-shell {
-          width: 88px;
-          height: 88px;
+          width: 96px;
+          height: 64px;
         }
 
         .touch-joystick-knob {
@@ -1591,8 +1613,10 @@
         }
 
         .touch-radio-knob {
-          width: 34px;
-          height: 34px;
+          width: 18px;
+          height: 18px;
+          left: 22px;
+          bottom: 13px;
         }
 
         .touch-control {
@@ -1644,9 +1668,10 @@
       <div class="touch-actions">
         <button class="touch-control" type="button" data-control="boost" aria-label="Boost de velocidade">⏭</button>
         <div class="touch-radio-shell">
-          <div class="touch-radio" data-touch-radio aria-label="Controle de radio por toque e segurar">
+          <div class="touch-radio" data-touch-radio aria-label="Controle de radio liga e desliga">
             <span class="touch-radio-label" data-touch-radio-label>Radio</span>
-            <span class="touch-radio-hint">Segure</span>
+            <span class="touch-radio-hint" data-touch-radio-hint>Desligado</span>
+            <div class="touch-radio-track"></div>
             <div class="touch-radio-knob" data-touch-radio-knob></div>
           </div>
         </div>
