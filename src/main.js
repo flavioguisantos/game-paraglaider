@@ -22,7 +22,7 @@ import { createGameRealtimeClient } from './gameRealtimeClient.js';
 import { createOrographicLift } from './orographicLift.js';
 import { getVehicleProfile, Player } from './player.js?v=fp-cam-6';
 import { createRadioVoiceClient } from './radioVoiceClient.js';
-import { createInitialRadioState, RADIO_CLIENT_STATUS, reduceRadioState } from './radioState.js';
+import { createInitialRadioState, RADIO_CHANNEL_STATUS, RADIO_CLIENT_STATUS, reduceRadioState } from './radioState.js';
 import { RemotePlayer } from './remotePlayer.js';
 import { createCelebration, createFlightStats, updateFlightStats } from './celebration.js';
 import { createScoringState, initializeScoringForEntities, updateScoring } from './scoring.js';
@@ -42,6 +42,13 @@ const launchOptionsRoot = document.querySelector('[data-launch-options]');
 const pilotNameInput = document.querySelector('#pilot-name');
 const colorInputs = [...document.querySelectorAll('input[name="canopy-color"]')];
 const vehicleInputs = [...document.querySelectorAll('input[name="vehicle-type"]')];
+const touchRadioRoot = document.querySelector('[data-touch-radio]');
+const touchRadioKnob = document.querySelector('[data-touch-radio-knob]');
+const touchRadioLabel = document.querySelector('[data-touch-radio-label]');
+const TOUCH_RADIO_MAX_OFFSET_PX = 22;
+const TOUCH_RADIO_ACTIVATION_OFFSET_PX = 10;
+let touchRadioPointerId = null;
+let touchRadioActivated = false;
 const scene = new THREE.Scene();
 const SKY_BLUE = 0x77bdf0;
 scene.background = new THREE.Color(SKY_BLUE);
@@ -841,22 +848,58 @@ function syncRadioSession(session) {
 
 function setupRadioControls() {
   const button = hud.radioButton;
-  if (!button) return;
+  if (button) {
+    button.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      if (!appState.started) return;
+      try {
+        button.setPointerCapture?.(event.pointerId);
+      } catch {}
+      void beginRadioTransmission();
+    });
 
-  button.addEventListener('pointerdown', (event) => {
-    event.preventDefault();
-    if (!appState.started) return;
-    try {
-      button.setPointerCapture?.(event.pointerId);
-    } catch {}
-    void beginRadioTransmission();
-  });
+    const release = () => endRadioTransmission('button_release');
+    button.addEventListener('pointerup', release);
+    button.addEventListener('pointercancel', release);
+    button.addEventListener('lostpointercapture', release);
+    button.addEventListener('contextmenu', (event) => event.preventDefault());
+  }
 
-  const release = () => endRadioTransmission('button_release');
-  button.addEventListener('pointerup', release);
-  button.addEventListener('pointercancel', release);
-  button.addEventListener('lostpointercapture', release);
-  button.addEventListener('contextmenu', (event) => event.preventDefault());
+  if (touchRadioRoot) {
+    touchRadioRoot.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      if (!canStartTouchRadioDrag()) return;
+      touchRadioPointerId = event.pointerId;
+      touchRadioActivated = false;
+      setTouchRadioOffset(0);
+      try {
+        touchRadioRoot.setPointerCapture?.(event.pointerId);
+      } catch {}
+    });
+
+    touchRadioRoot.addEventListener('pointermove', (event) => {
+      if (event.pointerId !== touchRadioPointerId) return;
+      event.preventDefault();
+      const offsetX = clampTouchRadioOffset(event);
+      setTouchRadioOffset(offsetX);
+
+      if (!touchRadioActivated && Math.abs(offsetX) >= TOUCH_RADIO_ACTIVATION_OFFSET_PX) {
+        touchRadioActivated = true;
+        void beginRadioTransmission();
+      }
+    });
+
+    const releaseTouchRadio = (event) => {
+      if (event?.pointerId != null && event.pointerId !== touchRadioPointerId) return;
+      resetTouchRadioInteraction();
+      endRadioTransmission('button_release');
+    };
+
+    touchRadioRoot.addEventListener('pointerup', releaseTouchRadio);
+    touchRadioRoot.addEventListener('pointercancel', releaseTouchRadio);
+    touchRadioRoot.addEventListener('lostpointercapture', releaseTouchRadio);
+    touchRadioRoot.addEventListener('contextmenu', (event) => event.preventDefault());
+  }
 
   window.addEventListener('keydown', (event) => {
     if (event.code !== 'KeyR' || event.repeat) return;
@@ -868,6 +911,8 @@ function setupRadioControls() {
     if (event.code !== 'KeyR') return;
     endRadioTransmission('button_release');
   });
+
+  updateTouchRadioControlState(getRadioHudState());
 }
 
 async function beginRadioTransmission() {
@@ -893,6 +938,7 @@ async function beginRadioTransmission() {
 }
 
 function endRadioTransmission(reason = 'button_release') {
+  resetTouchRadioInteraction();
   const wasSpeaker = appState.radio.speakerPlayerId === appState.guestIdentity?.playerId;
   const wasRequesting = appState.radio.channelStatus === 'requesting';
   updateRadioState({ type: 'press_to_talk_end' });
@@ -905,6 +951,59 @@ function endRadioTransmission(reason = 'button_release') {
   } else if (wasRequesting) {
     applyRadioAudioMix(false);
   }
+}
+
+function canStartTouchRadioDrag() {
+  const radioHudState = getRadioHudState();
+  return Boolean(radioHudState?.buttonEnabled && appState.started);
+}
+
+function clampTouchRadioOffset(event) {
+  const rect = touchRadioRoot?.getBoundingClientRect();
+  if (!rect) return 0;
+  const centerX = rect.left + rect.width / 2;
+  const offsetX = event.clientX - centerX;
+  return Math.max(-TOUCH_RADIO_MAX_OFFSET_PX, Math.min(TOUCH_RADIO_MAX_OFFSET_PX, offsetX));
+}
+
+function setTouchRadioOffset(offsetX) {
+  touchRadioRoot?.style.setProperty('--radio-offset-x', `${Math.round(offsetX)}px`);
+}
+
+function resetTouchRadioInteraction() {
+  touchRadioPointerId = null;
+  touchRadioActivated = false;
+  setTouchRadioOffset(0);
+}
+
+function updateTouchRadioControlState(radioHudState) {
+  if (!touchRadioRoot) return;
+
+  const isDisabled = !radioHudState?.buttonEnabled;
+  const isOccupied = appState.radio.channelStatus === RADIO_CHANNEL_STATUS.OCCUPIED;
+  const isActive = appState.radio.isPressingTalk || appState.radio.clientStatus === RADIO_CLIENT_STATUS.TRANSMITTING;
+
+  touchRadioRoot.classList.toggle('is-disabled', isDisabled);
+  touchRadioRoot.classList.toggle('is-occupied', isOccupied);
+  touchRadioRoot.classList.toggle('is-active', isActive);
+  if (!touchRadioPointerId && !isActive) {
+    setTouchRadioOffset(0);
+  }
+  if (touchRadioKnob) {
+    touchRadioKnob.hidden = false;
+  }
+  if (touchRadioLabel) {
+    touchRadioLabel.textContent = getTouchRadioLabel(radioHudState);
+  }
+}
+
+function getTouchRadioLabel(radioHudState) {
+  if (!appState.radioEnabled) return 'Off';
+  if (appState.radio.clientStatus === RADIO_CLIENT_STATUS.MIC_BLOCKED) return 'Mic';
+  if (appState.radio.channelStatus === RADIO_CHANNEL_STATUS.REQUESTING) return 'Abrindo';
+  if (appState.radio.clientStatus === RADIO_CLIENT_STATUS.TRANSMITTING) return 'Falando';
+  if (appState.radio.channelStatus === RADIO_CHANNEL_STATUS.OCCUPIED) return 'Ouvindo';
+  return radioHudState?.buttonEnabled ? 'Falar' : 'Radio';
 }
 
 async function handleRadioRealtimeMessage(message) {
@@ -1446,6 +1545,7 @@ renderer.setAnimationLoop(() => {
     // sem ajudas estima o centro so pelos dados do vario.
     useRealCore: appState.assistVisuals
   });
+  const radioHudState = getRadioHudState();
   updateHud(hud, {
     player,
     bots,
@@ -1454,8 +1554,9 @@ renderer.setAnimationLoop(() => {
     wind,
     scoring: appState.scoring,
     thermalAssistant: appState.thermalAssistant,
-    radio: getRadioHudState()
+    radio: radioHudState
   });
+  updateTouchRadioControlState(radioHudState);
   updateFlightCamera(camera, player, delta, { terrain });
 
   renderer.render(scene, camera);
