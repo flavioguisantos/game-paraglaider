@@ -698,6 +698,7 @@ async function startFlight() {
     terrain,
     routeDefinition: appState.launchSession?.route ?? null
   });
+  thermals.setRoute(appState.scoring?.route ?? null);
   initializeScoringForEntities(appState.flyers);
   appState.lastScoreFeedbackAudioId = null;
   appState.round = createRoundState();
@@ -754,6 +755,7 @@ function applySelectedFlightLocation() {
   thermals.setEnabled(resolveThermalsEnabled(location, appState.launchSession));
   thermals.setCeiling(appState.launchSession?.thermals?.cloudBaseMeters ?? location.cloudBaseMeters ?? 2200);
   thermals.applySessionThermals(appState.launchSession?.thermals ?? null);
+  thermals.setRoute(appState.scoring?.route ?? null);
   orographicLift.configure(location.orographicLift);
   orographicLift.setAssistVisuals(appState.assistVisuals);
 }

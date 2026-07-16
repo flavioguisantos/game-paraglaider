@@ -83,6 +83,7 @@ class ThermalField {
     this.assistVisualsVisible = true;
     this.authoritativeLayout = false;
     this.topAltitude = THERMAL_CONFIG.topAltitudeAboveSeaLevel;
+    this.route = null;
     const hotThermalIndex = Math.floor(Math.random() * THERMAL_SEEDS.length);
     this.nextThermalId = 1;
     this.thermals = THERMAL_SEEDS.map((seed, index) => createThermal(
@@ -109,6 +110,15 @@ class ThermalField {
     for (const thermal of this.thermals) {
       thermal.topAltitudeAboveSeaLevel = topAltitudeAboveSeaLevel;
     }
+  }
+
+  setRoute(route) {
+    this.route = Array.isArray(route) && route.length > 0
+      ? route.map((waypoint) => ({
+          x: Number(waypoint.x ?? 0),
+          z: Number(waypoint.z ?? 0)
+        }))
+      : null;
   }
 
   // Modo realista: esconde as ajudas visuais (coluna, anel, particulas e
@@ -168,11 +178,18 @@ class ThermalField {
 
   ensureAheadThermals(referenceEntity) {
     const forward = referenceEntity.getForwardVector();
-    const aheadCount = this.countAheadThermals(referenceEntity.position, forward);
+    const routeContext = this.getRouteCorridorContext(referenceEntity, forward);
+    const aheadCount = routeContext
+      ? this.countRouteCorridorThermals(routeContext)
+      : this.countAheadThermals(referenceEntity.position, forward);
     const missingThermals = Math.max(0, THERMAL_CONFIG.minAheadThermals - aheadCount);
 
     for (let index = 0; index < missingThermals && this.thermals.length < THERMAL_CONFIG.maxThermals; index += 1) {
-      this.spawnThermalAhead(referenceEntity.position, forward);
+      if (routeContext) {
+        this.spawnThermalOnRoute(routeContext);
+      } else {
+        this.spawnThermalAhead(referenceEntity.position, forward);
+      }
     }
   }
 
@@ -224,6 +241,60 @@ class ThermalField {
     this.group.add(thermal.visual);
   }
 
+  countRouteCorridorThermals(routeContext) {
+    let count = 0;
+
+    for (const thermal of this.thermals) {
+      const metrics = getCorridorMetrics(thermal.position, routeContext.points);
+      if (!metrics) continue;
+      if (metrics.alongDistance > THERMAL_CONFIG.aheadCheckDistance) continue;
+      if (metrics.lateralDistance <= THERMAL_CONFIG.spawnLateralSpread) count += 1;
+    }
+
+    return count;
+  }
+
+  spawnThermalOnRoute(routeContext) {
+    const sample = sampleCorridorPoint(
+      routeContext.points,
+      THERMAL_CONFIG.spawnAheadMin,
+      THERMAL_CONFIG.spawnAheadMax
+    );
+    if (!sample) {
+      this.spawnThermalAhead(routeContext.referencePosition, routeContext.forward);
+      return;
+    }
+
+    const lateralDistance = THREE.MathUtils.randFloatSpread(THERMAL_CONFIG.spawnLateralSpread * 2);
+    const spawnPosition = new THREE.Vector3(
+      sample.point.x + sample.right.x * lateralDistance,
+      0,
+      sample.point.z + sample.right.z * lateralDistance
+    );
+
+    if (!this.hasEnoughSpacing(spawnPosition)) return;
+
+    const seed = {
+      x: spawnPosition.x,
+      z: spawnPosition.z,
+      radius: THREE.MathUtils.randFloat(THERMAL_CONFIG.dynamicRadiusMin, THERMAL_CONFIG.dynamicRadiusMax),
+      strength: THREE.MathUtils.randFloat(THERMAL_CONFIG.dynamicStrengthMin, THERMAL_CONFIG.dynamicStrengthMax)
+    };
+    const isHotThermal = Math.random() < THERMAL_CONFIG.dynamicHotChance;
+    const thermal = createThermal(
+      seed,
+      this.nextThermalId++,
+      this.terrain,
+      isHotThermal,
+      this.sunDirection,
+      this.topAltitude
+    );
+    applyAssistVisibility(thermal, this.assistVisualsVisible);
+
+    this.thermals.push(thermal);
+    this.group.add(thermal.visual);
+  }
+
   hasEnoughSpacing(position) {
     for (const thermal of this.thermals) {
       const distance = Math.hypot(position.x - thermal.position.x, position.z - thermal.position.z);
@@ -250,6 +321,31 @@ class ThermalField {
         this.removeThermal(index);
       }
     }
+  }
+
+  getRouteCorridorContext(referenceEntity, forward) {
+    if (!this.route || this.route.length === 0 || referenceEntity?.routeFinished) return null;
+
+    const nextWaypointIndex = THREE.MathUtils.clamp(
+      referenceEntity?.nextWaypointIndex ?? 0,
+      0,
+      this.route.length - 1
+    );
+    const previousWaypoint = nextWaypointIndex > 0
+      ? this.route[nextWaypointIndex - 1]
+      : { x: 0, z: 0 };
+    const nextWaypoint = this.route[nextWaypointIndex];
+    if (!nextWaypoint) return null;
+
+    const progressPoint = projectPointToSegment2D(referenceEntity.position, previousWaypoint, nextWaypoint);
+    const remainingPoints = [progressPoint, ...this.route.slice(nextWaypointIndex)];
+    if (getPolylineLength(remainingPoints) < THERMAL_CONFIG.spawnAheadMin * 0.45) return null;
+
+    return {
+      points: remainingPoints,
+      forward,
+      referencePosition: referenceEntity.position
+    };
   }
 
   removeThermal(index) {
@@ -776,6 +872,118 @@ function getVerticalLiftFactor(thermal, altitude) {
   );
   const topFactor = Math.min(1, THERMAL_CONFIG.topLiftMetersPerSecond / thermal.strength);
   return THREE.MathUtils.lerp(1, topFactor, fadeProgress);
+}
+
+function sampleCorridorPoint(points, minDistance, maxDistance) {
+  const totalLength = getPolylineLength(points);
+  if (totalLength <= 1) return null;
+
+  const clampedMin = Math.min(minDistance, totalLength);
+  const clampedMax = Math.min(maxDistance, totalLength);
+  if (clampedMax <= 1) return null;
+
+  const targetDistance = clampedMax <= clampedMin
+    ? clampedMax
+    : THREE.MathUtils.randFloat(clampedMin, clampedMax);
+  return samplePolyline(points, targetDistance);
+}
+
+function samplePolyline(points, targetDistance) {
+  if (!Array.isArray(points) || points.length < 2) return null;
+
+  let remaining = Math.max(0, targetDistance);
+
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const start = points[index];
+    const end = points[index + 1];
+    const dx = end.x - start.x;
+    const dz = end.z - start.z;
+    const segmentLength = Math.hypot(dx, dz);
+    if (segmentLength <= 0.001) continue;
+
+    if (remaining <= segmentLength || index === points.length - 2) {
+      const t = THREE.MathUtils.clamp(remaining / segmentLength, 0, 1);
+      const directionX = dx / segmentLength;
+      const directionZ = dz / segmentLength;
+      return {
+        point: {
+          x: THREE.MathUtils.lerp(start.x, end.x, t),
+          z: THREE.MathUtils.lerp(start.z, end.z, t)
+        },
+        right: { x: -directionZ, z: directionX }
+      };
+    }
+
+    remaining -= segmentLength;
+  }
+
+  return null;
+}
+
+function getCorridorMetrics(position, points) {
+  if (!Array.isArray(points) || points.length < 2) return null;
+
+  let bestMetrics = null;
+  let traversed = 0;
+
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const start = points[index];
+    const end = points[index + 1];
+    const dx = end.x - start.x;
+    const dz = end.z - start.z;
+    const segmentLengthSq = dx * dx + dz * dz;
+    if (segmentLengthSq <= 0.001) continue;
+
+    const segmentLength = Math.sqrt(segmentLengthSq);
+    const projection = THREE.MathUtils.clamp(
+      ((position.x - start.x) * dx + (position.z - start.z) * dz) / segmentLengthSq,
+      0,
+      1
+    );
+    const closestX = start.x + dx * projection;
+    const closestZ = start.z + dz * projection;
+    const lateralDistance = Math.hypot(position.x - closestX, position.z - closestZ);
+    const alongDistance = traversed + segmentLength * projection;
+
+    if (!bestMetrics || lateralDistance < bestMetrics.lateralDistance) {
+      bestMetrics = { lateralDistance, alongDistance };
+    }
+
+    traversed += segmentLength;
+  }
+
+  return bestMetrics;
+}
+
+function getPolylineLength(points) {
+  if (!Array.isArray(points) || points.length < 2) return 0;
+
+  let length = 0;
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const start = points[index];
+    const end = points[index + 1];
+    length += Math.hypot(end.x - start.x, end.z - start.z);
+  }
+  return length;
+}
+
+function projectPointToSegment2D(position, start, end) {
+  const dx = end.x - start.x;
+  const dz = end.z - start.z;
+  const segmentLengthSq = dx * dx + dz * dz;
+  if (segmentLengthSq <= 0.001) {
+    return { x: position.x, z: position.z };
+  }
+
+  const t = THREE.MathUtils.clamp(
+    ((position.x - start.x) * dx + (position.z - start.z) * dz) / segmentLengthSq,
+    0,
+    1
+  );
+  return {
+    x: start.x + dx * t,
+    z: start.z + dz * t
+  };
 }
 
 function createThermalBirds(radius) {
