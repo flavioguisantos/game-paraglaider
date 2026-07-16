@@ -94,6 +94,7 @@ Regras iniciais:
 - A representacao visual da coluna inclina levemente na direcao do vento para comunicar a deriva da massa de ar em relacao ao solo.
 - As termicas usam diametros moderados para permitir permanecer enroscado mesmo com vento e taxa de curva realista.
 - Conforme o piloto avanca, o jogo mantem novas termicas surgindo no corredor a frente da direcao de voo, com variacao de raio, forca e afastamento lateral.
+- Quando existir rota com waypoints, esse corredor passa a seguir a perna ativa e as pernas seguintes do percurso, mantendo termicas tambem entre os TPs e ate o GOL.
 - Termicas que ficam muito para tras podem ser removidas para manter o custo da cena controlado.
 - O topo das termicas (base de nuvem) e configuravel por local de voo (`cloudBaseMeters`, padrao 2200 m acima do nivel do mar). Nos ultimos 650 m antes do teto, a sustentacao enfraquece gradualmente ate 2 m/s no centro do topo; acima do teto nao ha sustentacao.
 - Cada termica exibe uma nuvem presa ao topo absoluto da coluna, ajudando o jogador a ler visualmente o limite de subida. A nuvem tem diametro aproximado de duas vezes o diametro da termica e usa volumes arredondados irregulares para ficar menos geometrica.
