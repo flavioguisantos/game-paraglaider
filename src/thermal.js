@@ -308,11 +308,16 @@ class ThermalField {
     if (this.thermals.length <= THERMAL_CONFIG.minAheadThermals) return;
 
     const forward = referenceEntity.getForwardVector();
+    const routeContext = this.getRouteCorridorContext(referenceEntity, forward);
 
     for (let index = this.thermals.length - 1; index >= 0; index -= 1) {
       if (this.thermals.length <= THERMAL_CONFIG.minAheadThermals) return;
 
       const thermal = this.thermals[index];
+      if (routeContext && this.isThermalInsideUpcomingRouteCorridor(thermal, routeContext)) {
+        continue;
+      }
+
       const dx = thermal.position.x - referenceEntity.position.x;
       const dz = thermal.position.z - referenceEntity.position.z;
       const aheadDistance = dx * forward.x + dz * forward.z;
@@ -346,6 +351,14 @@ class ThermalField {
       forward,
       referencePosition: referenceEntity.position
     };
+  }
+
+  isThermalInsideUpcomingRouteCorridor(thermal, routeContext) {
+    const metrics = getCorridorMetrics(thermal.position, routeContext?.points);
+    if (!metrics) return false;
+
+    return metrics.alongDistance <= THERMAL_CONFIG.aheadCheckDistance
+      && metrics.lateralDistance <= THERMAL_CONFIG.spawnLateralSpread * 1.15;
   }
 
   removeThermal(index) {
