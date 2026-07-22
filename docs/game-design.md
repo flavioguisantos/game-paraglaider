@@ -91,6 +91,7 @@ Regras iniciais:
 - Dentro da termica, o parapente deve subir visualmente em relacao ao solo quando a sustentacao superar o sink.
 - Locais podem desativar termicas. Em Sao Vicente/Itarare nao ha termicas no MVP; a sustentacao vem do vento na montanha.
 - Termicas derivam junto com o vento na mesma escala horizontal aplicada ao parapente, representando a massa de ar em movimento.
+- Cada coluna autoritativa pertence a um ponto-fonte fixo. Quando a geracao atual deriva 3 km desse ponto, uma nova termica nasce na origem; a geracao anterior continua ate encerrar seu ciclo e depois e removida, evitando lacunas permanentes na rota e crescimento ilimitado da cena.
 - A representacao visual da coluna inclina levemente na direcao do vento para comunicar a deriva da massa de ar em relacao ao solo.
 - As termicas usam diametros moderados para permitir permanecer enroscado mesmo com vento e taxa de curva realista.
 - Conforme o piloto avanca, o jogo mantem novas termicas surgindo no corredor a frente da direcao de voo, com variacao de raio, forca e afastamento lateral.
