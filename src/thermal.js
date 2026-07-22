@@ -8,6 +8,7 @@ const THERMAL_CONFIG = {
   liftFadeBandMeters: 650,
   topLiftMetersPerSecond: 2,
   driftScale: 1,
+  sourceRegenerationDistanceMeters: 3000,
   particleCount: 26,
   particleRiseSpeed: 92,
   // Nucleo gaussiano: exp(-k * (d/R)^2). Com k=2.8 a borda do raio tem ~6%.
@@ -82,6 +83,7 @@ class ThermalField {
     this.enabled = true;
     this.assistVisualsVisible = true;
     this.authoritativeLayout = false;
+    this.sourceRegenerationDistanceMeters = THERMAL_CONFIG.sourceRegenerationDistanceMeters;
     this.topAltitude = THERMAL_CONFIG.topAltitudeAboveSeaLevel;
     this.route = null;
     const hotThermalIndex = Math.floor(Math.random() * THERMAL_SEEDS.length);
@@ -148,6 +150,12 @@ class ThermalField {
       thermal.cycleFactor = getThermalCycleFactor(thermal);
 
       if (thermal.age >= thermal.lifetimeSeconds) {
+        if (this.authoritativeLayout && thermal.hasSpawnedSuccessor) {
+          // A geracao antiga permanece ate concluir o proprio ciclo e entao
+          // sai da cena; a sucessora ja ocupa novamente o ponto-fonte.
+          this.removeThermal(index);
+          continue;
+        }
         if (referenceEntity && !this.authoritativeLayout) {
           // Termica morreu: remove; ensureAheadThermals repõe adiante.
           this.removeThermal(index);
@@ -157,8 +165,19 @@ class ThermalField {
         recycleThermal(thermal);
       }
 
-      thermal.position.x += wind.x * worldUnitsPerMeter * THERMAL_CONFIG.driftScale * delta;
-      thermal.position.z += wind.z * worldUnitsPerMeter * THERMAL_CONFIG.driftScale * delta;
+      const driftFactor = thermal.driftFactor ?? 1;
+      thermal.position.x += wind.x * worldUnitsPerMeter * THERMAL_CONFIG.driftScale * driftFactor * delta;
+      thermal.position.z += wind.z * worldUnitsPerMeter * THERMAL_CONFIG.driftScale * driftFactor * delta;
+
+      if (
+        this.authoritativeLayout
+        && !thermal.hasSpawnedSuccessor
+        && getHorizontalDistance(thermal.position, thermal.sourcePosition) / worldUnitsPerMeter
+          >= this.sourceRegenerationDistanceMeters
+      ) {
+        this.spawnThermalAtSource(thermal);
+        thermal.hasSpawnedSuccessor = true;
+      }
 
       if (halfSize > 0) {
         if (thermal.position.x > halfSize) thermal.position.x = -halfSize;
@@ -291,6 +310,34 @@ class ThermalField {
     );
     applyAssistVisibility(thermal, this.assistVisualsVisible);
 
+    this.thermals.push(thermal);
+    this.group.add(thermal.visual);
+  }
+
+  spawnThermalAtSource(previousThermal) {
+    const thermal = createThermal(
+      {
+        x: previousThermal.sourcePosition.x,
+        z: previousThermal.sourcePosition.z,
+        radius: previousThermal.radius,
+        strength: previousThermal.baseStrength
+      },
+      this.nextThermalId++,
+      this.terrain,
+      previousThermal.isHotThermal,
+      this.sunDirection,
+      this.topAltitude,
+      {
+        preserveStrength: true,
+        rampUpSeconds: previousThermal.rampUpSeconds,
+        activeSeconds: previousThermal.activeSeconds,
+        decaySeconds: previousThermal.decaySeconds,
+        driftFactor: previousThermal.driftFactor,
+        sourceId: previousThermal.sourceId,
+        sourceGeneration: previousThermal.sourceGeneration + 1
+      }
+    );
+    applyAssistVisibility(thermal, this.assistVisualsVisible);
     this.thermals.push(thermal);
     this.group.add(thermal.visual);
   }
@@ -445,6 +492,11 @@ class ThermalField {
   applySessionThermals(sessionThermals) {
     const hasAuthoritativeColumns = Array.isArray(sessionThermals?.columns) && sessionThermals.columns.length > 0;
     this.authoritativeLayout = hasAuthoritativeColumns;
+    this.sourceRegenerationDistanceMeters = Math.max(
+      1,
+      Number(sessionThermals?.sourceRegenerationDistanceMeters)
+        || THERMAL_CONFIG.sourceRegenerationDistanceMeters
+    );
     this.setCeiling(sessionThermals?.cloudBaseMeters ?? THERMAL_CONFIG.topAltitudeAboveSeaLevel);
 
     if (!hasAuthoritativeColumns) {
@@ -470,7 +522,9 @@ class ThermalField {
           rampUpSeconds: Number(column.warmupSeconds ?? THERMAL_CONFIG.rampUpSeconds),
           activeSeconds: Number(column.activeSeconds ?? 240),
           decaySeconds: Number(column.decaySeconds ?? THERMAL_CONFIG.decaySeconds),
-          cycleOffsetSeconds: Number(column.cycleOffsetSeconds ?? 0)
+          cycleOffsetSeconds: Number(column.cycleOffsetSeconds ?? 0),
+          driftFactor: Number(column.driftFactor ?? 1),
+          sourceId: column.id ?? index + 1
         }
       ))
     );
@@ -478,6 +532,7 @@ class ThermalField {
 
   resetLocalSeedThermals() {
     this.authoritativeLayout = false;
+    this.sourceRegenerationDistanceMeters = THERMAL_CONFIG.sourceRegenerationDistanceMeters;
     const hotThermalIndex = Math.floor(Math.random() * THERMAL_SEEDS.length);
     this.nextThermalId = 1;
     this.replaceThermals(
@@ -601,6 +656,11 @@ function createThermal(
     baseStrength: seed.strength,
     strengthMultiplier,
     isHotThermal,
+    driftFactor: Number.isFinite(options.driftFactor) ? Number(options.driftFactor) : 1,
+    sourceId: options.sourceId ?? id,
+    sourceGeneration: Number(options.sourceGeneration ?? 0),
+    sourcePosition: new THREE.Vector3(seed.x, 0, seed.z),
+    hasSpawnedSuccessor: false,
     topAltitudeAboveSeaLevel,
     age: 0,
     lifetimeSeconds: options.preserveStrength
@@ -641,6 +701,10 @@ function createThermal(
   }
 
   return thermal;
+}
+
+function getHorizontalDistance(first, second) {
+  return Math.hypot(first.x - second.x, first.z - second.z);
 }
 
 function getThermalInteraction(thermal, position) {
