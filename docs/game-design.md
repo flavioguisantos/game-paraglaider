@@ -97,6 +97,7 @@ Regras iniciais:
 - Conforme o piloto avanca, o jogo mantem novas termicas surgindo no corredor a frente da direcao de voo, com variacao de raio, forca e afastamento lateral. Na rota autoritativa longa, o intervalo longitudinal entre centros fica limitado a 1,2 km.
 - Quando existir rota com waypoints, esse corredor passa a seguir a perna ativa e as pernas seguintes do percurso, mantendo termicas tambem entre os TPs e ate o GOL.
 - Termicas que ficam muito para tras podem ser removidas para manter o custo da cena controlado.
+- Em rotas autoritativas longas, termicas distantes continuam existindo para fisica, deriva e regeneracao, mas seus visuais e animacoes so sao atualizados dentro de 12 km do jogador.
 - O topo das termicas (base de nuvem) e sorteado por sessao entre a base configurada pelo local (`cloudBaseMeters`, normalmente 2200 m) e 3000 m acima do nivel do mar. Nos ultimos 650 m antes do teto, a sustentacao enfraquece gradualmente ate 2 m/s no centro do topo; acima do teto nao ha sustentacao.
 - Cada termica exibe uma nuvem presa ao topo absoluto da coluna, ajudando o jogador a ler visualmente o limite de subida. A nuvem tem diametro aproximado de duas vezes o diametro da termica e usa volumes arredondados irregulares para ficar menos geometrica.
 - A base de cada termica exibe a sustentacao maxima da coluna em m/s, para indicar ao jogador a velocidade de subida esperada no centro.

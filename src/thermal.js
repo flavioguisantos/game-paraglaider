@@ -9,6 +9,9 @@ const THERMAL_CONFIG = {
   topLiftMetersPerSecond: 2,
   driftScale: 1,
   sourceRegenerationDistanceMeters: 3000,
+  // Rotas longas podem ter dezenas de colunas autoritativas. A fisica e a
+  // deriva continuam globais, mas visuais caros so atualizam perto do piloto.
+  visualUpdateDistanceMeters: 12000,
   particleCount: 26,
   particleRiseSpeed: 92,
   // Nucleo gaussiano: exp(-k * (d/R)^2). Com k=2.8 a borda do raio tem ~6%.
@@ -58,6 +61,7 @@ const tempColumnAxis = new THREE.Vector3();
 const tempColumnQuaternion = new THREE.Quaternion();
 const tempParticleSide = new THREE.Vector3();
 const tempParticleForward = new THREE.Vector3();
+const DEFAULT_VISUAL_REFERENCE_POSITION = new THREE.Vector3();
 
 const THERMAL_SEEDS = [
   { x: -280, z: -220, radius: 320, strength: 2.6 },
@@ -84,6 +88,7 @@ class ThermalField {
     this.assistVisualsVisible = true;
     this.authoritativeLayout = false;
     this.sourceRegenerationDistanceMeters = THERMAL_CONFIG.sourceRegenerationDistanceMeters;
+    this.visibleThermalCount = 0;
     this.topAltitude = THERMAL_CONFIG.topAltitudeAboveSeaLevel;
     this.route = null;
     const hotThermalIndex = Math.floor(Math.random() * THERMAL_SEEDS.length);
@@ -143,6 +148,10 @@ class ThermalField {
 
     const halfSize = this.terrain.size / 2;
     const worldUnitsPerMeter = this.terrain.worldUnitsPerMeter ?? 1;
+    const visualReferencePosition = referenceEntity?.position ?? DEFAULT_VISUAL_REFERENCE_POSITION;
+    const visualUpdateDistance = THERMAL_CONFIG.visualUpdateDistanceMeters * worldUnitsPerMeter;
+    const visualUpdateDistanceSquared = visualUpdateDistance * visualUpdateDistance;
+    this.visibleThermalCount = 0;
 
     for (let index = this.thermals.length - 1; index >= 0; index -= 1) {
       const thermal = this.thermals[index];
@@ -186,6 +195,14 @@ class ThermalField {
         if (thermal.position.z < -halfSize) thermal.position.z = halfSize;
       }
 
+      const visualDx = thermal.position.x - visualReferencePosition.x;
+      const visualDz = thermal.position.z - visualReferencePosition.z;
+      if (visualDx * visualDx + visualDz * visualDz > visualUpdateDistanceSquared) {
+        thermal.visual.visible = false;
+        continue;
+      }
+
+      this.visibleThermalCount += 1;
       const groundHeight = this.terrain.getHeightAt(thermal.position.x, thermal.position.z);
       updateThermalVerticalLayout(thermal, groundHeight, wind, this.sunDirection, this.terrain);
       applyCycleOpacity(thermal);
