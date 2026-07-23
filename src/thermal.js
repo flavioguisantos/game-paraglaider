@@ -38,8 +38,8 @@ const THERMAL_CONFIG = {
   aheadCheckDistance: 2400,
   behindPruneDistance: 900,
   minThermalSpacing: 340,
-  dynamicRadiusMin: 125,
-  dynamicRadiusMax: 190,
+  dynamicRadiusMin: 280,
+  dynamicRadiusMax: 420,
   dynamicStrengthMin: 1.8,
   dynamicStrengthMax: 3.2,
   dynamicHotChance: 0.18,
@@ -60,10 +60,10 @@ const tempParticleSide = new THREE.Vector3();
 const tempParticleForward = new THREE.Vector3();
 
 const THERMAL_SEEDS = [
-  { x: -280, z: -220, radius: 125, strength: 2.6 },
-  { x: 360, z: -430, radius: 145, strength: 2.2 },
-  { x: 640, z: 380, radius: 170, strength: 3.0 },
-  { x: -420, z: 520, radius: 135, strength: 2.4 }
+  { x: -280, z: -220, radius: 320, strength: 2.6 },
+  { x: 360, z: -430, radius: 350, strength: 2.2 },
+  { x: 640, z: 380, radius: 400, strength: 3.0 },
+  { x: -420, z: 520, radius: 330, strength: 2.4 }
 ];
 
 const DEFAULT_SUN_DIRECTION = new THREE.Vector3(0, 1, 0);

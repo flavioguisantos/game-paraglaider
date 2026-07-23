@@ -93,11 +93,11 @@ Regras iniciais:
 - Termicas derivam junto com o vento na mesma escala horizontal aplicada ao parapente, representando a massa de ar em movimento.
 - Cada coluna autoritativa pertence a um ponto-fonte fixo. Quando a geracao atual deriva 3 km desse ponto, uma nova termica nasce na origem; a geracao anterior continua ate encerrar seu ciclo e depois e removida, evitando lacunas permanentes na rota e crescimento ilimitado da cena.
 - A representacao visual da coluna inclina levemente na direcao do vento para comunicar a deriva da massa de ar em relacao ao solo.
-- As termicas usam diametros moderados para permitir permanecer enroscado mesmo com vento e taxa de curva realista.
+- As termicas autoritativas usam raios entre 280 e 420 m (340 a 420 m na coluna inicial), ampliando a faixa de nucleo para o jogador permanecer enroscado e aproveitar melhor o potencial maximo mesmo com vento e taxa de curva realista.
 - Conforme o piloto avanca, o jogo mantem novas termicas surgindo no corredor a frente da direcao de voo, com variacao de raio, forca e afastamento lateral.
 - Quando existir rota com waypoints, esse corredor passa a seguir a perna ativa e as pernas seguintes do percurso, mantendo termicas tambem entre os TPs e ate o GOL.
 - Termicas que ficam muito para tras podem ser removidas para manter o custo da cena controlado.
-- O topo das termicas (base de nuvem) e configuravel por local de voo (`cloudBaseMeters`, padrao 2200 m acima do nivel do mar). Nos ultimos 650 m antes do teto, a sustentacao enfraquece gradualmente ate 2 m/s no centro do topo; acima do teto nao ha sustentacao.
+- O topo das termicas (base de nuvem) e sorteado por sessao entre a base configurada pelo local (`cloudBaseMeters`, normalmente 2200 m) e 3000 m acima do nivel do mar. Nos ultimos 650 m antes do teto, a sustentacao enfraquece gradualmente ate 2 m/s no centro do topo; acima do teto nao ha sustentacao.
 - Cada termica exibe uma nuvem presa ao topo absoluto da coluna, ajudando o jogador a ler visualmente o limite de subida. A nuvem tem diametro aproximado de duas vezes o diametro da termica e usa volumes arredondados irregulares para ficar menos geometrica.
 - A base de cada termica exibe a sustentacao maxima da coluna em m/s, para indicar ao jogador a velocidade de subida esperada no centro.
 
@@ -107,7 +107,7 @@ O variometro aparece no HUD em m/s e tambem emite bips quando o jogador esta sub
 ## Pontuacao e gamificacao
 O MVP passa a usar uma pontuacao estilo cross-country simplificada:
 - Pontos crescem com a distancia horizontal efetivamente voada e recebem bonus continuo pela velocidade sobre o solo acima do voo lento, recompensando quem avanca rapido sem transformar a fisica em arcade.
-- A rota tem waypoints visiveis no mapa (`TP1`, `TP2` e `GOL`). Ao cruzar o raio do checkpoint em ordem, o participante recebe bonus fixo mais bonus de tempo; completar a rota sinaliza `GOL` no HUD.
+- A rota autoritativa sorteia de 4 a 8 turnpoints (`TP1` em diante), seguidos de `GOL`. Cada perna e gerada no semiplano favoravel do vento e considera sua variacao dinamica, mantendo a diferenca entre a direcao de voo e o vento em no maximo 90 graus. Ao cruzar o raio do checkpoint em ordem, o participante recebe bonus fixo mais bonus de tempo; completar a rota sinaliza `GOL` no HUD.
 - Quando a sessao online da rampa trouxer rota autoritativa, o cliente deve usar exatamente esses waypoints e os raios definidos pelo back-end.
 - Em locais costeiros, a geracao da rota deve rejeitar waypoints cujo centro ou area util do cilindro caiam sobre o mar aberto; o sorteio tenta novos pontos em terra antes de aceitar a perna.
 - Termicas fortes ou "quentes" pagam multiplicador de risco maior. Termicas normais pagam 1x, fortes pagam 1,5x e termicas raras/quentes pagam 2x nos pontos de subida.
