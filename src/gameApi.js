@@ -1,4 +1,4 @@
-const DEFAULT_GAME_API_BASE_URL = 'https://avcb-api-prd.onrender.com';
+const DEFAULT_GAME_API_BASE_URL = 'https://altalinha.onrender.com';
 const GAME_PLAYER_IDENTITY_KEY = 'jogo-parapente.game-player-identity.v1';
 const PILOT_DISPLAY_NAME_KEY = 'jogo-parapente.pilot-display-name.v1';
 
