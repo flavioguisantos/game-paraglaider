@@ -586,6 +586,28 @@ function setupLayerPanel() {
   const panel = document.querySelector('#layer-panel');
   if (!panel) return;
   const attribution = document.querySelector('#map-attribution');
+  const appendSection = (title, hint = '') => {
+    const heading = document.createElement('div');
+    heading.className = 'layer-panel-section';
+    heading.textContent = title;
+    panel.append(heading);
+    if (hint) {
+      const paragraph = document.createElement('p');
+      paragraph.className = 'layer-panel-hint';
+      paragraph.textContent = hint;
+      panel.append(paragraph);
+    }
+  };
+  const appendCheckbox = ({ labelText, checked, onChange }) => {
+    const label = document.createElement('label');
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = checked;
+    input.addEventListener('change', () => onChange(input.checked));
+    label.append(input, document.createTextNode(labelText));
+    panel.append(label);
+    return input;
+  };
 
   const updateOsmAttribution = (enabled) => {
     if (!attribution) return;
@@ -595,18 +617,41 @@ function setupLayerPanel() {
       : '';
   };
 
-  const osmLabel = document.createElement('label');
-  const osmInput = document.createElement('input');
-  osmInput.type = 'checkbox';
-  osmInput.checked = terrain.isOsmOverlayEnabled();
-  osmInput.addEventListener('change', () => {
-    terrain.setOsmOverlayEnabled(osmInput.checked);
-    updateOsmAttribution(osmInput.checked);
+  appendSection('OpenStreetMap', 'O tile raster ja inclui ruas, agua, areas, rotulos e POIs do estilo padrao.');
+  const osmInput = appendCheckbox({
+    labelText: 'OpenStreetMap completo',
+    checked: terrain.isOsmOverlayEnabled(),
+    onChange(checked) {
+      terrain.setOsmOverlayEnabled(checked);
+      updateOsmAttribution(checked);
+    }
   });
-  osmLabel.append(osmInput, document.createTextNode('OpenStreetMap raster'));
-  panel.append(osmLabel);
   updateOsmAttribution(osmInput.checked);
 
+  appendSection('Base Local', 'Camadas separadas do mapa XCM e da cenografia do jogo.');
+  appendCheckbox({
+    labelText: 'Relevo XCM',
+    checked: terrain.isReliefVisible(),
+    onChange(checked) {
+      terrain.setReliefVisibility(checked);
+    }
+  });
+  appendCheckbox({
+    labelText: 'Mar e costa',
+    checked: terrain.isSeaVisible(),
+    onChange(checked) {
+      terrain.setSeaVisibility(checked);
+    }
+  });
+  appendCheckbox({
+    labelText: 'Cenario urbano 3D',
+    checked: terrain.isUrbanSceneryVisible(),
+    onChange(checked) {
+      terrain.setUrbanSceneryVisibility(checked);
+    }
+  });
+
+  appendSection('Vetores Locais', 'Camadas do mapa atual que podem ser ligadas separadamente.');
   const toggles = [
     { label: 'Rodovias', layers: ['roadbig_line'] },
     { label: 'Estradas medias', layers: ['roadmedium_line'] },
@@ -619,19 +664,18 @@ function setupLayerPanel() {
   ];
 
   for (const toggle of toggles) {
-    const label = document.createElement('label');
-    const input = document.createElement('input');
-    input.type = 'checkbox';
-    input.checked = true;
-    input.addEventListener('change', () => {
-      for (const layerName of toggle.layers) {
-        terrain.setLayerVisibility(layerName, input.checked);
+    appendCheckbox({
+      labelText: toggle.label,
+      checked: true,
+      onChange(checked) {
+        for (const layerName of toggle.layers) {
+          terrain.setLayerVisibility(layerName, checked);
+        }
       }
     });
-    label.append(input, document.createTextNode(toggle.label));
-    panel.append(label);
   }
 
+  appendSection('Gameplay');
   const realisticLabel = document.createElement('label');
   const realisticInput = document.createElement('input');
   realisticInput.type = 'checkbox';
