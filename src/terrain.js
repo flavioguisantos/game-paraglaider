@@ -21,10 +21,16 @@ const DEFAULT_OPTIONS = {
   fallbackHeight: 1360,
   vectorYOffset: 0.55,
   labelYOffset: 4,
-  labelScale: 10
+  labelScale: 10,
+  osmOverlayEnabled: false,
+  osmOverlayMaxZoom: 16,
+  osmOverlayMinZoom: 7
 };
 
 const TERRAIN_ASSET_VERSION = 'terrain-rgb-binary-5';
+const OSM_TILE_SIZE = 256;
+const OSM_TILE_SERVER = 'https://tile.openstreetmap.org';
+const OSM_ATTRIBUTION_HTML = '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors';
 // A superficie do mar fica no nivel do mar original (y=0), como o relevo.
 const OCEAN_SURFACE_HEIGHT = 0;
 // Tamanho em unidades de mundo de um ciclo da textura de ondas do mar.
@@ -74,6 +80,8 @@ class LocalXcmTerrain {
     this.reliefGroup.name = 'XcmReliefLayer';
     this.vectorGroup = new THREE.Group();
     this.vectorGroup.name = 'XcmVectorOverlayLayer';
+    this.osmOverlayGroup = new THREE.Group();
+    this.osmOverlayGroup.name = 'OsmOverlayLayer';
     this.urbanScenery = createUrbanScenery({ terrain: this });
     // Lamina d'agua do mar aberto: um quad por chunk que contem pixels de
     // mar (nunca avanca sobre chunks de terra nem alem do raio carregado),
@@ -84,7 +92,13 @@ class LocalXcmTerrain {
     this.seaGroup.visible = false;
     this.seaMaterial = null;
     this.oceanTime = 0;
-    this.mesh.add(this.reliefGroup, this.vectorGroup, this.urbanScenery.group, this.seaGroup);
+    this.mesh.add(
+      this.reliefGroup,
+      this.vectorGroup,
+      this.osmOverlayGroup,
+      this.urbanScenery.group,
+      this.seaGroup
+    );
     this.size = 0;
     this.segments = config.chunkSegments * (config.loadRadius * 2 + 1);
     this.source = 'xcm-local-loading';
@@ -107,6 +121,9 @@ class LocalXcmTerrain {
     this.vectorMaterials = new Map();
     this.labelTextureCache = new Map();
     this.layerVisibility = new Map();
+    this.osmOverlayEnabled = Boolean(config.osmOverlayEnabled);
+    this.osmOverlayGroup.visible = this.osmOverlayEnabled;
+    this.osmOverlayZoom = null;
     this.centerRevision = 0;
     this.isReady = false;
 
@@ -297,6 +314,25 @@ class LocalXcmTerrain {
 
   setSeaEnabled(enabled) {
     this.seaGroup.visible = Boolean(enabled);
+  }
+
+  setOsmOverlayEnabled(enabled) {
+    const nextValue = Boolean(enabled);
+    if (this.osmOverlayEnabled === nextValue) return;
+    this.osmOverlayEnabled = nextValue;
+    this.osmOverlayGroup.visible = nextValue;
+
+    if (!nextValue) return;
+
+    for (const chunk of this.chunks.values()) {
+      if (!chunk.osmOverlay && !chunk.loadingOsmOverlay) {
+        this.loadOsmOverlayChunk(chunk, this.centerRevision);
+      }
+    }
+  }
+
+  getOsmAttributionHtml() {
+    return OSM_ATTRIBUTION_HTML;
   }
 
   // As UVs dos quads de mar ja estao em coordenadas de mundo; basta a deriva
@@ -574,12 +610,15 @@ class LocalXcmTerrain {
         imageData,
         mesh: this.createChunkMesh(tileX, tileY, imageData),
         seaMesh: this.createSeaMeshIfNeeded(tileX, tileY, imageData),
-        vectors: null
+        vectors: null,
+        osmOverlay: null,
+        loadingOsmOverlay: false
       };
       this.chunks.set(key, chunk);
       this.reliefGroup.add(chunk.mesh);
       recordTerrainDebug('chunkLoaded', { key, chunks: this.chunks.size });
       this.loadVectorChunk(chunk, revision);
+      if (this.osmOverlayEnabled) this.loadOsmOverlayChunk(chunk, revision);
     } catch (error) {
       if (revision !== this.centerRevision) return;
 
@@ -608,6 +647,10 @@ class LocalXcmTerrain {
     if (chunk.vectors) {
       this.vectorGroup.remove(chunk.vectors);
       disposeObject3D(chunk.vectors);
+    }
+    if (chunk.osmOverlay) {
+      this.osmOverlayGroup.remove(chunk.osmOverlay);
+      disposeObject3D(chunk.osmOverlay);
     }
     this.urbanScenery.removeChunk(key);
     chunk.mesh.geometry.dispose();
@@ -653,6 +696,29 @@ class LocalXcmTerrain {
     }
   }
 
+  async loadOsmOverlayChunk(chunk, revision = this.centerRevision) {
+    if (!this.osmOverlayEnabled || chunk.osmOverlay || chunk.loadingOsmOverlay || !this.manifest) return;
+
+    chunk.loadingOsmOverlay = true;
+    const key = getChunkKey(chunk.tileX, chunk.tileY);
+
+    try {
+      const overlay = await this.createOsmOverlayMesh(chunk);
+      if (!overlay) return;
+      if (revision !== this.centerRevision || !this.chunks.has(key)) {
+        disposeObject3D(overlay);
+        return;
+      }
+
+      chunk.osmOverlay = overlay;
+      this.osmOverlayGroup.add(overlay);
+    } catch (error) {
+      console.warn(`Nao foi possivel carregar overlay OSM ${key}`, error);
+    } finally {
+      chunk.loadingOsmOverlay = false;
+    }
+  }
+
   createChunkMesh(tileX, tileY, imageData, segments = this.config.chunkSegments) {
     const geometry = new THREE.PlaneGeometry(
       this.chunkWorldWidth,
@@ -691,6 +757,121 @@ class LocalXcmTerrain {
     mesh.receiveShadow = true;
     mesh.castShadow = true;
     return mesh;
+  }
+
+  async createOsmOverlayMesh(chunk) {
+    const bounds = this.getChunkLonLatBounds(chunk.tileX, chunk.tileY);
+    const zoom = getOsmZoomForMetersPerPixel(
+      bounds.centerLatitude,
+      (this.worldUnitsPerPixelX + this.worldUnitsPerPixelY) * 0.5 / this.worldUnitsPerMeter,
+      this.config.osmOverlayMinZoom,
+      this.config.osmOverlayMaxZoom
+    );
+    this.osmOverlayZoom = zoom;
+
+    const texture = await this.loadOsmTextureForBounds(bounds, zoom);
+    if (!texture) return null;
+
+    const geometry = chunk.mesh.geometry.clone();
+    const material = new THREE.MeshBasicMaterial({
+      map: texture,
+      transparent: true,
+      opacity: 0.86,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2
+    });
+    const overlay = new THREE.Mesh(geometry, material);
+    overlay.name = `OsmOverlayChunk_${chunk.tileX}_${chunk.tileY}`;
+    overlay.position.copy(chunk.mesh.position);
+    overlay.renderOrder = chunk.mesh.renderOrder + 1;
+    overlay.receiveShadow = false;
+    overlay.castShadow = false;
+    return overlay;
+  }
+
+  getChunkLonLatBounds(tileX, tileY) {
+    const tileSize = this.manifest.terrain.tileSize;
+    const minPixelX = tileX * tileSize;
+    const minPixelY = tileY * tileSize;
+    const maxPixelX = minPixelX + tileSize;
+    const maxPixelY = minPixelY + tileSize;
+    const southWest = pixelToLonLat(minPixelX, maxPixelY, this.manifest.source.worldFile);
+    const northEast = pixelToLonLat(maxPixelX, minPixelY, this.manifest.source.worldFile);
+    const centerLatitude = (southWest.latitude + northEast.latitude) * 0.5;
+    return {
+      west: southWest.longitude,
+      south: southWest.latitude,
+      east: northEast.longitude,
+      north: northEast.latitude,
+      centerLatitude
+    };
+  }
+
+  async loadOsmTextureForBounds(bounds, zoom) {
+    const nw = lonLatToOsmTile(bounds.west, bounds.north, zoom);
+    const se = lonLatToOsmTile(bounds.east, bounds.south, zoom);
+    const minTileX = Math.floor(Math.min(nw.x, se.x));
+    const maxTileX = Math.floor(Math.max(nw.x, se.x));
+    const minTileY = Math.floor(Math.min(nw.y, se.y));
+    const maxTileY = Math.floor(Math.max(nw.y, se.y));
+    const tileCountX = maxTileX - minTileX + 1;
+    const tileCountY = maxTileY - minTileY + 1;
+    if (tileCountX <= 0 || tileCountY <= 0 || tileCountX * tileCountY > 16) return null;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = tileCountX * OSM_TILE_SIZE;
+    canvas.height = tileCountY * OSM_TILE_SIZE;
+    const context = canvas.getContext('2d');
+
+    const tilePromises = [];
+    for (let tileY = minTileY; tileY <= maxTileY; tileY += 1) {
+      for (let tileX = minTileX; tileX <= maxTileX; tileX += 1) {
+        tilePromises.push(
+          loadImageElement(`${OSM_TILE_SERVER}/${zoom}/${tileX}/${tileY}.png`)
+            .then((image) => {
+              context.drawImage(
+                image,
+                (tileX - minTileX) * OSM_TILE_SIZE,
+                (tileY - minTileY) * OSM_TILE_SIZE,
+                OSM_TILE_SIZE,
+                OSM_TILE_SIZE
+              );
+            })
+        );
+      }
+    }
+
+    await Promise.all(tilePromises);
+
+    const cropLeft = (nw.x - minTileX) * OSM_TILE_SIZE;
+    const cropTop = (nw.y - minTileY) * OSM_TILE_SIZE;
+    const cropRight = (se.x - minTileX) * OSM_TILE_SIZE;
+    const cropBottom = (se.y - minTileY) * OSM_TILE_SIZE;
+    const cropWidth = Math.max(2, cropRight - cropLeft);
+    const cropHeight = Math.max(2, cropBottom - cropTop);
+    const croppedCanvas = document.createElement('canvas');
+    croppedCanvas.width = OSM_TILE_SIZE;
+    croppedCanvas.height = OSM_TILE_SIZE;
+    const croppedContext = croppedCanvas.getContext('2d');
+    croppedContext.drawImage(
+      canvas,
+      cropLeft,
+      cropTop,
+      cropWidth,
+      cropHeight,
+      0,
+      0,
+      croppedCanvas.width,
+      croppedCanvas.height
+    );
+
+    const texture = new THREE.CanvasTexture(croppedCanvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.anisotropy = 4;
+    texture.needsUpdate = true;
+    return texture;
   }
 
   getTerrainMaterial() {
@@ -1137,6 +1318,30 @@ function lonLatToPixel(longitude, latitude, worldFile) {
   };
 }
 
+function pixelToLonLat(pixelX, pixelY, worldFile) {
+  return {
+    longitude: worldFile.originX + pixelX * worldFile.pixelSizeX,
+    latitude: worldFile.originY + pixelY * worldFile.pixelSizeY
+  };
+}
+
+function lonLatToOsmTile(longitude, latitude, zoom) {
+  const safeLatitude = THREE.MathUtils.clamp(latitude, -85.05112878, 85.05112878);
+  const latitudeRadians = THREE.MathUtils.degToRad(safeLatitude);
+  const scale = 2 ** zoom;
+  return {
+    x: ((longitude + 180) / 360) * scale,
+    y: (1 - Math.log(Math.tan(latitudeRadians) + 1 / Math.cos(latitudeRadians)) / Math.PI) * 0.5 * scale
+  };
+}
+
+function getOsmZoomForMetersPerPixel(latitude, metersPerPixel, minZoom, maxZoom) {
+  const safeMetersPerPixel = Math.max(0.5, metersPerPixel);
+  const latitudeRadians = THREE.MathUtils.degToRad(THREE.MathUtils.clamp(latitude, -85, 85));
+  const zoom = Math.log2((156543.03392804097 * Math.cos(latitudeRadians)) / safeMetersPerPixel);
+  return THREE.MathUtils.clamp(Math.round(zoom), minZoom, maxZoom);
+}
+
 function getMetersPerPixel(latitude, worldFile) {
   const latitudeRadians = THREE.MathUtils.degToRad(latitude);
   const metersPerDegreeLatitude = 111132.92
@@ -1175,6 +1380,17 @@ async function loadImageData(url) {
       cause: error
     });
   }
+}
+
+function loadImageElement(url) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.crossOrigin = 'anonymous';
+    image.decoding = 'async';
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error(`Image load failed: ${url}`));
+    image.src = url;
+  });
 }
 
 async function decodePngRgbData(bytes, url, responseInfo = {}) {
