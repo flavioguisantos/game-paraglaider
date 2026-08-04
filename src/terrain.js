@@ -34,7 +34,26 @@ const DEFAULT_OPTIONS = {
 
 const TERRAIN_ASSET_VERSION = 'terrain-rgb-binary-5';
 const OSM_ATTRIBUTION_HTML = '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors';
-const OSM_DETAIL_CATEGORIES = new Set(['osm_buildings', 'osm_poi', 'osm_landuse']);
+const OSM_DETAIL_CATEGORIES = new Set(['osm_buildings', 'osm_poi', 'osm_landuse', 'osm_urban_areas']);
+const OSM_MAJOR_ROAD_KINDS = new Set(['motorway', 'trunk', 'primary', 'secondary']);
+const OSM_URBAN_COVERAGE_CELL_METERS = 96;
+const OSM_VEGETATION_BLOCK_LAND_KINDS = new Set([
+  'commercial',
+  'brownfield',
+  'construction',
+  'farmyard',
+  'garages',
+  'greenfield',
+  'hospital',
+  'industrial',
+  'military',
+  'parking',
+  'residential',
+  'retail',
+  'school',
+  'college',
+  'university'
+]);
 // A superficie do mar fica no nivel do mar original (y=0), como o relevo.
 const OCEAN_SURFACE_HEIGHT = 0;
 // Tamanho em unidades de mundo de um ciclo da textura de ondas do mar.
@@ -69,10 +88,13 @@ const VECTOR_LAYER_STYLES = {
   town_point: { type: 'point', color: 0xffffff, opacity: 0.92, yOffset: 3.2 },
   suburb_point: { type: 'point', color: 0xf0f4f8, opacity: 0.78, yOffset: 2.8 },
   village_point: { type: 'point', color: 0xf0f4f8, opacity: 0.72, yOffset: 2.6 },
-  osm_roads: { type: 'ribbon', color: 0xf2c66d, widthMeters: 10, yOffset: 3.1, roughness: 0.84 },
+  osm_roads_major: { type: 'ribbon', color: 0xffffff, widthMeters: 26, yOffset: 3.15, texture: 'highway', metersPerRepeat: 24 },
+  osm_roads: { type: 'ribbon', color: 0xffffff, widthMeters: 12, yOffset: 3.1, texture: 'asphalt', metersPerRepeat: 24 },
   osm_railways: { type: 'ribbon', color: 0xc9c1b7, widthMeters: 5, yOffset: 3.2, roughness: 0.88 },
   osm_water_lines: { type: 'ribbon', color: 0x5eb5e7, widthMeters: 10, yOffset: 2.8, roughness: 0.28 },
   osm_water_areas: { type: 'area', color: 0x4b91c7, opacity: 0.72, flat: false, yOffset: 2.3, roughness: 0.22 },
+  osm_urban_areas: { type: 'area', color: 0xc9c6bd, opacity: 1, flat: false, yOffset: 2.05, roughness: 0.98 },
+  osm_urban_inferred: { type: 'area', color: 0xb9b8b1, opacity: 1, flat: false, yOffset: 1.95, roughness: 0.98 },
   osm_landuse: { type: 'area', color: 0xc4b58d, opacity: 0.24, flat: false, yOffset: 1.8, roughness: 0.95 },
   osm_natural: { type: 'area', color: 0x6fa46d, opacity: 0.2, flat: false, yOffset: 1.9, roughness: 0.96 },
   osm_places: { type: 'point', color: 0xfafcff, opacity: 0.95, yOffset: 4.2 },
@@ -144,6 +166,9 @@ class LocalXcmTerrain {
       loadedTiles: 0,
       emptyChunks: 0,
       failedChunks: 0,
+      vegetationMaskAreas: 0,
+      vegetationMaskRoads: 0,
+      inferredUrbanCells: 0,
       lastError: '',
       featureCounts: {}
     };
@@ -396,6 +421,9 @@ class LocalXcmTerrain {
       loadedTiles: this.osmDebug.loadedTiles,
       emptyChunks: this.osmDebug.emptyChunks,
       failedChunks: this.osmDebug.failedChunks,
+      vegetationMaskAreas: this.osmDebug.vegetationMaskAreas,
+      vegetationMaskRoads: this.osmDebug.vegetationMaskRoads,
+      inferredUrbanCells: this.osmDebug.inferredUrbanCells,
       lastError: this.osmDebug.lastError,
       totalFeatures,
       featureCounts: { ...counts }
@@ -577,7 +605,7 @@ class LocalXcmTerrain {
     if (!this.isValidTile(tile.x, tile.y)) return false;
 
     const chunk = this.chunks.get(getChunkKey(tile.x, tile.y));
-    if (!chunk?.vectorTile) return false;
+    if (!chunk?.vectorTile && !chunk?.osmVectorTile) return false;
     return this.urbanScenery.isBlockedAt(x, z, chunk);
   }
 
@@ -772,13 +800,29 @@ class LocalXcmTerrain {
     try {
       const vectorTile = await this.fetchOsmVectorTile(chunk);
       const overlay = this.createVectorGroup(vectorTile, chunk);
+      const urbanCoverage = buildOsmUrbanCoverageGrid(vectorTile, chunk, this);
+      const urbanCoverageMesh = this.createOsmUrbanCoverageMesh(urbanCoverage, chunk);
+      if (urbanCoverageMesh) {
+        overlay.add(this.tagVectorLayerObject(urbanCoverageMesh, 'osm_urban_inferred'));
+      }
       if (revision !== this.centerRevision || !this.chunks.has(key)) {
         disposeObject3D(overlay);
         return;
       }
 
+      chunk.osmVectorTile = vectorTile;
+      chunk.osmUrbanCoverage = urbanCoverage;
+      this.urbanScenery.invalidateBlockMask(chunk);
+      // A vegetacao precisa replantar depois que a mascara OSM assincrona chega.
+      this.vectorRevision = (this.vectorRevision ?? 0) + 1;
       const counts = summarizeVectorTileFeatures(vectorTile);
       mergeOsmFeatureCounts(this.osmDebug.featureCounts, counts);
+      this.osmDebug.vegetationMaskAreas += vectorTile.vegetationMask?.areas.length ?? 0;
+      this.osmDebug.vegetationMaskRoads += (vectorTile.layers?.osm_roads_major?.lines.length ?? 0)
+        + (vectorTile.layers?.osm_roads?.lines.length ?? 0)
+        + (vectorTile.layers?.osm_railways?.lines.length ?? 0)
+        + (vectorTile.layers?.osm_aeroway?.lines.length ?? 0);
+      this.osmDebug.inferredUrbanCells += urbanCoverage.count;
       this.osmDebug.loadedChunks += 1;
       if (!overlay || overlay.children.length === 0) {
         this.osmDebug.emptyChunks += 1;
@@ -979,13 +1023,60 @@ class LocalXcmTerrain {
     return group;
   }
 
+  createOsmUrbanCoverageMesh(coverage, chunk) {
+    if (!coverage || coverage.count === 0) return null;
+
+    const positions = [];
+    const indices = [];
+    const style = getVectorStyle('osm_urban_inferred');
+    const vertexCache = new Map();
+    const getVertexIndex = (column, row, x, z) => {
+      const key = row * (coverage.columns + 1) + column;
+      if (!vertexCache.has(key)) {
+        const index = positions.length / 3;
+        positions.push(x, this.getVectorHeight(x, z, chunk) + style.yOffset, z);
+        vertexCache.set(key, index);
+      }
+      return vertexCache.get(key);
+    };
+
+    for (let row = 0; row < coverage.rows; row += 1) {
+      for (let column = 0; column < coverage.columns; column += 1) {
+        if (coverage.cells[row * coverage.columns + column] !== 1) continue;
+        const x0 = coverage.minX + column * coverage.cellSize;
+        const z0 = coverage.minZ + row * coverage.cellSize;
+        const x1 = Math.min(x0 + coverage.cellSize, coverage.maxX);
+        const z1 = Math.min(z0 + coverage.cellSize, coverage.maxZ);
+        const centerX = (x0 + x1) * 0.5;
+        const centerZ = (z0 + z1) * 0.5;
+        if (this.isSeaAt(centerX, centerZ)) continue;
+
+        const topLeft = getVertexIndex(column, row, x0, z0);
+        const topRight = getVertexIndex(column + 1, row, x1, z0);
+        const bottomLeft = getVertexIndex(column, row + 1, x0, z1);
+        const bottomRight = getVertexIndex(column + 1, row + 1, x1, z1);
+        indices.push(topLeft, bottomLeft, topRight, topRight, bottomLeft, bottomRight);
+      }
+    }
+
+    if (positions.length === 0) return null;
+    const mesh = new THREE.Mesh(
+      this.buildVectorGeometry(positions, indices),
+      this.getVectorMaterial('osm_urban_inferred', style)
+    );
+    mesh.name = `OsmInferredUrbanCoverage_${chunk.tileX}_${chunk.tileY}`;
+    mesh.receiveShadow = true;
+    return mesh;
+  }
+
   tagVectorLayerObject(object, layerName) {
     object.userData.vectorLayer = layerName;
     object.visible = this.layerVisibility.get(layerName) ?? true;
     if (layerName.startsWith('osm_')) {
-      object.renderOrder = 40;
+      const renderOrder = getOsmLayerRenderOrder(layerName);
+      object.renderOrder = renderOrder;
       object.traverse?.((child) => {
-        child.renderOrder = 40;
+        child.renderOrder = renderOrder;
         if (child.material) {
           const materials = Array.isArray(child.material) ? child.material : [child.material];
           for (const material of materials) {
@@ -1281,6 +1372,17 @@ function getVectorStyle(layerName) {
     ?? { type: 'ribbon', color: 0xb8b0a2, widthMeters: 4, yOffset: 1 };
 }
 
+function getOsmLayerRenderOrder(layerName) {
+  if (layerName === 'osm_landuse' || layerName === 'osm_natural') return 34;
+  if (layerName === 'osm_urban_areas' || layerName === 'osm_urban_inferred') return 35;
+  if (layerName === 'osm_water_areas' || layerName === 'osm_water_lines') return 38;
+  if (layerName === 'osm_roads_major' || layerName === 'osm_roads'
+    || layerName === 'osm_railways' || layerName === 'osm_aeroway') return 42;
+  if (layerName === 'osm_buildings') return 43;
+  if (layerName === 'osm_places' || layerName === 'osm_poi') return 45;
+  return 40;
+}
+
 // Encadeia segmentos [x1,y1,x2,y2] em polilinhas/aneis pelos pontos coincidentes.
 // Aneis abertos (ex.: lago cortado na borda do tile) sao fechados na triangulacao
 // pela propria ligacao fim-inicio do contorno.
@@ -1457,34 +1559,46 @@ function lonLatToOsmTile(longitude, latitude, zoom) {
 
 function convertShortbreadTileToVectorTile(tile, tileX, tileY, zoom, worldFile, detailOnly = false) {
   const layers = createEmptyOsmLayers();
+  const vegetationMask = createEmptyOsmVegetationMask();
 
   for (const [sourceLayerName, sourceLayer] of Object.entries(tile.layers)) {
     for (let index = 0; index < sourceLayer.length; index += 1) {
       const feature = sourceLayer.feature(index);
       const category = classifyShortbreadFeature(sourceLayerName, feature.properties);
       if (!category || (detailOnly && !OSM_DETAIL_CATEGORIES.has(category))) continue;
+      const geoJsonFeature = feature.toGeoJSON(tileX, tileY, zoom);
       appendGeoJsonToOsmLayer(
         layers[category],
         category,
-        feature.toGeoJSON(tileX, tileY, zoom),
+        geoJsonFeature,
+        worldFile
+      );
+      appendGeoJsonToOsmVegetationMask(
+        vegetationMask,
+        sourceLayerName,
+        feature.properties,
+        geoJsonFeature,
         worldFile
       );
     }
   }
 
-  return { layers };
+  return { layers, vegetationMask };
 }
 
 function classifyShortbreadFeature(layerName, properties) {
   if (layerName === 'streets' || layerName === 'street_polygons') {
     if (properties.rail === true) return 'osm_railways';
     if (['runway', 'taxiway', 'apron'].includes(properties.kind)) return 'osm_aeroway';
+    if (OSM_MAJOR_ROAD_KINDS.has(properties.kind)) return 'osm_roads_major';
     return 'osm_roads';
   }
   if (layerName === 'water_lines' || layerName === 'dam_lines' || layerName === 'pier_lines') return 'osm_water_lines';
   if (layerName === 'water_polygons' || layerName === 'ocean' || layerName === 'dam_polygons') return 'osm_water_areas';
-  if (layerName === 'land') return isNaturalShortbreadKind(properties.kind) ? 'osm_natural' : 'osm_landuse';
-  if (layerName === 'sites') return 'osm_landuse';
+  if (layerName === 'land' || layerName === 'sites') {
+    if (OSM_VEGETATION_BLOCK_LAND_KINDS.has(properties.kind)) return 'osm_urban_areas';
+    return isNaturalShortbreadKind(properties.kind) ? 'osm_natural' : 'osm_landuse';
+  }
   if (layerName === 'place_labels' || layerName === 'boundary_labels') return 'osm_places';
   if (layerName === 'pois' || layerName === 'public_transport' || layerName === 'addresses') return 'osm_poi';
   if (layerName === 'boundaries') return 'osm_boundaries';
@@ -1541,15 +1655,132 @@ function appendOsmPoint(target, coordinates, properties, worldFile) {
   target.points.push({ x: pixel.x, y: pixel.y, label: String(label) });
 }
 
+function buildOsmUrbanCoverageGrid(vectorTile, chunk, terrain) {
+  const center = terrain.getChunkCenterWorld(chunk.tileX, chunk.tileY);
+  const minX = center.x - terrain.chunkWorldWidth / 2;
+  const maxX = center.x + terrain.chunkWorldWidth / 2;
+  const minZ = center.z - terrain.chunkWorldDepth / 2;
+  const maxZ = center.z + terrain.chunkWorldDepth / 2;
+  const cellSize = OSM_URBAN_COVERAGE_CELL_METERS * terrain.worldUnitsPerMeter;
+  const columns = Math.ceil((maxX - minX) / cellSize);
+  const rows = Math.ceil((maxZ - minZ) / cellSize);
+  const roadCells = new Uint8Array(columns * rows);
+
+  for (const layerName of ['osm_roads_major', 'osm_roads']) {
+    for (const line of vectorTile.layers?.[layerName]?.lines ?? []) {
+      const start = terrain.pixelToWorldXZ(line[0], line[1]);
+      const end = terrain.pixelToWorldXZ(line[2], line[3]);
+      if (Math.max(start.x, end.x) < minX || Math.min(start.x, end.x) > maxX
+        || Math.max(start.z, end.z) < minZ || Math.min(start.z, end.z) > maxZ) continue;
+
+      const dx = end.x - start.x;
+      const dz = end.z - start.z;
+      const orientation = Math.abs(dx) >= Math.abs(dz) ? 1 : 2;
+      const steps = Math.max(1, Math.ceil(Math.hypot(dx, dz) / (cellSize * 0.45)));
+      for (let step = 0; step <= steps; step += 1) {
+        const t = step / steps;
+        const x = start.x + dx * t;
+        const z = start.z + dz * t;
+        if (x < minX || x >= maxX || z < minZ || z >= maxZ) continue;
+        const column = Math.floor((x - minX) / cellSize);
+        const row = Math.floor((z - minZ) / cellSize);
+        roadCells[row * columns + column] |= orientation;
+      }
+    }
+  }
+
+  const denseCells = new Uint8Array(columns * rows);
+  for (let row = 0; row < rows; row += 1) {
+    for (let column = 0; column < columns; column += 1) {
+      let occupied = 0;
+      let orientations = 0;
+      for (let offsetRow = -2; offsetRow <= 2; offsetRow += 1) {
+        const sampleRow = row + offsetRow;
+        if (sampleRow < 0 || sampleRow >= rows) continue;
+        for (let offsetColumn = -2; offsetColumn <= 2; offsetColumn += 1) {
+          const sampleColumn = column + offsetColumn;
+          if (sampleColumn < 0 || sampleColumn >= columns) continue;
+          const value = roadCells[sampleRow * columns + sampleColumn];
+          if (value === 0) continue;
+          occupied += 1;
+          orientations |= value;
+        }
+      }
+      if (occupied >= 5 && orientations === 3) denseCells[row * columns + column] = 1;
+    }
+  }
+
+  const cells = new Uint8Array(columns * rows);
+  let count = 0;
+  for (let row = 0; row < rows; row += 1) {
+    for (let column = 0; column < columns; column += 1) {
+      let developed = false;
+      for (let offsetRow = -1; offsetRow <= 1 && !developed; offsetRow += 1) {
+        const sampleRow = row + offsetRow;
+        if (sampleRow < 0 || sampleRow >= rows) continue;
+        for (let offsetColumn = -1; offsetColumn <= 1; offsetColumn += 1) {
+          const sampleColumn = column + offsetColumn;
+          if (sampleColumn < 0 || sampleColumn >= columns) continue;
+          if (denseCells[sampleRow * columns + sampleColumn] === 1) {
+            developed = true;
+            break;
+          }
+        }
+      }
+      if (!developed) continue;
+      cells[row * columns + column] = 1;
+      count += 1;
+    }
+  }
+
+  return { cells, count, columns, rows, cellSize, minX, maxX, minZ, maxZ };
+}
+
 function mergeOsmVectorTiles(vectorTiles) {
-  const merged = { layers: createEmptyOsmLayers() };
+  const merged = {
+    layers: createEmptyOsmLayers(),
+    vegetationMask: createEmptyOsmVegetationMask()
+  };
   for (const vectorTile of vectorTiles) {
     for (const [layerName, layer] of Object.entries(vectorTile.layers ?? {})) {
       merged.layers[layerName].lines.push(...(layer.lines ?? []));
       merged.layers[layerName].points.push(...(layer.points ?? []));
     }
+    merged.vegetationMask.areas.push(...(vectorTile.vegetationMask?.areas ?? []));
   }
   return merged;
+}
+
+function createEmptyOsmVegetationMask() {
+  return { areas: [] };
+}
+
+function appendGeoJsonToOsmVegetationMask(mask, layerName, properties, geoJsonFeature, worldFile) {
+  const geometry = geoJsonFeature.geometry;
+  if (!geometry) return;
+
+  if (layerName === 'buildings'
+    || ((layerName === 'land' || layerName === 'sites')
+      && OSM_VEGETATION_BLOCK_LAND_KINDS.has(properties.kind))) {
+    appendGeoJsonPolygonRings(mask.areas, geometry, worldFile);
+  }
+}
+
+function appendGeoJsonPolygonRings(target, geometry, worldFile) {
+  const appendOuterRing = (coordinates) => {
+    const pixelRing = coordinates
+      .filter(([longitude, latitude]) => Number.isFinite(longitude) && Number.isFinite(latitude))
+      .map(([longitude, latitude]) => {
+        const pixel = lonLatToPixel(longitude, latitude, worldFile);
+        return [pixel.x, pixel.y];
+      });
+    if (pixelRing.length >= 3) target.push(pixelRing);
+  };
+
+  if (geometry.type === 'Polygon') appendOuterRing(geometry.coordinates[0] ?? []);
+  else if (geometry.type === 'MultiPolygon') {
+    for (const polygon of geometry.coordinates) appendOuterRing(polygon[0] ?? []);
+  }
 }
 
 function summarizeVectorTileFeatures(vectorTile) {
@@ -1568,10 +1799,12 @@ function mergeOsmFeatureCounts(target, source) {
 
 function createEmptyOsmLayers() {
   return {
+    osm_roads_major: { lines: [], points: [] },
     osm_roads: { lines: [], points: [] },
     osm_railways: { lines: [], points: [] },
     osm_water_lines: { lines: [], points: [] },
     osm_water_areas: { lines: [], points: [] },
+    osm_urban_areas: { lines: [], points: [] },
     osm_landuse: { lines: [], points: [] },
     osm_natural: { lines: [], points: [] },
     osm_places: { lines: [], points: [] },
@@ -1585,6 +1818,7 @@ function createEmptyOsmLayers() {
 
 function isOsmAreaCategory(category) {
   return category === 'osm_water_areas'
+    || category === 'osm_urban_areas'
     || category === 'osm_landuse'
     || category === 'osm_natural'
     || category === 'osm_buildings';
