@@ -316,6 +316,30 @@ class LocalXcmTerrain {
     this.seaGroup.visible = Boolean(enabled);
   }
 
+  setReliefVisibility(visible) {
+    this.reliefGroup.visible = Boolean(visible);
+  }
+
+  isReliefVisible() {
+    return this.reliefGroup.visible;
+  }
+
+  setSeaVisibility(visible) {
+    this.seaGroup.visible = Boolean(visible);
+  }
+
+  isSeaVisible() {
+    return this.seaGroup.visible;
+  }
+
+  setUrbanSceneryVisibility(visible) {
+    this.urbanScenery.group.visible = Boolean(visible);
+  }
+
+  isUrbanSceneryVisible() {
+    return this.urbanScenery.group.visible;
+  }
+
   setOsmOverlayEnabled(enabled) {
     const nextValue = Boolean(enabled);
     if (this.osmOverlayEnabled === nextValue) return;
