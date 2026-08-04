@@ -586,6 +586,9 @@ function setupLayerPanel() {
   const panel = document.querySelector('#layer-panel');
   if (!panel) return;
   const attribution = document.querySelector('#map-attribution');
+  const osmStatus = document.createElement('div');
+  osmStatus.className = 'layer-panel-hint';
+  panel.append(osmStatus);
   const appendSection = (title, hint = '') => {
     const heading = document.createElement('div');
     heading.className = 'layer-panel-section';
@@ -608,6 +611,27 @@ function setupLayerPanel() {
     panel.append(label);
     return input;
   };
+  const appendSubgroup = () => {
+    const group = document.createElement('div');
+    group.className = 'layer-panel-subgroup';
+    panel.append(group);
+    return group;
+  };
+  const appendSubOption = ({ root, labelText, checked = true, note = '', onChange = null }) => {
+    const label = document.createElement('label');
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = checked;
+    if (onChange) input.addEventListener('change', () => onChange(input.checked));
+    label.append(input, document.createTextNode(labelText));
+    root.append(label);
+    if (note) {
+      const hint = document.createElement('div');
+      hint.className = 'layer-panel-option-note';
+      hint.textContent = note;
+      root.append(hint);
+    }
+  };
 
   const updateOsmAttribution = (enabled) => {
     if (!attribution) return;
@@ -616,17 +640,116 @@ function setupLayerPanel() {
       ? `Camada OSM ativa. ${terrain.getOsmAttributionHtml()}`
       : '';
   };
+  const updateOsmStatus = () => {
+    const summary = terrain.getOsmDebugSummary();
+    if (!summary.enabled) {
+      osmStatus.textContent = '';
+      return;
+    }
+    const pieces = [
+      `OSM chunks: ${summary.loadedChunks}`,
+      `tiles: ${summary.loadedTiles}`,
+      `vazios: ${summary.emptyChunks}`,
+      `falhas: ${summary.failedChunks}`,
+      `elementos: ${summary.totalFeatures}`,
+      `predios: ${summary.featureCounts.osm_buildings ?? 0}`,
+      `POIs: ${summary.featureCounts.osm_poi ?? 0}`
+    ];
+    if (summary.lastError) pieces.push(`erro: ${summary.lastError}`);
+    osmStatus.textContent = pieces.join(' | ');
+  };
 
-  appendSection('OpenStreetMap', 'O tile raster ja inclui ruas, agua, areas, rotulos e POIs do estilo padrao.');
+  appendSection('OpenStreetMap', 'Camadas vetoriais OSM reais, drapejadas separadamente sobre o relevo.');
+  const osmOptions = appendSubgroup();
+  const setOsmOptionsVisible = (visible) => {
+    osmOptions.hidden = !visible;
+  };
   const osmInput = appendCheckbox({
-    labelText: 'OpenStreetMap completo',
+    labelText: 'OpenStreetMap',
     checked: terrain.isOsmOverlayEnabled(),
     onChange(checked) {
       terrain.setOsmOverlayEnabled(checked);
       updateOsmAttribution(checked);
+      setOsmOptionsVisible(checked);
     }
   });
+  appendSubOption({
+    root: osmOptions,
+    labelText: 'Rodovias e ruas',
+    note: 'Camada vetorial OSM drapejada sobre o relevo.',
+    onChange(checked) {
+      terrain.setLayerVisibility('osm_roads', checked);
+    }
+  });
+  appendSubOption({
+    root: osmOptions,
+    labelText: 'Ferrovias',
+    onChange(checked) {
+      terrain.setLayerVisibility('osm_railways', checked);
+    }
+  });
+  appendSubOption({
+    root: osmOptions,
+    labelText: 'Rios, lagos e costa',
+    onChange(checked) {
+      terrain.setLayerVisibility('osm_water_lines', checked);
+      terrain.setLayerVisibility('osm_water_areas', checked);
+    }
+  });
+  appendSubOption({
+    root: osmOptions,
+    labelText: 'Areas urbanas e uso do solo',
+    onChange(checked) {
+      terrain.setLayerVisibility('osm_landuse', checked);
+    }
+  });
+  appendSubOption({
+    root: osmOptions,
+    labelText: 'Edificios',
+    note: 'Detalhamento OSM de alta resolucao ao redor da decolagem.',
+    onChange(checked) {
+      terrain.setLayerVisibility('osm_buildings', checked);
+    }
+  });
+  appendSubOption({
+    root: osmOptions,
+    labelText: 'Florestas, parques e areas naturais',
+    onChange(checked) {
+      terrain.setLayerVisibility('osm_natural', checked);
+    }
+  });
+  appendSubOption({
+    root: osmOptions,
+    labelText: 'Nomes de cidades, bairros e lugares',
+    onChange(checked) {
+      terrain.setLayerVisibility('osm_places', checked);
+    }
+  });
+  appendSubOption({
+    root: osmOptions,
+    labelText: 'POIs e servicos',
+    onChange(checked) {
+      terrain.setLayerVisibility('osm_poi', checked);
+    }
+  });
+  appendSubOption({
+    root: osmOptions,
+    labelText: 'Aeroportos, pistas e helipontos',
+    onChange(checked) {
+      terrain.setLayerVisibility('osm_aeroway', checked);
+    }
+  });
+  appendSubOption({
+    root: osmOptions,
+    labelText: 'Limites e referencias administrativas',
+    onChange(checked) {
+      terrain.setLayerVisibility('osm_boundaries', checked);
+    }
+  });
+  setOsmOptionsVisible(osmInput.checked);
   updateOsmAttribution(osmInput.checked);
+  updateOsmStatus();
+  window.setInterval(updateOsmStatus, 1200);
 
   appendSection('Base Local', 'Camadas separadas do mapa XCM e da cenografia do jogo.');
   appendCheckbox({
