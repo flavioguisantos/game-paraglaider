@@ -123,8 +123,7 @@ export async function joinLaunchSession(launchId, identity, player) {
   const payload = await requestGameJson(`/api/game/launches/${encodeURIComponent(launchId)}/join`, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${identity.accessToken}`
+      'Content-Type': 'application/json'
     },
     body: JSON.stringify({
       playerId: identity.playerId,
@@ -138,8 +137,7 @@ export async function postPlayerState(launchId, identity, player) {
   const payload = await requestGameJson(`/api/game/launches/${encodeURIComponent(launchId)}/players/${encodeURIComponent(identity.playerId)}/state`, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${identity.accessToken}`
+      'Content-Type': 'application/json'
     },
     body: JSON.stringify({ player })
   });
@@ -150,8 +148,7 @@ export async function postPlayerResult(launchId, identity, status, result) {
   const payload = await requestGameJson(`/api/game/launches/${encodeURIComponent(launchId)}/players/${encodeURIComponent(identity.playerId)}/result`, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${identity.accessToken}`
+      'Content-Type': 'application/json'
     },
     body: JSON.stringify({ status, result })
   });
@@ -162,8 +159,7 @@ export async function leaveLaunchSession(launchId, identity) {
   return requestGameJson(`/api/game/launches/${encodeURIComponent(launchId)}/leave`, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${identity.accessToken}`
+      'Content-Type': 'application/json'
     },
     body: JSON.stringify({
       playerId: identity.playerId
