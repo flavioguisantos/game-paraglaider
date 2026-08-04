@@ -585,6 +585,27 @@ function setupVehicleSelection() {
 function setupLayerPanel() {
   const panel = document.querySelector('#layer-panel');
   if (!panel) return;
+  const attribution = document.querySelector('#map-attribution');
+
+  const updateOsmAttribution = (enabled) => {
+    if (!attribution) return;
+    attribution.hidden = !enabled;
+    attribution.innerHTML = enabled
+      ? `Camada OSM ativa. ${terrain.getOsmAttributionHtml()}`
+      : '';
+  };
+
+  const osmLabel = document.createElement('label');
+  const osmInput = document.createElement('input');
+  osmInput.type = 'checkbox';
+  osmInput.checked = false;
+  osmInput.addEventListener('change', () => {
+    terrain.setOsmOverlayEnabled(osmInput.checked);
+    updateOsmAttribution(osmInput.checked);
+  });
+  osmLabel.append(osmInput, document.createTextNode('OpenStreetMap raster'));
+  panel.append(osmLabel);
+  updateOsmAttribution(false);
 
   const toggles = [
     { label: 'Rodovias', layers: ['roadbig_line'] },

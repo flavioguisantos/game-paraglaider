@@ -758,6 +758,18 @@
         margin: 0;
       }
 
+      .map-attribution {
+        margin-top: 4px;
+        padding-top: 6px;
+        border-top: 1px solid rgba(255, 255, 255, 0.14);
+        font-size: 11px;
+        color: rgba(239, 247, 255, 0.82);
+      }
+
+      .map-attribution a {
+        color: #cfe8ff;
+      }
+
       @media (max-width: 640px) {
         .layer-panel {
           display: none;
@@ -1885,6 +1897,7 @@
     <div id="hud" class="hud"></div>
     <div id="layer-panel" class="layer-panel" aria-label="Camadas do mapa">
       <div class="layer-panel-title">Camadas</div>
+      <div id="map-attribution" class="map-attribution" hidden></div>
     </div>
     <button id="camera-toggle" class="camera-toggle" type="button" title="Camera: externa (C alterna)" aria-label="Alternar camera externa/visao do piloto">📷</button>
     <button id="restart-game" class="restart-button" type="button" title="Reiniciar jogo" aria-label="Reiniciar jogo">↻</button>
