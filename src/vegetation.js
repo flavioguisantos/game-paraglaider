@@ -47,6 +47,7 @@ class Vegetation {
     this.lastCenter = null;
     this.lastVectorRevision = 0;
     this.retryAt = 0;
+    this.blockedByMapCount = 0;
     this.group = new THREE.Group();
     this.group.name = 'InstancedVegetation';
 
@@ -96,6 +97,7 @@ class Vegetation {
   reset() {
     this.lastCenter = null;
     this.retryAt = 0;
+    this.blockedByMapCount = 0;
     this.treeMesh.count = 0;
     this.collisionTrees = [];
     this.treeMesh.instanceMatrix.needsUpdate = true;
@@ -119,6 +121,13 @@ class Vegetation {
     return null;
   }
 
+  getDebugSummary() {
+    return {
+      treeCount: this.treeMesh.count,
+      blockedByMapCount: this.blockedByMapCount
+    };
+  }
+
   rebuild(center) {
     const {
       cellSize, radius, presenceThreshold, maxForestHeight,
@@ -131,6 +140,7 @@ class Vegetation {
     const maxCellZ = Math.floor((center.z + radius) / cellSize);
     const radiusSq = radius * radius;
     let count = 0;
+    let blockedByMapCount = 0;
     const collisionTrees = [];
 
     for (let cellZ = minCellZ; cellZ <= maxCellZ && count < maxInstances; cellZ += 1) {
@@ -157,7 +167,10 @@ class Vegetation {
         if (this.terrain.isSeaAt?.(x, z)) continue;
         if (this.terrain.isCoastalSandAt?.(x, z)) continue;
         // Nada de arvore sobre ruas, rodovias, ferrovias ou manchas de cidade.
-        if (this.terrain.isUrbanBlockedAt?.(x, z)) continue;
+        if (this.terrain.isUrbanBlockedAt?.(x, z)) {
+          blockedByMapCount += 1;
+          continue;
+        }
 
         const scale = 0.7 + hashCell(cellX, cellZ, 3) * 0.8;
         const heightScale = scale * (0.85 + hashCell(cellX, cellZ, 4) * 0.4);
@@ -182,6 +195,7 @@ class Vegetation {
     }
 
     this.collisionTrees = collisionTrees;
+    this.blockedByMapCount = blockedByMapCount;
     this.treeMesh.count = count;
     this.treeMesh.instanceMatrix.needsUpdate = true;
     if (this.treeMesh.instanceColor) this.treeMesh.instanceColor.needsUpdate = true;

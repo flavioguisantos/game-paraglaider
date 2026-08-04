@@ -327,7 +327,7 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('offline', () => {
   endRadioTransmission('network_offline');
 });
-setupLayerPanel();
+const layerPanelController = setupLayerPanel();
 setupCameraToggle();
 setupFirstPersonMouseLook();
 setupTouchCameraLook();
@@ -584,21 +584,32 @@ function setupVehicleSelection() {
 // Painel de teste: liga/desliga cada camada vetorial do mapa.
 function setupLayerPanel() {
   const panel = document.querySelector('#layer-panel');
-  if (!panel) return;
+  if (!panel) return null;
+  const content = panel.querySelector('#layer-panel-content') ?? panel;
+  const toggle = panel.querySelector('#layer-panel-toggle');
+  const setCollapsed = (collapsed) => {
+    panel.classList.toggle('is-collapsed', collapsed);
+    toggle?.setAttribute('aria-expanded', String(!collapsed));
+  };
+  toggle?.addEventListener('click', () => {
+    setCollapsed(!panel.classList.contains('is-collapsed'));
+  });
+  setCollapsed(panel.classList.contains('is-collapsed'));
+
   const attribution = document.querySelector('#map-attribution');
   const osmStatus = document.createElement('div');
   osmStatus.className = 'layer-panel-hint';
-  panel.append(osmStatus);
+  content.append(osmStatus);
   const appendSection = (title, hint = '') => {
     const heading = document.createElement('div');
     heading.className = 'layer-panel-section';
     heading.textContent = title;
-    panel.append(heading);
+    content.append(heading);
     if (hint) {
       const paragraph = document.createElement('p');
       paragraph.className = 'layer-panel-hint';
       paragraph.textContent = hint;
-      panel.append(paragraph);
+      content.append(paragraph);
     }
   };
   const appendCheckbox = ({ labelText, checked, onChange }) => {
@@ -608,13 +619,13 @@ function setupLayerPanel() {
     input.checked = checked;
     input.addEventListener('change', () => onChange(input.checked));
     label.append(input, document.createTextNode(labelText));
-    panel.append(label);
+    content.append(label);
     return input;
   };
   const appendSubgroup = () => {
     const group = document.createElement('div');
     group.className = 'layer-panel-subgroup';
-    panel.append(group);
+    content.append(group);
     return group;
   };
   const appendSubOption = ({ root, labelText, checked = true, note = '', onChange = null }) => {
@@ -642,6 +653,7 @@ function setupLayerPanel() {
   };
   const updateOsmStatus = () => {
     const summary = terrain.getOsmDebugSummary();
+    const vegetationSummary = vegetation.getDebugSummary();
     if (!summary.enabled) {
       osmStatus.textContent = '';
       return;
@@ -652,8 +664,12 @@ function setupLayerPanel() {
       `vazios: ${summary.emptyChunks}`,
       `falhas: ${summary.failedChunks}`,
       `elementos: ${summary.totalFeatures}`,
+      `rodovias: ${summary.featureCounts.osm_roads_major ?? 0}`,
       `predios: ${summary.featureCounts.osm_buildings ?? 0}`,
-      `POIs: ${summary.featureCounts.osm_poi ?? 0}`
+      `POIs: ${summary.featureCounts.osm_poi ?? 0}`,
+      `mascara: ${summary.vegetationMaskAreas} areas / ${summary.vegetationMaskRoads} vias`,
+      `quadras: ${summary.inferredUrbanCells}`,
+      `arvores removidas: ${vegetationSummary.blockedByMapCount}`
     ];
     if (summary.lastError) pieces.push(`erro: ${summary.lastError}`);
     osmStatus.textContent = pieces.join(' | ');
@@ -678,6 +694,7 @@ function setupLayerPanel() {
     labelText: 'Rodovias e ruas',
     note: 'Camada vetorial OSM drapejada sobre o relevo.',
     onChange(checked) {
+      terrain.setLayerVisibility('osm_roads_major', checked);
       terrain.setLayerVisibility('osm_roads', checked);
     }
   });
@@ -700,6 +717,8 @@ function setupLayerPanel() {
     root: osmOptions,
     labelText: 'Areas urbanas e uso do solo',
     onChange(checked) {
+      terrain.setLayerVisibility('osm_urban_areas', checked);
+      terrain.setLayerVisibility('osm_urban_inferred', checked);
       terrain.setLayerVisibility('osm_landuse', checked);
     }
   });
@@ -809,7 +828,9 @@ function setupLayerPanel() {
     orographicLift.setAssistVisuals(appState.assistVisuals);
   });
   realisticLabel.append(realisticInput, document.createTextNode('Modo realista (sem ajudas)'));
-  panel.append(realisticLabel);
+  content.append(realisticLabel);
+
+  return { setCollapsed };
 }
 
 async function startFlight() {
@@ -905,6 +926,7 @@ async function startFlight() {
     canopyColor: `#${selectedColor.toString(16).padStart(6, '0')}`
   });
   document.body.classList.add('is-flying');
+  layerPanelController?.setCollapsed(true);
   document.body.classList.remove('round-ended');
   adventureMusic.start();
   clock.start();

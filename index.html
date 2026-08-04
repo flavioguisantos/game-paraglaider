@@ -727,8 +727,6 @@
         position: fixed;
         top: 16px;
         right: 16px;
-        display: grid;
-        gap: 5px;
         max-width: 190px;
         padding: 10px 12px;
         color: #f7fbff;
@@ -741,8 +739,45 @@
       }
 
       .layer-panel-title {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 0;
+        color: inherit;
+        background: transparent;
+        border: 0;
         font-weight: 700;
         font-size: 13px;
+        font-family: inherit;
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .layer-panel-title:focus-visible {
+        outline: 2px solid #ffd166;
+        outline-offset: 4px;
+      }
+
+      .layer-panel-chevron {
+        display: inline-block;
+        font-size: 12px;
+        transition: transform 160ms ease;
+      }
+
+      .layer-panel.is-collapsed .layer-panel-chevron {
+        transform: rotate(-90deg);
+      }
+
+      .layer-panel-content {
+        display: grid;
+        gap: 5px;
+        margin-top: 7px;
+      }
+
+      .layer-panel.is-collapsed .layer-panel-content {
+        display: none;
       }
 
       .layer-panel-section {
@@ -1275,9 +1310,15 @@
 
       .start-panel {
         position: fixed;
-        right: 24px;
-        bottom: 24px;
+        top: 50%;
+        left: 50%;
+        right: auto;
+        bottom: auto;
+        transform: translate(-50%, -50%);
         width: min(320px, calc(100vw - 48px));
+        max-height: calc(100vh - 48px);
+        overflow-y: auto;
+        box-sizing: border-box;
         padding: 16px;
         color: #f7fbff;
         background: rgba(16, 31, 42, 0.78);
@@ -1666,9 +1707,11 @@
         }
 
         .start-panel {
+          top: auto;
           left: 12px;
           right: 12px;
           bottom: max(12px, env(safe-area-inset-bottom));
+          transform: none;
           width: auto;
           padding: 14px;
         }
@@ -1933,8 +1976,19 @@
     <canvas id="game"></canvas>
     <div id="hud" class="hud"></div>
     <div id="layer-panel" class="layer-panel" aria-label="Camadas do mapa">
-      <div class="layer-panel-title">Camadas</div>
-      <div id="map-attribution" class="map-attribution" hidden></div>
+      <button
+        id="layer-panel-toggle"
+        class="layer-panel-title"
+        type="button"
+        aria-expanded="true"
+        aria-controls="layer-panel-content"
+      >
+        <span>Camadas</span>
+        <span class="layer-panel-chevron" aria-hidden="true">▼</span>
+      </button>
+      <div id="layer-panel-content" class="layer-panel-content">
+        <div id="map-attribution" class="map-attribution" hidden></div>
+      </div>
     </div>
     <button id="camera-toggle" class="camera-toggle" type="button" title="Camera: externa (C alterna)" aria-label="Alternar camera externa/visao do piloto">📷</button>
     <button id="restart-game" class="restart-button" type="button" title="Reiniciar jogo" aria-label="Reiniciar jogo">↻</button>
