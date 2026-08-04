@@ -13,9 +13,6 @@ const requiredPaths = [
   'mapas/processed/BRA_SUDESTE_HighRes/terrain-rgb',
   'mapas/processed/BRA_SUDESTE_HighRes/vectors',
   'node_modules/fflate/esm/browser.js',
-  'node_modules/pbf/index.js',
-  'node_modules/@mapbox/vector-tile/index.js',
-  'node_modules/@mapbox/point-geometry/index.js',
   'node_modules/three/build',
   'node_modules/three/examples/jsm'
 ];
@@ -42,9 +39,6 @@ fs.cpSync(path.join(rootDir, 'image'), path.join(distDir, 'image'), {
 copyDirectory('assets', 'assets');
 copyDirectory('mapas/processed', 'mapas/processed');
 copyFile('node_modules/fflate/esm/browser.js', 'vendor/fflate/browser.js');
-copyFile('node_modules/pbf/index.js', 'vendor/pbf/index.js');
-copyFile('node_modules/@mapbox/vector-tile/index.js', 'vendor/vector-tile/index.js');
-copyFile('node_modules/@mapbox/point-geometry/index.js', 'vendor/point-geometry/index.js');
 copyDirectory('node_modules/three/build', 'vendor/three');
 copyDirectory('node_modules/three/examples/jsm', 'vendor/three/addons');
 

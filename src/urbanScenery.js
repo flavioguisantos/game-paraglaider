@@ -20,18 +20,9 @@ const VEGETATION_BLOCK_ROADS = [
   { layer: 'railway_line', widthMeters: 6 }
 ];
 const VEGETATION_ROAD_MARGIN_METERS = 7;
-const VEGETATION_ROAD_BUCKET_METERS = 160;
-const OSM_VEGETATION_MASK_CELL_METERS = 24;
-const OSM_VEGETATION_BLOCK_LINES = [
-  { layer: 'osm_roads_major', widthMeters: 26 },
-  { layer: 'osm_roads', widthMeters: 12 },
-  { layer: 'osm_railways', widthMeters: 6 },
-  { layer: 'osm_aeroway', widthMeters: 16 }
-];
 
 // Mascara de bloqueio derivada do vectorTile de cada chunk (cache por chunk).
 const blockMaskCache = new WeakMap();
-const osmBlockMaskCache = new WeakMap();
 
 const HOUSE_COLORS = [
   new THREE.Color(0xd8d1c5),
@@ -163,12 +154,6 @@ class UrbanScenery {
     this.chunks.delete(key);
   }
 
-  invalidateBlockMask(chunk) {
-    if (!chunk) return;
-    blockMaskCache.delete(chunk);
-    osmBlockMaskCache.delete(chunk);
-  }
-
   update(delta) {
     if (this.vehicles.length === 0) return;
 
@@ -190,7 +175,9 @@ class UrbanScenery {
   // sobre/perto de estradas e ferrovias vetoriais.
   isBlockedAt(x, z, chunk) {
     const mask = this.getBlockMask(chunk);
-    if (mask?.rings.length > 0) {
+    if (!mask) return false;
+
+    if (mask.rings.length > 0) {
       const px = this.terrain.centerPixel.x + x / this.terrain.worldUnitsPerPixelX;
       const py = this.terrain.centerPixel.y + z / this.terrain.worldUnitsPerPixelY;
       for (const ring of mask.rings) {
@@ -203,24 +190,21 @@ class UrbanScenery {
       }
     }
 
-    if (mask) {
-      const bucketX = Math.floor(x / mask.roadBucketSize);
-      const bucketZ = Math.floor(z / mask.roadBucketSize);
-      const nearbyRoads = mask.roadBuckets.get(getRoadBucketKey(bucketX, bucketZ)) ?? [];
-      for (const segment of nearbyRoads) {
-        if (x < segment.minX || x > segment.maxX || z < segment.minZ || z > segment.maxZ) continue;
-        if (distanceToSegment(x, z, segment.ax, segment.az, segment.bx, segment.bz) < segment.margin) {
-          return true;
-        }
+    for (const segment of mask.roads) {
+      if (x < segment.minX || x > segment.maxX || z < segment.minZ || z > segment.maxZ) continue;
+      if (distanceToSegment(x, z, segment.ax, segment.az, segment.bx, segment.bz) < segment.margin) {
+        return true;
       }
     }
-    return this.isOsmBlockedAt(x, z, chunk);
+    return false;
   }
 
   getBlockMask(chunk) {
     if (blockMaskCache.has(chunk)) return blockMaskCache.get(chunk);
 
-    const layers = chunk.vectorTile?.layers ?? {};
+    const layers = chunk.vectorTile?.layers;
+    if (!layers) return null;
+
     const rings = chainSegmentsIntoRings(layers.city_area?.lines ?? [])
       .filter((ring) => ring.length >= 3)
       .map((points) => ({ points, bounds: getRingBounds(points) }));
@@ -229,42 +213,25 @@ class UrbanScenery {
     for (const { layer, widthMeters } of VEGETATION_BLOCK_ROADS) {
       const margin = (widthMeters / 2 + VEGETATION_ROAD_MARGIN_METERS) * this.terrain.worldUnitsPerMeter;
       for (const line of layers[layer]?.lines ?? []) {
-        roads.push(createVegetationRoadSegment(line, margin, this.terrain));
+        const start = this.terrain.pixelToWorldXZ(line[0], line[1]);
+        const end = this.terrain.pixelToWorldXZ(line[2], line[3]);
+        roads.push({
+          ax: start.x,
+          az: start.z,
+          bx: end.x,
+          bz: end.z,
+          margin,
+          // Caixa expandida pela margem para rejeitar barato a maioria dos pontos.
+          minX: Math.min(start.x, end.x) - margin,
+          maxX: Math.max(start.x, end.x) + margin,
+          minZ: Math.min(start.z, end.z) - margin,
+          maxZ: Math.max(start.z, end.z) + margin
+        });
       }
     }
-    const roadBucketSize = VEGETATION_ROAD_BUCKET_METERS * this.terrain.worldUnitsPerMeter;
-    const mask = rings.length === 0 && roads.length === 0
-      ? null
-      : {
-          rings,
-          roads,
-          roadBucketSize,
-          roadBuckets: buildRoadBuckets(roads, roadBucketSize)
-        };
+
+    const mask = rings.length === 0 && roads.length === 0 ? null : { rings, roads };
     blockMaskCache.set(chunk, mask);
-    return mask;
-  }
-
-  isOsmBlockedAt(x, z, chunk) {
-    const mask = this.getOsmBlockMask(chunk);
-    if (mask && x >= mask.minX && x < mask.maxX && z >= mask.minZ && z < mask.maxZ) {
-      const column = Math.floor((x - mask.minX) / mask.cellSize);
-      const row = Math.floor((z - mask.minZ) / mask.cellSize);
-      if (mask.cells[row * mask.columns + column] === 1) return true;
-    }
-
-    const coverage = chunk.osmUrbanCoverage;
-    if (!coverage || x < coverage.minX || x >= coverage.maxX
-      || z < coverage.minZ || z >= coverage.maxZ) return false;
-    const column = Math.floor((x - coverage.minX) / coverage.cellSize);
-    const row = Math.floor((z - coverage.minZ) / coverage.cellSize);
-    return coverage.cells[row * coverage.columns + column] === 1;
-  }
-
-  getOsmBlockMask(chunk) {
-    if (osmBlockMaskCache.has(chunk)) return osmBlockMaskCache.get(chunk);
-    const mask = buildOsmVegetationOccupancyMask(chunk, this.terrain);
-    osmBlockMaskCache.set(chunk, mask);
     return mask;
   }
 
@@ -647,151 +614,6 @@ function isNearRoad(x, z, chunk, terrain, threshold) {
     }
   }
   return false;
-}
-
-function createVegetationRoadSegment(line, margin, terrain) {
-  const start = terrain.pixelToWorldXZ(line[0], line[1]);
-  const end = terrain.pixelToWorldXZ(line[2], line[3]);
-  return {
-    ax: start.x,
-    az: start.z,
-    bx: end.x,
-    bz: end.z,
-    margin,
-    minX: Math.min(start.x, end.x) - margin,
-    maxX: Math.max(start.x, end.x) + margin,
-    minZ: Math.min(start.z, end.z) - margin,
-    maxZ: Math.max(start.z, end.z) + margin
-  };
-}
-
-function buildRoadBuckets(roads, bucketSize) {
-  const buckets = new Map();
-  for (const road of roads) {
-    const minBucketX = Math.floor(road.minX / bucketSize);
-    const maxBucketX = Math.floor(road.maxX / bucketSize);
-    const minBucketZ = Math.floor(road.minZ / bucketSize);
-    const maxBucketZ = Math.floor(road.maxZ / bucketSize);
-    for (let bucketZ = minBucketZ; bucketZ <= maxBucketZ; bucketZ += 1) {
-      for (let bucketX = minBucketX; bucketX <= maxBucketX; bucketX += 1) {
-        const key = getRoadBucketKey(bucketX, bucketZ);
-        if (!buckets.has(key)) buckets.set(key, []);
-        buckets.get(key).push(road);
-      }
-    }
-  }
-  return buckets;
-}
-
-function getRoadBucketKey(x, z) {
-  return `${x}:${z}`;
-}
-
-function buildOsmVegetationOccupancyMask(chunk, terrain) {
-  const vectorTile = chunk.osmVectorTile;
-  if (!vectorTile) return null;
-
-  const center = terrain.getChunkCenterWorld(chunk.tileX, chunk.tileY);
-  const minX = center.x - terrain.chunkWorldWidth / 2;
-  const maxX = center.x + terrain.chunkWorldWidth / 2;
-  const minZ = center.z - terrain.chunkWorldDepth / 2;
-  const maxZ = center.z + terrain.chunkWorldDepth / 2;
-  const cellSize = OSM_VEGETATION_MASK_CELL_METERS * terrain.worldUnitsPerMeter;
-  const columns = Math.ceil((maxX - minX) / cellSize);
-  const rows = Math.ceil((maxZ - minZ) / cellSize);
-  const cells = new Uint8Array(columns * rows);
-
-  const clampColumn = (value) => THREE.MathUtils.clamp(Math.floor((value - minX) / cellSize), 0, columns - 1);
-  const clampRow = (value) => THREE.MathUtils.clamp(Math.floor((value - minZ) / cellSize), 0, rows - 1);
-  const markWorldPoint = (x, z) => {
-    if (x < minX || x >= maxX || z < minZ || z >= maxZ) return;
-    cells[clampRow(z) * columns + clampColumn(x)] = 1;
-  };
-
-  for (const points of vectorTile.vegetationMask?.areas ?? []) {
-    if (points.length < 3) continue;
-    const worldRing = points.map(([pixelX, pixelY]) => terrain.pixelToWorldXZ(pixelX, pixelY));
-    const bounds = getWorldRingBounds(worldRing);
-    if (bounds.maxX < minX || bounds.minX > maxX || bounds.maxZ < minZ || bounds.minZ > maxZ) continue;
-
-    const minColumn = clampColumn(bounds.minX);
-    const maxColumn = clampColumn(bounds.maxX);
-    const minRow = clampRow(bounds.minZ);
-    const maxRow = clampRow(bounds.maxZ);
-    for (let row = minRow; row <= maxRow; row += 1) {
-      const sampleZ = minZ + (row + 0.5) * cellSize;
-      for (let column = minColumn; column <= maxColumn; column += 1) {
-        const sampleX = minX + (column + 0.5) * cellSize;
-        if (pointInWorldPolygon(sampleX, sampleZ, worldRing)) cells[row * columns + column] = 1;
-      }
-    }
-
-    // Edificios menores que uma celula ainda precisam bloquear a celula ocupada.
-    let centroidX = 0;
-    let centroidZ = 0;
-    for (const point of worldRing) {
-      centroidX += point.x;
-      centroidZ += point.z;
-      markWorldPoint(point.x, point.z);
-    }
-    markWorldPoint(centroidX / worldRing.length, centroidZ / worldRing.length);
-  }
-
-  for (const { layer, widthMeters } of OSM_VEGETATION_BLOCK_LINES) {
-    const margin = (widthMeters / 2 + VEGETATION_ROAD_MARGIN_METERS) * terrain.worldUnitsPerMeter;
-    const cellTolerance = margin + cellSize * Math.SQRT1_2;
-    for (const line of vectorTile.layers?.[layer]?.lines ?? []) {
-      const start = terrain.pixelToWorldXZ(line[0], line[1]);
-      const end = terrain.pixelToWorldXZ(line[2], line[3]);
-      const segmentMinX = Math.min(start.x, end.x) - cellTolerance;
-      const segmentMaxX = Math.max(start.x, end.x) + cellTolerance;
-      const segmentMinZ = Math.min(start.z, end.z) - cellTolerance;
-      const segmentMaxZ = Math.max(start.z, end.z) + cellTolerance;
-      if (segmentMaxX < minX || segmentMinX > maxX || segmentMaxZ < minZ || segmentMinZ > maxZ) continue;
-
-      const minColumn = clampColumn(segmentMinX);
-      const maxColumn = clampColumn(segmentMaxX);
-      const minRow = clampRow(segmentMinZ);
-      const maxRow = clampRow(segmentMaxZ);
-      for (let row = minRow; row <= maxRow; row += 1) {
-        const sampleZ = minZ + (row + 0.5) * cellSize;
-        for (let column = minColumn; column <= maxColumn; column += 1) {
-          const sampleX = minX + (column + 0.5) * cellSize;
-          if (distanceToSegment(sampleX, sampleZ, start.x, start.z, end.x, end.z) <= cellTolerance) {
-            cells[row * columns + column] = 1;
-          }
-        }
-      }
-    }
-  }
-
-  return { cells, columns, rows, cellSize, minX, maxX, minZ, maxZ };
-}
-
-function getWorldRingBounds(points) {
-  let minX = Infinity;
-  let minZ = Infinity;
-  let maxX = -Infinity;
-  let maxZ = -Infinity;
-  for (const point of points) {
-    minX = Math.min(minX, point.x);
-    minZ = Math.min(minZ, point.z);
-    maxX = Math.max(maxX, point.x);
-    maxZ = Math.max(maxZ, point.z);
-  }
-  return { minX, minZ, maxX, maxZ };
-}
-
-function pointInWorldPolygon(x, z, ring) {
-  let inside = false;
-  for (let index = 0, previous = ring.length - 1; index < ring.length; previous = index, index += 1) {
-    const current = ring[index];
-    const prior = ring[previous];
-    const intersects = ((current.z > z) !== (prior.z > z))
-      && x < ((prior.x - current.x) * (z - current.z)) / (prior.z - current.z) + current.x;
-    if (intersects) inside = !inside;
-  }
-  return inside;
 }
 
 function distanceToSegment(px, pz, ax, az, bx, bz) {

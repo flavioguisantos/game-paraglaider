@@ -327,7 +327,7 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('offline', () => {
   endRadioTransmission('network_offline');
 });
-const layerPanelController = setupLayerPanel();
+setupLayerPanel();
 setupCameraToggle();
 setupFirstPersonMouseLook();
 setupTouchCameraLook();
@@ -584,216 +584,8 @@ function setupVehicleSelection() {
 // Painel de teste: liga/desliga cada camada vetorial do mapa.
 function setupLayerPanel() {
   const panel = document.querySelector('#layer-panel');
-  if (!panel) return null;
-  const content = panel.querySelector('#layer-panel-content') ?? panel;
-  const toggle = panel.querySelector('#layer-panel-toggle');
-  const setCollapsed = (collapsed) => {
-    panel.classList.toggle('is-collapsed', collapsed);
-    toggle?.setAttribute('aria-expanded', String(!collapsed));
-  };
-  toggle?.addEventListener('click', () => {
-    setCollapsed(!panel.classList.contains('is-collapsed'));
-  });
-  setCollapsed(panel.classList.contains('is-collapsed'));
+  if (!panel) return;
 
-  const attribution = document.querySelector('#map-attribution');
-  const osmStatus = document.createElement('div');
-  osmStatus.className = 'layer-panel-hint';
-  content.append(osmStatus);
-  const appendSection = (title, hint = '') => {
-    const heading = document.createElement('div');
-    heading.className = 'layer-panel-section';
-    heading.textContent = title;
-    content.append(heading);
-    if (hint) {
-      const paragraph = document.createElement('p');
-      paragraph.className = 'layer-panel-hint';
-      paragraph.textContent = hint;
-      content.append(paragraph);
-    }
-  };
-  const appendCheckbox = ({ labelText, checked, onChange }) => {
-    const label = document.createElement('label');
-    const input = document.createElement('input');
-    input.type = 'checkbox';
-    input.checked = checked;
-    input.addEventListener('change', () => onChange(input.checked));
-    label.append(input, document.createTextNode(labelText));
-    content.append(label);
-    return input;
-  };
-  const appendSubgroup = () => {
-    const group = document.createElement('div');
-    group.className = 'layer-panel-subgroup';
-    content.append(group);
-    return group;
-  };
-  const appendSubOption = ({ root, labelText, checked = true, note = '', onChange = null }) => {
-    const label = document.createElement('label');
-    const input = document.createElement('input');
-    input.type = 'checkbox';
-    input.checked = checked;
-    if (onChange) input.addEventListener('change', () => onChange(input.checked));
-    label.append(input, document.createTextNode(labelText));
-    root.append(label);
-    if (note) {
-      const hint = document.createElement('div');
-      hint.className = 'layer-panel-option-note';
-      hint.textContent = note;
-      root.append(hint);
-    }
-  };
-
-  const updateOsmAttribution = (enabled) => {
-    if (!attribution) return;
-    attribution.hidden = !enabled;
-    attribution.innerHTML = enabled
-      ? `Camada OSM ativa. ${terrain.getOsmAttributionHtml()}`
-      : '';
-  };
-  const updateOsmStatus = () => {
-    const summary = terrain.getOsmDebugSummary();
-    const vegetationSummary = vegetation.getDebugSummary();
-    if (!summary.enabled) {
-      osmStatus.textContent = '';
-      return;
-    }
-    const pieces = [
-      `OSM chunks: ${summary.loadedChunks}`,
-      `tiles: ${summary.loadedTiles}`,
-      `vazios: ${summary.emptyChunks}`,
-      `falhas: ${summary.failedChunks}`,
-      `elementos: ${summary.totalFeatures}`,
-      `rodovias: ${summary.featureCounts.osm_roads_major ?? 0}`,
-      `predios: ${summary.featureCounts.osm_buildings ?? 0}`,
-      `POIs: ${summary.featureCounts.osm_poi ?? 0}`,
-      `mascara: ${summary.vegetationMaskAreas} areas / ${summary.vegetationMaskRoads} vias`,
-      `quadras: ${summary.inferredUrbanCells}`,
-      `arvores removidas: ${vegetationSummary.blockedByMapCount}`
-    ];
-    if (summary.lastError) pieces.push(`erro: ${summary.lastError}`);
-    osmStatus.textContent = pieces.join(' | ');
-  };
-
-  appendSection('OpenStreetMap', 'Camadas vetoriais OSM reais, drapejadas separadamente sobre o relevo.');
-  const osmOptions = appendSubgroup();
-  const setOsmOptionsVisible = (visible) => {
-    osmOptions.hidden = !visible;
-  };
-  const osmInput = appendCheckbox({
-    labelText: 'OpenStreetMap',
-    checked: terrain.isOsmOverlayEnabled(),
-    onChange(checked) {
-      terrain.setOsmOverlayEnabled(checked);
-      updateOsmAttribution(checked);
-      setOsmOptionsVisible(checked);
-    }
-  });
-  appendSubOption({
-    root: osmOptions,
-    labelText: 'Rodovias e ruas',
-    note: 'Camada vetorial OSM drapejada sobre o relevo.',
-    onChange(checked) {
-      terrain.setLayerVisibility('osm_roads_major', checked);
-      terrain.setLayerVisibility('osm_roads', checked);
-    }
-  });
-  appendSubOption({
-    root: osmOptions,
-    labelText: 'Ferrovias',
-    onChange(checked) {
-      terrain.setLayerVisibility('osm_railways', checked);
-    }
-  });
-  appendSubOption({
-    root: osmOptions,
-    labelText: 'Rios, lagos e costa',
-    onChange(checked) {
-      terrain.setLayerVisibility('osm_water_lines', checked);
-      terrain.setLayerVisibility('osm_water_areas', checked);
-    }
-  });
-  appendSubOption({
-    root: osmOptions,
-    labelText: 'Areas urbanas e uso do solo',
-    onChange(checked) {
-      terrain.setLayerVisibility('osm_urban_areas', checked);
-      terrain.setLayerVisibility('osm_urban_inferred', checked);
-      terrain.setLayerVisibility('osm_landuse', checked);
-    }
-  });
-  appendSubOption({
-    root: osmOptions,
-    labelText: 'Edificios',
-    note: 'Detalhamento OSM de alta resolucao ao redor da decolagem.',
-    onChange(checked) {
-      terrain.setLayerVisibility('osm_buildings', checked);
-    }
-  });
-  appendSubOption({
-    root: osmOptions,
-    labelText: 'Florestas, parques e areas naturais',
-    onChange(checked) {
-      terrain.setLayerVisibility('osm_natural', checked);
-    }
-  });
-  appendSubOption({
-    root: osmOptions,
-    labelText: 'Nomes de cidades, bairros e lugares',
-    onChange(checked) {
-      terrain.setLayerVisibility('osm_places', checked);
-    }
-  });
-  appendSubOption({
-    root: osmOptions,
-    labelText: 'POIs e servicos',
-    onChange(checked) {
-      terrain.setLayerVisibility('osm_poi', checked);
-    }
-  });
-  appendSubOption({
-    root: osmOptions,
-    labelText: 'Aeroportos, pistas e helipontos',
-    onChange(checked) {
-      terrain.setLayerVisibility('osm_aeroway', checked);
-    }
-  });
-  appendSubOption({
-    root: osmOptions,
-    labelText: 'Limites e referencias administrativas',
-    onChange(checked) {
-      terrain.setLayerVisibility('osm_boundaries', checked);
-    }
-  });
-  setOsmOptionsVisible(osmInput.checked);
-  updateOsmAttribution(osmInput.checked);
-  updateOsmStatus();
-  window.setInterval(updateOsmStatus, 1200);
-
-  appendSection('Base Local', 'Camadas separadas do mapa XCM e da cenografia do jogo.');
-  appendCheckbox({
-    labelText: 'Relevo XCM',
-    checked: terrain.isReliefVisible(),
-    onChange(checked) {
-      terrain.setReliefVisibility(checked);
-    }
-  });
-  appendCheckbox({
-    labelText: 'Mar e costa',
-    checked: terrain.isSeaVisible(),
-    onChange(checked) {
-      terrain.setSeaVisibility(checked);
-    }
-  });
-  appendCheckbox({
-    labelText: 'Cenario urbano 3D',
-    checked: terrain.isUrbanSceneryVisible(),
-    onChange(checked) {
-      terrain.setUrbanSceneryVisibility(checked);
-    }
-  });
-
-  appendSection('Vetores Locais', 'Camadas do mapa atual que podem ser ligadas separadamente.');
   const toggles = [
     { label: 'Rodovias', layers: ['roadbig_line'] },
     { label: 'Estradas medias', layers: ['roadmedium_line'] },
@@ -806,18 +598,19 @@ function setupLayerPanel() {
   ];
 
   for (const toggle of toggles) {
-    appendCheckbox({
-      labelText: toggle.label,
-      checked: true,
-      onChange(checked) {
-        for (const layerName of toggle.layers) {
-          terrain.setLayerVisibility(layerName, checked);
-        }
+    const label = document.createElement('label');
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = true;
+    input.addEventListener('change', () => {
+      for (const layerName of toggle.layers) {
+        terrain.setLayerVisibility(layerName, input.checked);
       }
     });
+    label.append(input, document.createTextNode(toggle.label));
+    panel.append(label);
   }
 
-  appendSection('Gameplay');
   const realisticLabel = document.createElement('label');
   const realisticInput = document.createElement('input');
   realisticInput.type = 'checkbox';
@@ -828,9 +621,7 @@ function setupLayerPanel() {
     orographicLift.setAssistVisuals(appState.assistVisuals);
   });
   realisticLabel.append(realisticInput, document.createTextNode('Modo realista (sem ajudas)'));
-  content.append(realisticLabel);
-
-  return { setCollapsed };
+  panel.append(realisticLabel);
 }
 
 async function startFlight() {
@@ -926,7 +717,6 @@ async function startFlight() {
     canopyColor: `#${selectedColor.toString(16).padStart(6, '0')}`
   });
   document.body.classList.add('is-flying');
-  layerPanelController?.setCollapsed(true);
   document.body.classList.remove('round-ended');
   adventureMusic.start();
   clock.start();
