@@ -727,6 +727,8 @@
         position: fixed;
         top: 16px;
         right: 16px;
+        display: grid;
+        gap: 5px;
         max-width: 190px;
         padding: 10px 12px;
         color: #f7fbff;
@@ -739,62 +741,8 @@
       }
 
       .layer-panel-title {
-        width: 100%;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        padding: 0;
-        color: inherit;
-        background: transparent;
-        border: 0;
         font-weight: 700;
         font-size: 13px;
-        font-family: inherit;
-        text-align: left;
-        cursor: pointer;
-      }
-
-      .layer-panel-title:focus-visible {
-        outline: 2px solid #ffd166;
-        outline-offset: 4px;
-      }
-
-      .layer-panel-chevron {
-        display: inline-block;
-        font-size: 12px;
-        transition: transform 160ms ease;
-      }
-
-      .layer-panel.is-collapsed .layer-panel-chevron {
-        transform: rotate(-90deg);
-      }
-
-      .layer-panel-content {
-        display: grid;
-        gap: 5px;
-        margin-top: 7px;
-      }
-
-      .layer-panel.is-collapsed .layer-panel-content {
-        display: none;
-      }
-
-      .layer-panel-section {
-        margin-top: 6px;
-        padding-top: 6px;
-        border-top: 1px solid rgba(255, 255, 255, 0.1);
-        font-size: 11px;
-        font-weight: 700;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-        color: rgba(224, 239, 250, 0.76);
-      }
-
-      .layer-panel-hint {
-        margin: 0;
-        font-size: 11px;
-        color: rgba(231, 241, 248, 0.76);
       }
 
       .layer-panel label {
@@ -806,37 +754,8 @@
         user-select: none;
       }
 
-      .layer-panel-subgroup {
-        display: grid;
-        gap: 4px;
-        margin-left: 16px;
-        padding-left: 8px;
-        border-left: 1px solid rgba(255, 255, 255, 0.12);
-      }
-
-      .layer-panel-subgroup[hidden] {
-        display: none;
-      }
-
-      .layer-panel-option-note {
-        font-size: 11px;
-        color: rgba(231, 241, 248, 0.7);
-      }
-
       .layer-panel input {
         margin: 0;
-      }
-
-      .map-attribution {
-        margin-top: 4px;
-        padding-top: 6px;
-        border-top: 1px solid rgba(255, 255, 255, 0.14);
-        font-size: 11px;
-        color: rgba(239, 247, 255, 0.82);
-      }
-
-      .map-attribution a {
-        color: #cfe8ff;
       }
 
       @media (max-width: 640px) {
@@ -1310,15 +1229,9 @@
 
       .start-panel {
         position: fixed;
-        top: 50%;
-        left: 50%;
-        right: auto;
-        bottom: auto;
-        transform: translate(-50%, -50%);
+        right: 24px;
+        bottom: 24px;
         width: min(320px, calc(100vw - 48px));
-        max-height: calc(100vh - 48px);
-        overflow-y: auto;
-        box-sizing: border-box;
         padding: 16px;
         color: #f7fbff;
         background: rgba(16, 31, 42, 0.78);
@@ -1707,11 +1620,9 @@
         }
 
         .start-panel {
-          top: auto;
           left: 12px;
           right: 12px;
           bottom: max(12px, env(safe-area-inset-bottom));
-          transform: none;
           width: auto;
           padding: 14px;
         }
@@ -1963,9 +1874,6 @@
       {
         "imports": {
           "fflate": "/vendor/fflate/browser.js",
-          "pbf": "/vendor/pbf/index.js",
-          "@mapbox/vector-tile": "/vendor/vector-tile/index.js",
-          "@mapbox/point-geometry": "/vendor/point-geometry/index.js",
           "three": "/vendor/three/three.module.js",
           "three/addons/": "/vendor/three/addons/"
         }
@@ -1976,19 +1884,7 @@
     <canvas id="game"></canvas>
     <div id="hud" class="hud"></div>
     <div id="layer-panel" class="layer-panel" aria-label="Camadas do mapa">
-      <button
-        id="layer-panel-toggle"
-        class="layer-panel-title"
-        type="button"
-        aria-expanded="true"
-        aria-controls="layer-panel-content"
-      >
-        <span>Camadas</span>
-        <span class="layer-panel-chevron" aria-hidden="true">▼</span>
-      </button>
-      <div id="layer-panel-content" class="layer-panel-content">
-        <div id="map-attribution" class="map-attribution" hidden></div>
-      </div>
+      <div class="layer-panel-title">Camadas</div>
     </div>
     <button id="camera-toggle" class="camera-toggle" type="button" title="Camera: externa (C alterna)" aria-label="Alternar camera externa/visao do piloto">📷</button>
     <button id="restart-game" class="restart-button" type="button" title="Reiniciar jogo" aria-label="Reiniciar jogo">↻</button>
