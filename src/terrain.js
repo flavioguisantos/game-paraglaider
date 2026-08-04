@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { decompressSync } from 'fflate';
+import Pbf from 'pbf';
+import { VectorTile } from '@mapbox/vector-tile';
 import { createUrbanScenery } from './urbanScenery.js';
 import { DEFAULT_FLIGHT_LOCATION } from './flightLocations.js';
 
@@ -23,14 +25,16 @@ const DEFAULT_OPTIONS = {
   labelYOffset: 4,
   labelScale: 10,
   osmOverlayEnabled: true,
-  osmOverlayMaxZoom: 16,
-  osmOverlayMinZoom: 7
+  osmVectorTileUrl: 'https://vector.openstreetmap.org/shortbread_v1/{z}/{x}/{y}.mvt',
+  osmVectorZoom: 12,
+  osmDetailZoom: 14,
+  osmDetailTileRadius: 1,
+  osmRequestTimeoutMs: 15000
 };
 
 const TERRAIN_ASSET_VERSION = 'terrain-rgb-binary-5';
-const OSM_TILE_SIZE = 256;
-const OSM_TILE_SERVER = 'https://tile.openstreetmap.org';
 const OSM_ATTRIBUTION_HTML = '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors';
+const OSM_DETAIL_CATEGORIES = new Set(['osm_buildings', 'osm_poi', 'osm_landuse']);
 // A superficie do mar fica no nivel do mar original (y=0), como o relevo.
 const OCEAN_SURFACE_HEIGHT = 0;
 // Tamanho em unidades de mundo de um ciclo da textura de ondas do mar.
@@ -64,7 +68,19 @@ const VECTOR_LAYER_STYLES = {
   city_point: { type: 'point', color: 0xffffff, opacity: 1, yOffset: 3.5 },
   town_point: { type: 'point', color: 0xffffff, opacity: 0.92, yOffset: 3.2 },
   suburb_point: { type: 'point', color: 0xf0f4f8, opacity: 0.78, yOffset: 2.8 },
-  village_point: { type: 'point', color: 0xf0f4f8, opacity: 0.72, yOffset: 2.6 }
+  village_point: { type: 'point', color: 0xf0f4f8, opacity: 0.72, yOffset: 2.6 },
+  osm_roads: { type: 'ribbon', color: 0xf2c66d, widthMeters: 10, yOffset: 3.1, roughness: 0.84 },
+  osm_railways: { type: 'ribbon', color: 0xc9c1b7, widthMeters: 5, yOffset: 3.2, roughness: 0.88 },
+  osm_water_lines: { type: 'ribbon', color: 0x5eb5e7, widthMeters: 10, yOffset: 2.8, roughness: 0.28 },
+  osm_water_areas: { type: 'area', color: 0x4b91c7, opacity: 0.72, flat: false, yOffset: 2.3, roughness: 0.22 },
+  osm_landuse: { type: 'area', color: 0xc4b58d, opacity: 0.24, flat: false, yOffset: 1.8, roughness: 0.95 },
+  osm_natural: { type: 'area', color: 0x6fa46d, opacity: 0.2, flat: false, yOffset: 1.9, roughness: 0.96 },
+  osm_places: { type: 'point', color: 0xfafcff, opacity: 0.95, yOffset: 4.2 },
+  osm_poi: { type: 'point', color: 0xffe8a8, opacity: 0.92, yOffset: 3.6 },
+  osm_aeroway: { type: 'ribbon', color: 0xd8e0e8, widthMeters: 16, yOffset: 3.0, roughness: 0.7 },
+  osm_power: { type: 'ribbon', color: 0xff9b64, widthMeters: 4, yOffset: 3.5, roughness: 0.82 },
+  osm_boundaries: { type: 'ribbon', color: 0xf59ac1, widthMeters: 3, yOffset: 3.6, roughness: 0.9 },
+  osm_buildings: { type: 'area', color: 0xd8cec1, opacity: 0.3, flat: false, yOffset: 2.0, roughness: 0.9 }
 };
 
 export function createTerrain(options = {}) {
@@ -123,7 +139,15 @@ class LocalXcmTerrain {
     this.layerVisibility = new Map();
     this.osmOverlayEnabled = Boolean(config.osmOverlayEnabled);
     this.osmOverlayGroup.visible = this.osmOverlayEnabled;
-    this.osmOverlayZoom = null;
+    this.osmDebug = {
+      loadedChunks: 0,
+      loadedTiles: 0,
+      emptyChunks: 0,
+      failedChunks: 0,
+      lastError: '',
+      featureCounts: {}
+    };
+    this.osmTilePromises = new Map();
     this.centerRevision = 0;
     this.isReady = false;
 
@@ -361,6 +385,21 @@ class LocalXcmTerrain {
 
   isOsmOverlayEnabled() {
     return this.osmOverlayEnabled;
+  }
+
+  getOsmDebugSummary() {
+    const counts = this.osmDebug.featureCounts;
+    const totalFeatures = Object.values(counts).reduce((sum, value) => sum + value, 0);
+    return {
+      enabled: this.osmOverlayEnabled,
+      loadedChunks: this.osmDebug.loadedChunks,
+      loadedTiles: this.osmDebug.loadedTiles,
+      emptyChunks: this.osmDebug.emptyChunks,
+      failedChunks: this.osmDebug.failedChunks,
+      lastError: this.osmDebug.lastError,
+      totalFeatures,
+      featureCounts: { ...counts }
+    };
   }
 
   // As UVs dos quads de mar ja estao em coordenadas de mundo; basta a deriva
@@ -731,20 +770,102 @@ class LocalXcmTerrain {
     const key = getChunkKey(chunk.tileX, chunk.tileY);
 
     try {
-      const overlay = await this.createOsmOverlayMesh(chunk);
-      if (!overlay) return;
+      const vectorTile = await this.fetchOsmVectorTile(chunk);
+      const overlay = this.createVectorGroup(vectorTile, chunk);
       if (revision !== this.centerRevision || !this.chunks.has(key)) {
         disposeObject3D(overlay);
         return;
       }
 
+      const counts = summarizeVectorTileFeatures(vectorTile);
+      mergeOsmFeatureCounts(this.osmDebug.featureCounts, counts);
+      this.osmDebug.loadedChunks += 1;
+      if (!overlay || overlay.children.length === 0) {
+        this.osmDebug.emptyChunks += 1;
+        return;
+      }
+
+      overlay.name = `OsmVectorChunk_${chunk.tileX}_${chunk.tileY}`;
       chunk.osmOverlay = overlay;
       this.osmOverlayGroup.add(overlay);
     } catch (error) {
+      this.osmDebug.failedChunks += 1;
+      this.osmDebug.lastError = getErrorMessage(error);
       console.warn(`Nao foi possivel carregar overlay OSM ${key}`, error);
     } finally {
       chunk.loadingOsmOverlay = false;
     }
+  }
+
+  async fetchOsmVectorTile(chunk) {
+    const bounds = this.getChunkLonLatBounds(chunk.tileX, chunk.tileY);
+    const zoom = this.config.osmVectorZoom;
+    const tileRange = getOsmTileRange(bounds, zoom);
+    const vectorTiles = [];
+
+    for (let tileY = tileRange.minY; tileY <= tileRange.maxY; tileY += 1) {
+      for (let tileX = tileRange.minX; tileX <= tileRange.maxX; tileX += 1) {
+        vectorTiles.push(this.fetchOsmMvtTile(tileX, tileY, zoom));
+      }
+    }
+
+    const centerTileX = Math.floor(this.centerPixel.x / this.manifest.terrain.tileSize);
+    const centerTileY = Math.floor(this.centerPixel.y / this.manifest.terrain.tileSize);
+    if (chunk.tileX === centerTileX && chunk.tileY === centerTileY) {
+      const detailZoom = this.config.osmDetailZoom;
+      const detailCenter = lonLatToOsmTile(
+        this.config.centerLongitude,
+        this.config.centerLatitude,
+        detailZoom
+      );
+      const detailTileX = Math.floor(detailCenter.x);
+      const detailTileY = Math.floor(detailCenter.y);
+      const radius = this.config.osmDetailTileRadius;
+      for (let offsetY = -radius; offsetY <= radius; offsetY += 1) {
+        for (let offsetX = -radius; offsetX <= radius; offsetX += 1) {
+          vectorTiles.push(this.fetchOsmMvtTile(
+            detailTileX + offsetX,
+            detailTileY + offsetY,
+            detailZoom,
+            true
+          ));
+        }
+      }
+    }
+
+    return mergeOsmVectorTiles(await Promise.all(vectorTiles));
+  }
+
+  fetchOsmMvtTile(tileX, tileY, zoom, detailOnly = false) {
+    const key = `${zoom}/${tileX}/${tileY}/${detailOnly ? 'detail' : 'broad'}`;
+    if (!this.osmTilePromises.has(key)) {
+      const url = this.config.osmVectorTileUrl
+        .replace('{z}', zoom)
+        .replace('{x}', tileX)
+        .replace('{y}', tileY);
+      const promise = fetchWithTimeout(url, {
+        headers: { Accept: 'application/vnd.mapbox-vector-tile,application/x-protobuf,*/*' }
+      }, this.config.osmRequestTimeoutMs)
+        .then(async (response) => {
+          if (!response.ok) throw new Error(`OSM vector tile HTTP ${response.status}`);
+          const tile = new VectorTile(new Pbf(await response.arrayBuffer()));
+          this.osmDebug.loadedTiles += 1;
+          return convertShortbreadTileToVectorTile(
+            tile,
+            tileX,
+            tileY,
+            zoom,
+            this.manifest.source.worldFile,
+            detailOnly
+          );
+        })
+        .catch((error) => {
+          this.osmTilePromises.delete(key);
+          throw error;
+        });
+      this.osmTilePromises.set(key, promise);
+    }
+    return this.osmTilePromises.get(key);
   }
 
   createChunkMesh(tileX, tileY, imageData, segments = this.config.chunkSegments) {
@@ -787,39 +908,6 @@ class LocalXcmTerrain {
     return mesh;
   }
 
-  async createOsmOverlayMesh(chunk) {
-    const bounds = this.getChunkLonLatBounds(chunk.tileX, chunk.tileY);
-    const zoom = getOsmZoomForMetersPerPixel(
-      bounds.centerLatitude,
-      (this.worldUnitsPerPixelX + this.worldUnitsPerPixelY) * 0.5 / this.worldUnitsPerMeter,
-      this.config.osmOverlayMinZoom,
-      this.config.osmOverlayMaxZoom
-    );
-    this.osmOverlayZoom = zoom;
-
-    const texture = await this.loadOsmTextureForBounds(bounds, zoom);
-    if (!texture) return null;
-
-    const geometry = chunk.mesh.geometry.clone();
-    const material = new THREE.MeshBasicMaterial({
-      map: texture,
-      transparent: true,
-      opacity: 0.96,
-      depthWrite: false,
-      polygonOffset: true,
-      polygonOffsetFactor: -2,
-      polygonOffsetUnits: -2
-    });
-    const overlay = new THREE.Mesh(geometry, material);
-    overlay.name = `OsmOverlayChunk_${chunk.tileX}_${chunk.tileY}`;
-    overlay.position.copy(chunk.mesh.position);
-    overlay.position.y += 1.4;
-    overlay.renderOrder = chunk.mesh.renderOrder + 1;
-    overlay.receiveShadow = false;
-    overlay.castShadow = false;
-    return overlay;
-  }
-
   getChunkLonLatBounds(tileX, tileY) {
     const tileSize = this.manifest.terrain.tileSize;
     const minPixelX = tileX * tileSize;
@@ -836,71 +924,6 @@ class LocalXcmTerrain {
       north: northEast.latitude,
       centerLatitude
     };
-  }
-
-  async loadOsmTextureForBounds(bounds, zoom) {
-    const nw = lonLatToOsmTile(bounds.west, bounds.north, zoom);
-    const se = lonLatToOsmTile(bounds.east, bounds.south, zoom);
-    const minTileX = Math.floor(Math.min(nw.x, se.x));
-    const maxTileX = Math.floor(Math.max(nw.x, se.x));
-    const minTileY = Math.floor(Math.min(nw.y, se.y));
-    const maxTileY = Math.floor(Math.max(nw.y, se.y));
-    const tileCountX = maxTileX - minTileX + 1;
-    const tileCountY = maxTileY - minTileY + 1;
-    if (tileCountX <= 0 || tileCountY <= 0 || tileCountX * tileCountY > 16) return null;
-
-    const canvas = document.createElement('canvas');
-    canvas.width = tileCountX * OSM_TILE_SIZE;
-    canvas.height = tileCountY * OSM_TILE_SIZE;
-    const context = canvas.getContext('2d');
-
-    const tilePromises = [];
-    for (let tileY = minTileY; tileY <= maxTileY; tileY += 1) {
-      for (let tileX = minTileX; tileX <= maxTileX; tileX += 1) {
-        tilePromises.push(
-          loadImageElement(`${OSM_TILE_SERVER}/${zoom}/${tileX}/${tileY}.png`)
-            .then((image) => {
-              context.drawImage(
-                image,
-                (tileX - minTileX) * OSM_TILE_SIZE,
-                (tileY - minTileY) * OSM_TILE_SIZE,
-                OSM_TILE_SIZE,
-                OSM_TILE_SIZE
-              );
-            })
-        );
-      }
-    }
-
-    await Promise.all(tilePromises);
-
-    const cropLeft = (nw.x - minTileX) * OSM_TILE_SIZE;
-    const cropTop = (nw.y - minTileY) * OSM_TILE_SIZE;
-    const cropRight = (se.x - minTileX) * OSM_TILE_SIZE;
-    const cropBottom = (se.y - minTileY) * OSM_TILE_SIZE;
-    const cropWidth = Math.max(2, cropRight - cropLeft);
-    const cropHeight = Math.max(2, cropBottom - cropTop);
-    const croppedCanvas = document.createElement('canvas');
-    croppedCanvas.width = OSM_TILE_SIZE;
-    croppedCanvas.height = OSM_TILE_SIZE;
-    const croppedContext = croppedCanvas.getContext('2d');
-    croppedContext.drawImage(
-      canvas,
-      cropLeft,
-      cropTop,
-      cropWidth,
-      cropHeight,
-      0,
-      0,
-      croppedCanvas.width,
-      croppedCanvas.height
-    );
-
-    const texture = new THREE.CanvasTexture(croppedCanvas);
-    texture.colorSpace = THREE.SRGBColorSpace;
-    texture.anisotropy = 4;
-    texture.needsUpdate = true;
-    return texture;
   }
 
   getTerrainMaterial() {
@@ -959,14 +982,29 @@ class LocalXcmTerrain {
   tagVectorLayerObject(object, layerName) {
     object.userData.vectorLayer = layerName;
     object.visible = this.layerVisibility.get(layerName) ?? true;
+    if (layerName.startsWith('osm_')) {
+      object.renderOrder = 40;
+      object.traverse?.((child) => {
+        child.renderOrder = 40;
+        if (child.material) {
+          const materials = Array.isArray(child.material) ? child.material : [child.material];
+          for (const material of materials) {
+            material.depthTest = false;
+            material.depthWrite = false;
+          }
+        }
+      });
+    }
     return object;
   }
 
   setLayerVisibility(layerName, visible) {
     this.layerVisibility.set(layerName, visible);
-    this.vectorGroup.traverse((child) => {
-      if (child.userData.vectorLayer === layerName) child.visible = visible;
-    });
+    for (const group of [this.vectorGroup, this.osmOverlayGroup]) {
+      group.traverse((child) => {
+        if (child.userData.vectorLayer === layerName) child.visible = visible;
+      });
+    }
   }
 
   // Altura de drapejamento sobre o relevo visivel. Fallbacks em ordem:
@@ -1214,7 +1252,8 @@ class LocalXcmTerrain {
     const material = new THREE.SpriteMaterial({
       map: texture,
       transparent: true,
-      depthWrite: false
+      depthWrite: false,
+      depthTest: false
     });
     const sprite = new THREE.Sprite(material);
     const aspect = texture.image.width / texture.image.height;
@@ -1354,23 +1393,6 @@ function pixelToLonLat(pixelX, pixelY, worldFile) {
   };
 }
 
-function lonLatToOsmTile(longitude, latitude, zoom) {
-  const safeLatitude = THREE.MathUtils.clamp(latitude, -85.05112878, 85.05112878);
-  const latitudeRadians = THREE.MathUtils.degToRad(safeLatitude);
-  const scale = 2 ** zoom;
-  return {
-    x: ((longitude + 180) / 360) * scale,
-    y: (1 - Math.log(Math.tan(latitudeRadians) + 1 / Math.cos(latitudeRadians)) / Math.PI) * 0.5 * scale
-  };
-}
-
-function getOsmZoomForMetersPerPixel(latitude, metersPerPixel, minZoom, maxZoom) {
-  const safeMetersPerPixel = Math.max(0.5, metersPerPixel);
-  const latitudeRadians = THREE.MathUtils.degToRad(THREE.MathUtils.clamp(latitude, -85, 85));
-  const zoom = Math.log2((156543.03392804097 * Math.cos(latitudeRadians)) / safeMetersPerPixel);
-  return THREE.MathUtils.clamp(Math.round(zoom), minZoom, maxZoom);
-}
-
 function getMetersPerPixel(latitude, worldFile) {
   const latitudeRadians = THREE.MathUtils.degToRad(latitude);
   const metersPerDegreeLatitude = 111132.92
@@ -1411,15 +1433,198 @@ async function loadImageData(url) {
   }
 }
 
-function loadImageElement(url) {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.crossOrigin = 'anonymous';
-    image.decoding = 'async';
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error(`Image load failed: ${url}`));
-    image.src = url;
-  });
+function getOsmTileRange(bounds, zoom) {
+  const northWest = lonLatToOsmTile(bounds.west, bounds.north, zoom);
+  const southEast = lonLatToOsmTile(bounds.east, bounds.south, zoom);
+  const maxTile = 2 ** zoom - 1;
+  return {
+    minX: THREE.MathUtils.clamp(Math.floor(northWest.x), 0, maxTile),
+    maxX: THREE.MathUtils.clamp(Math.floor(southEast.x), 0, maxTile),
+    minY: THREE.MathUtils.clamp(Math.floor(northWest.y), 0, maxTile),
+    maxY: THREE.MathUtils.clamp(Math.floor(southEast.y), 0, maxTile)
+  };
+}
+
+function lonLatToOsmTile(longitude, latitude, zoom) {
+  const safeLatitude = THREE.MathUtils.clamp(latitude, -85.05112878, 85.05112878);
+  const latitudeRadians = THREE.MathUtils.degToRad(safeLatitude);
+  const scale = 2 ** zoom;
+  return {
+    x: ((longitude + 180) / 360) * scale,
+    y: (1 - Math.log(Math.tan(latitudeRadians) + 1 / Math.cos(latitudeRadians)) / Math.PI) * 0.5 * scale
+  };
+}
+
+function convertShortbreadTileToVectorTile(tile, tileX, tileY, zoom, worldFile, detailOnly = false) {
+  const layers = createEmptyOsmLayers();
+
+  for (const [sourceLayerName, sourceLayer] of Object.entries(tile.layers)) {
+    for (let index = 0; index < sourceLayer.length; index += 1) {
+      const feature = sourceLayer.feature(index);
+      const category = classifyShortbreadFeature(sourceLayerName, feature.properties);
+      if (!category || (detailOnly && !OSM_DETAIL_CATEGORIES.has(category))) continue;
+      appendGeoJsonToOsmLayer(
+        layers[category],
+        category,
+        feature.toGeoJSON(tileX, tileY, zoom),
+        worldFile
+      );
+    }
+  }
+
+  return { layers };
+}
+
+function classifyShortbreadFeature(layerName, properties) {
+  if (layerName === 'streets' || layerName === 'street_polygons') {
+    if (properties.rail === true) return 'osm_railways';
+    if (['runway', 'taxiway', 'apron'].includes(properties.kind)) return 'osm_aeroway';
+    return 'osm_roads';
+  }
+  if (layerName === 'water_lines' || layerName === 'dam_lines' || layerName === 'pier_lines') return 'osm_water_lines';
+  if (layerName === 'water_polygons' || layerName === 'ocean' || layerName === 'dam_polygons') return 'osm_water_areas';
+  if (layerName === 'land') return isNaturalShortbreadKind(properties.kind) ? 'osm_natural' : 'osm_landuse';
+  if (layerName === 'sites') return 'osm_landuse';
+  if (layerName === 'place_labels' || layerName === 'boundary_labels') return 'osm_places';
+  if (layerName === 'pois' || layerName === 'public_transport' || layerName === 'addresses') return 'osm_poi';
+  if (layerName === 'boundaries') return 'osm_boundaries';
+  if (layerName === 'buildings') return 'osm_buildings';
+  if (layerName === 'aerialways') return 'osm_aeroway';
+  return null;
+}
+
+function isNaturalShortbreadKind(kind) {
+  return ['forest', 'wood', 'scrub', 'grassland', 'heath', 'wetland', 'park', 'nature_reserve'].includes(kind);
+}
+
+function appendGeoJsonToOsmLayer(target, category, geoJsonFeature, worldFile) {
+  const geometry = geoJsonFeature.geometry;
+  const properties = geoJsonFeature.properties ?? {};
+  if (!geometry) return;
+
+  if (geometry.type === 'Point') {
+    appendOsmPoint(target, geometry.coordinates, properties, worldFile);
+    return;
+  }
+  if (geometry.type === 'MultiPoint') {
+    for (const coordinates of geometry.coordinates) appendOsmPoint(target, coordinates, properties, worldFile);
+    return;
+  }
+
+  const appendLine = (coordinates, closed) => {
+    const pixelPoints = coordinates
+      .filter(([longitude, latitude]) => Number.isFinite(longitude) && Number.isFinite(latitude))
+      .map(([longitude, latitude]) => lonLatToPixel(longitude, latitude, worldFile));
+    if (pixelPoints.length < 2) return;
+    if (closed && isOsmAreaCategory(category)) appendPixelRingSegments(target.lines, pixelPoints);
+    else appendPixelLineSegments(target.lines, pixelPoints);
+  };
+
+  if (geometry.type === 'LineString') appendLine(geometry.coordinates, false);
+  else if (geometry.type === 'MultiLineString') {
+    for (const line of geometry.coordinates) appendLine(line, false);
+  } else if (geometry.type === 'Polygon') {
+    for (const ring of geometry.coordinates) appendLine(ring, true);
+  } else if (geometry.type === 'MultiPolygon') {
+    for (const polygon of geometry.coordinates) {
+      for (const ring of polygon) appendLine(ring, true);
+    }
+  }
+}
+
+function appendOsmPoint(target, coordinates, properties, worldFile) {
+  const [longitude, latitude] = coordinates;
+  if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return;
+  const label = properties.name ?? properties.name_en ?? properties.ref ?? properties.kind;
+  if (!label) return;
+  const pixel = lonLatToPixel(longitude, latitude, worldFile);
+  target.points.push({ x: pixel.x, y: pixel.y, label: String(label) });
+}
+
+function mergeOsmVectorTiles(vectorTiles) {
+  const merged = { layers: createEmptyOsmLayers() };
+  for (const vectorTile of vectorTiles) {
+    for (const [layerName, layer] of Object.entries(vectorTile.layers ?? {})) {
+      merged.layers[layerName].lines.push(...(layer.lines ?? []));
+      merged.layers[layerName].points.push(...(layer.points ?? []));
+    }
+  }
+  return merged;
+}
+
+function summarizeVectorTileFeatures(vectorTile) {
+  const summary = {};
+  for (const [layerName, layer] of Object.entries(vectorTile.layers ?? {})) {
+    summary[layerName] = (layer.lines?.length ?? 0) + (layer.points?.length ?? 0);
+  }
+  return summary;
+}
+
+function mergeOsmFeatureCounts(target, source) {
+  for (const [key, value] of Object.entries(source)) {
+    target[key] = (target[key] ?? 0) + value;
+  }
+}
+
+function createEmptyOsmLayers() {
+  return {
+    osm_roads: { lines: [], points: [] },
+    osm_railways: { lines: [], points: [] },
+    osm_water_lines: { lines: [], points: [] },
+    osm_water_areas: { lines: [], points: [] },
+    osm_landuse: { lines: [], points: [] },
+    osm_natural: { lines: [], points: [] },
+    osm_places: { lines: [], points: [] },
+    osm_poi: { lines: [], points: [] },
+    osm_aeroway: { lines: [], points: [] },
+    osm_power: { lines: [], points: [] },
+    osm_boundaries: { lines: [], points: [] },
+    osm_buildings: { lines: [], points: [] }
+  };
+}
+
+function isOsmAreaCategory(category) {
+  return category === 'osm_water_areas'
+    || category === 'osm_landuse'
+    || category === 'osm_natural'
+    || category === 'osm_buildings';
+}
+
+function appendPixelLineSegments(target, pixelPoints) {
+  for (let index = 1; index < pixelPoints.length; index += 1) {
+    const previous = pixelPoints[index - 1];
+    const current = pixelPoints[index];
+    target.push([previous.x, previous.y, current.x, current.y]);
+  }
+}
+
+function appendPixelRingSegments(target, pixelPoints) {
+  const lastIndex = pixelPoints.length - 1;
+  const hasDuplicateClosure = pixelDistanceSquared(pixelPoints[0], pixelPoints[lastIndex]) < 0.25;
+  const effectiveLength = hasDuplicateClosure ? lastIndex : pixelPoints.length;
+  if (effectiveLength < 3) return;
+
+  for (let index = 0; index < effectiveLength; index += 1) {
+    const current = pixelPoints[index];
+    const next = pixelPoints[(index + 1) % effectiveLength];
+    target.push([current.x, current.y, next.x, next.y]);
+  }
+}
+
+function pixelDistanceSquared(a, b) {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return dx * dx + dy * dy;
+}
+
+async function fetchWithTimeout(url, options, timeoutMs) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(new Error(`timeout ${timeoutMs}ms`)), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 async function decodePngRgbData(bytes, url, responseInfo = {}) {

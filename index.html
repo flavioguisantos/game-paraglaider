@@ -771,6 +771,23 @@
         user-select: none;
       }
 
+      .layer-panel-subgroup {
+        display: grid;
+        gap: 4px;
+        margin-left: 16px;
+        padding-left: 8px;
+        border-left: 1px solid rgba(255, 255, 255, 0.12);
+      }
+
+      .layer-panel-subgroup[hidden] {
+        display: none;
+      }
+
+      .layer-panel-option-note {
+        font-size: 11px;
+        color: rgba(231, 241, 248, 0.7);
+      }
+
       .layer-panel input {
         margin: 0;
       }
@@ -1903,6 +1920,9 @@
       {
         "imports": {
           "fflate": "/vendor/fflate/browser.js",
+          "pbf": "/vendor/pbf/index.js",
+          "@mapbox/vector-tile": "/vendor/vector-tile/index.js",
+          "@mapbox/point-geometry": "/vendor/point-geometry/index.js",
           "three": "/vendor/three/three.module.js",
           "three/addons/": "/vendor/three/addons/"
         }
