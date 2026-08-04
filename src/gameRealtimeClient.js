@@ -20,7 +20,6 @@ export function createGameRealtimeClient(handlers = {}) {
       handlers.onOpen?.();
       send({
         type: 'join_launch',
-        token: identity.accessToken,
         launchId,
         playerId: identity.playerId,
         player
