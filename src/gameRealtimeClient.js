@@ -5,11 +5,15 @@ export function createGameRealtimeClient(handlers = {}) {
   let joinedLaunchId = null;
   let identity = null;
   let heartbeatTimer = null;
+  let hasJoinedLaunch = false;
+  let pendingMessages = [];
 
   function connect({ launchId, playerIdentity, player }) {
     disconnect({ notifyLeave: false });
     joinedLaunchId = launchId;
     identity = playerIdentity;
+    hasJoinedLaunch = false;
+    pendingMessages = [];
     socket = new WebSocket(getGameRealtimeUrl());
 
     socket.addEventListener('open', () => {
@@ -21,7 +25,6 @@ export function createGameRealtimeClient(handlers = {}) {
         playerId: identity.playerId,
         player
       });
-      startHeartbeat();
     });
 
     socket.addEventListener('message', (event) => {
@@ -46,6 +49,11 @@ export function createGameRealtimeClient(handlers = {}) {
   function handleMessage(message) {
     switch (message.type) {
       case 'joined_launch':
+        hasJoinedLaunch = true;
+        flushPendingMessages();
+        startHeartbeat();
+        handlers.onSessionMessage?.(message);
+        return;
       case 'presence_update':
       case 'world_snapshot':
       case 'round_event':
@@ -114,6 +122,8 @@ export function createGameRealtimeClient(handlers = {}) {
     }
 
     stopHeartbeat();
+    hasJoinedLaunch = false;
+    pendingMessages = [];
     if (socket) {
       socket.close();
       socket = null;
@@ -159,7 +169,21 @@ export function createGameRealtimeClient(handlers = {}) {
 
   function send(payload) {
     if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    if (!hasJoinedLaunch && payload.type !== 'join_launch') {
+      pendingMessages.push(payload);
+      return;
+    }
     socket.send(JSON.stringify(payload));
+  }
+
+  function flushPendingMessages() {
+    if (!socket || socket.readyState !== WebSocket.OPEN || !hasJoinedLaunch || pendingMessages.length === 0) return;
+
+    const queue = pendingMessages;
+    pendingMessages = [];
+    for (const payload of queue) {
+      socket.send(JSON.stringify(payload));
+    }
   }
 
   return {
