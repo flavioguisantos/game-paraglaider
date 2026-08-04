@@ -598,14 +598,14 @@ function setupLayerPanel() {
   const osmLabel = document.createElement('label');
   const osmInput = document.createElement('input');
   osmInput.type = 'checkbox';
-  osmInput.checked = false;
+  osmInput.checked = terrain.isOsmOverlayEnabled();
   osmInput.addEventListener('change', () => {
     terrain.setOsmOverlayEnabled(osmInput.checked);
     updateOsmAttribution(osmInput.checked);
   });
   osmLabel.append(osmInput, document.createTextNode('OpenStreetMap raster'));
   panel.append(osmLabel);
-  updateOsmAttribution(false);
+  updateOsmAttribution(osmInput.checked);
 
   const toggles = [
     { label: 'Rodovias', layers: ['roadbig_line'] },

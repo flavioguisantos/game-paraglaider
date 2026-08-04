@@ -22,7 +22,7 @@ const DEFAULT_OPTIONS = {
   vectorYOffset: 0.55,
   labelYOffset: 4,
   labelScale: 10,
-  osmOverlayEnabled: false,
+  osmOverlayEnabled: true,
   osmOverlayMaxZoom: 16,
   osmOverlayMinZoom: 7
 };
@@ -333,6 +333,10 @@ class LocalXcmTerrain {
 
   getOsmAttributionHtml() {
     return OSM_ATTRIBUTION_HTML;
+  }
+
+  isOsmOverlayEnabled() {
+    return this.osmOverlayEnabled;
   }
 
   // As UVs dos quads de mar ja estao em coordenadas de mundo; basta a deriva
@@ -776,7 +780,7 @@ class LocalXcmTerrain {
     const material = new THREE.MeshBasicMaterial({
       map: texture,
       transparent: true,
-      opacity: 0.86,
+      opacity: 0.96,
       depthWrite: false,
       polygonOffset: true,
       polygonOffsetFactor: -2,
@@ -785,6 +789,7 @@ class LocalXcmTerrain {
     const overlay = new THREE.Mesh(geometry, material);
     overlay.name = `OsmOverlayChunk_${chunk.tileX}_${chunk.tileY}`;
     overlay.position.copy(chunk.mesh.position);
+    overlay.position.y += 1.4;
     overlay.renderOrder = chunk.mesh.renderOrder + 1;
     overlay.receiveShadow = false;
     overlay.castShadow = false;
