@@ -53,7 +53,7 @@ Inicializa cena, renderer, relogio, terreno, termicas, HUD, nuvens de horizonte,
 Cliente HTTP isolado para a API do dominio `game`. Resolve a base por `window.__GAME_API_BASE_URL` quando configurada e, por padrao, aponta para o back-end compartilhado publicado. Expoe operacoes para identidade guest, contador global de partidas, catalogo de rampas, sessao da rampa e mutacoes basicas do jogador na sessao. Tambem persiste localmente o ultimo nome digitado do piloto para pre-preencher a tela inicial sem acoplar o restante da UI ao back-end.
 
 ### `src/gameRealtimeClient.js`
-Cliente WebSocket fino para `/api/game/realtime`. Faz `join_launch`, envia heartbeats e snapshots resumidos do jogador local e repassa `joined_launch`, `presence_update`, `world_snapshot` e `round_event` para o `main.js`.
+Cliente WebSocket fino para `/api/game/realtime`. Faz `join_launch`, espera a confirmacao `joined_launch` antes de liberar heartbeats e demais mensagens da sessao, envia snapshots resumidos do jogador local e repassa `joined_launch`, `presence_update`, `world_snapshot` e `round_event` para o `main.js`.
 
 ### `src/remotePlayer.js`
 Representacao visual dos outros jogadores recebidos por snapshot da sessao online. Reaproveita o modelo de parapente/drone do jogo, exibe o nome do piloto acima da vela apenas para os outros participantes e suaviza posicao/heading locais sem participar da fisica, do scoring ou da colisao do jogador local.
