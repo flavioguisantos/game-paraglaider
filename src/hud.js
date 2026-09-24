@@ -51,7 +51,7 @@ export function createHud(root) {
       <div class="instr-score">
         <div class="instr-score-card instr-score-card--score"><span>PONTOS</span><strong data-hud="score">0</strong></div>
         <div class="instr-score-card instr-score-card--combo"><span>COMBO</span><strong data-hud="combo">1x</strong></div>
-        <div class="instr-score-card instr-score-card--waypoint"><span>ROTA</span><strong data-hud="waypoint">TP1</strong></div>
+        <div class="instr-score-card instr-score-card--waypoint"><span>ROTA</span><strong class="waypoint-readout"><span class="route-arrow" data-hud="routeArrow" aria-hidden="true">↑</span><span data-hud="waypoint">TP1</span></strong></div>
       </div>
       <div class="instr-meta"><span>PARTIDAS</span><strong data-hud="totalMatches">--</strong></div>
       <div class="hud-radio" data-hud="radioRoot">
@@ -106,6 +106,7 @@ export function createHud(root) {
     score: root.querySelector('[data-hud="score"]'),
     combo: root.querySelector('[data-hud="combo"]'),
     waypoint: root.querySelector('[data-hud="waypoint"]'),
+    routeArrow: root.querySelector('[data-hud="routeArrow"]'),
     totalMatches: root.querySelector('[data-hud="totalMatches"]'),
     radioRoot: root.querySelector('[data-hud="radioRoot"]'),
     radioLabel: root.querySelector('[data-hud="radioLabel"]'),
@@ -186,6 +187,7 @@ export function updateHud(elements, { player, bots = [], terrain, round, wind, s
   elements.score.textContent = formatScore(player.score ?? 0);
   elements.combo.textContent = `${player.thermalCombo ?? 1}x`;
   elements.waypoint.textContent = getWaypointText(player, scoring, terrain);
+  updateRouteArrow(elements.routeArrow, player, scoring);
   elements.totalMatches.textContent = formatMatchCount(round.totalMatches);
   updateRadioHud(elements, radio);
   elements.scoreEvent.textContent = player.lastScoringEvent ?? '';
@@ -394,6 +396,21 @@ function getWaypointText(player, scoring, terrain) {
   ) / worldUnitsPerMeter;
 
   return `${waypoint.name} · ${formatShortDistance(distanceMeters)}`;
+}
+
+function updateRouteArrow(arrow, player, scoring) {
+  const waypoint = scoring?.route?.[player.nextWaypointIndex ?? 0];
+  if (!arrow) return;
+  arrow.style.display = !waypoint || player.routeFinished ? 'none' : 'inline-block';
+  if (!waypoint || player.routeFinished) return;
+
+  const dx = waypoint.x - player.position.x;
+  const dz = waypoint.z - player.position.z;
+  const bearingDegrees = Math.atan2(dx, -dz) * (180 / Math.PI);
+  const headingDegrees = -(player.heading ?? 0) * (180 / Math.PI);
+  let relativeDegrees = bearingDegrees - headingDegrees;
+  relativeDegrees = ((relativeDegrees + 180) % 360 + 360) % 360 - 180;
+  arrow.style.transform = `rotate(${relativeDegrees}deg)`;
 }
 
 // Formato curto para caber na celula do painel (uma casa decimal em km).

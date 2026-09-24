@@ -12,10 +12,11 @@ const CAMERA_CONFIG = {
   landedMaxDistance: 58,
   landedOrbitSpeed: 1.9,
   landedZoomSpeed: 24,
-  standbyDistance: 1850,
-  standbyHeight: 760,
-  standbyLookHeight: 260,
-  standbyGroundClearance: 420
+  standbyDistance: 920,
+  standbyHeight: 420,
+  standbyLookHeight: 155,
+  standbyGroundClearance: 220,
+  launchTransitionSeconds: 2.8
 };
 
 // Visao do piloto (primeira pessoa): camera no capacete, herdando a
@@ -46,6 +47,7 @@ export function getCameraMode() {
 export function setCameraMode(mode) {
   if (mode !== 'third-person' && mode !== 'first-person') return cameraMode;
   cameraMode = mode;
+  if (mode === 'first-person') flightTransition.active = false;
   return cameraMode;
 }
 
@@ -96,6 +98,12 @@ const landedCamera = {
 };
 let firstPersonLookYaw = 0;
 let firstPersonLookPitch = 0;
+const flightTransition = {
+  active: false,
+  elapsed: 0,
+  fromPosition: new THREE.Vector3(),
+  fromLookAt: new THREE.Vector3()
+};
 
 export function initializeThirdPersonCamera(camera, target, context = {}) {
   const forward = target.getForwardVector();
@@ -110,18 +118,28 @@ export function initializeThirdPersonCamera(camera, target, context = {}) {
   camera.lookAt(currentLookAt);
 }
 
+// Aproxima a camera da vista panoramica de espera para o enquadramento do voo.
+export function beginFlightCameraTransition(camera) {
+  flightTransition.active = true;
+  flightTransition.elapsed = 0;
+  flightTransition.fromPosition.copy(camera.position);
+  flightTransition.fromLookAt.copy(currentLookAt);
+}
+
 // Despacha para o modo de camera ativo (externa ou visao do piloto).
 export function updateFlightCamera(camera, target, delta, context = {}) {
   const cameraProfile = target.cameraProfile ?? FIRST_PERSON_CONFIG;
   const forceFirstPerson = target.cameraPreference === 'first-person-only';
 
   if (target.landed && !forceFirstPerson) {
+    flightTransition.active = false;
     setCameraNearPlane(camera, THIRD_PERSON_NEAR_PLANE);
     updateLandedCamera(camera, target, delta, context);
     return;
   }
 
   if (forceFirstPerson || cameraMode === 'first-person') {
+    flightTransition.active = false;
     updateFirstPersonCamera(camera, target, delta, cameraProfile);
     return;
   }
@@ -163,6 +181,7 @@ function updateFirstPersonCamera(camera, target, delta, cameraProfile = FIRST_PE
 
 export function updateThirdPersonCamera(camera, target, delta, context = {}) {
   if (target.landed) {
+    flightTransition.active = false;
     updateLandedCamera(camera, target, delta, context);
     return;
   }
@@ -179,6 +198,22 @@ export function updateThirdPersonCamera(camera, target, delta, context = {}) {
 
   const followAlpha = 1 - Math.exp(-delta * CAMERA_CONFIG.followSmoothing);
   const lookAlpha = 1 - Math.exp(-delta * CAMERA_CONFIG.lookSmoothing);
+
+  if (flightTransition.active) {
+    flightTransition.elapsed += delta;
+    const progress = THREE.MathUtils.clamp(
+      flightTransition.elapsed / CAMERA_CONFIG.launchTransitionSeconds,
+      0,
+      1
+    );
+    const easedProgress = progress * progress * (3 - 2 * progress);
+    camera.position.copy(flightTransition.fromPosition).lerp(desiredPosition, easedProgress);
+    currentLookAt.copy(flightTransition.fromLookAt).lerp(desiredLookAt, easedProgress);
+    camera.lookAt(currentLookAt);
+    if (progress >= 1) flightTransition.active = false;
+    return;
+  }
+
   camera.position.lerp(desiredPosition, followAlpha);
   currentLookAt.lerp(desiredLookAt, lookAlpha);
   camera.lookAt(currentLookAt);

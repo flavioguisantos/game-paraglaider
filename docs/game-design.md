@@ -50,6 +50,13 @@ Antes da rodada, o jogador informa o nome do piloto, escolhe o local de voo, esc
 
 Os controles podem mudar durante a iteracao se a sensacao de voo pedir outro modelo.
 
+## Preparacao e primeiro voo
+- A tela de preparacao organiza nome, local, veiculo, cor e estado da rampa sem exigir rolagem vertical interna na lista de locais. Em telas estreitas, os locais viram cartoes horizontais com encaixe por gesto; o botao de iniciar permanece preso ao rodape do painel rolavel.
+- No primeiro voo, um tutorial curto e dispensavel explica os comandos do veiculo escolhido, leitura de termicas/altitude e navegacao da rota. A conclusao ou opcao `Pular` e lembrada localmente.
+- A seta de rota do HUD aponta para o proximo waypoint em relacao ao rumo do jogador. Em celulares, ela complementa a celula de nome/distancia do waypoint, enquanto a bussola completa continua disponivel no desktop.
+- No celular, o ranking pode ser aberto durante a rodada por um botao compacto; ao terminar a rodada, o ranking aparece automaticamente.
+- Os ajustes de camadas do mapa ficam recolhidos durante o voo e podem ser abertos pelo botao de configuracao junto ao canto superior.
+
 ## Controles apos pouso
 Quando o jogador pousa, o parapente deixa de voar, mas os comandos continuam ativos para observacao:
 - `A`/`D` ou setas esquerda/direita: orbitam a camera ao redor do local de pouso.
@@ -127,7 +134,7 @@ O HUD imita um instrumento de voo real (vario/GPS de parapente) com fundo escuro
 - Distancia da decolagem, pontuacao, combo, proximo waypoint e status/tempo em linhas discretas. O ranking fica em um cartao separado abaixo do instrumento.
 
 ## HUD mobile
-Em telas estreitas o instrumento vira uma faixa unica e compacta no topo: vario, altura sobre o solo, velocidade, pontuacao, combo e proximo waypoint com a distancia ate ele aparecem em uma unica linha, enquanto status/tempo ficam sobrepostos em escala menor. A altitude sobre o nivel do mar, o vento, a fita de bussola, o planeio e a distancia desde a decolagem ficam ocultos. O assistente termico dedicado fica escondido fora da termica e reaparece em um card proprio logo abaixo da faixa apenas durante leitura ativa, sem reservar espaco fixo. O card de radio do HUD fica oculto no mobile porque a transmissao passa para um controle touch proprio no canto inferior direito em formato de toggle liga/desliga. Quando a visao do piloto estiver ativa no mobile, um joystick de camera do mesmo tamanho do joystick principal aparece abaixo do radio no lado direito e retorna a visao ao centro ao soltar. O ranking fica oculto durante o voo no mobile e reaparece quando a rodada termina para nao competir com a cena 3D e os controles touch. O painel inicial fica no canto superior da tela no mobile, afastado dos controles touch inferiores.
+Em telas estreitas o instrumento vira uma faixa unica e compacta no topo: vario, altura sobre o solo, velocidade, pontuacao, combo e proximo waypoint com distancia e seta direcional aparecem em uma unica linha, enquanto status/tempo ficam sobrepostos em escala menor. A altitude sobre o nivel do mar, o vento, a fita de bussola completa, o planeio e a distancia desde a decolagem ficam ocultos. O assistente termico dedicado fica escondido fora da termica e reaparece em um card proprio logo abaixo da faixa apenas durante leitura ativa, sem reservar espaco fixo. O card de radio do HUD fica oculto no mobile porque a transmissao passa para um controle touch proprio no canto inferior direito em formato de toggle liga/desliga. Quando a visao do piloto estiver ativa no mobile, um joystick de camera do mesmo tamanho do joystick principal aparece abaixo do radio no lado direito e retorna a visao ao centro ao soltar. O ranking abre por um botao compacto durante o voo e aparece automaticamente quando a rodada termina. O painel inicial usa cartoes horizontais para os locais e mantem o botao de iniciar acessivel durante a rolagem.
 
 ## Musica
 Ao iniciar a rodada, uma trilha procedural de aventura mais animada toca em volume baixo durante o voo e para quando a rodada termina.

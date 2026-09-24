@@ -27,6 +27,12 @@ const SCORING_CONFIG = {
   routeCandidateAttempts: 18,
   waypointSeaClearanceMeters: 140
 };
+const ROUTE_VISUAL_CONFIG = {
+  futureWaypointRangeMeters: 15000,
+  futureWaypointScale: 0.42,
+  routeLineWidth: 2.6,
+  routeLineOpacity: 0.72
+};
 
 export async function createScoringState({ scene, terrain, routeDefinition = null }) {
   const route = hasAuthoritativeRoute(routeDefinition)
@@ -181,8 +187,30 @@ export function updateScoring(state, delta, entities, { thermals, terrain }) {
 // Linha discreta do parapente ate o proximo waypoint obrigatorio. Os TPs ja
 // concluidos pelo jogador somem; ao fechar a rota, a guia inteira desaparece.
 function updateRouteGuidance(state, player, terrain) {
+  const worldUnitsPerMeter = terrain.worldUnitsPerMeter ?? 1;
+  const nextWaypointIndex = player.nextWaypointIndex ?? 0;
   for (const marker of state.markers?.children ?? []) {
-    marker.visible = marker.userData.waypointIndex >= (player.nextWaypointIndex ?? 0);
+    const waypointIndex = marker.userData.waypointIndex;
+    const waypoint = state.route[waypointIndex];
+    const distanceMeters = Math.hypot(
+      waypoint.x - player.position.x,
+      waypoint.z - player.position.z
+    ) / worldUnitsPerMeter;
+    const isCurrent = waypointIndex === nextWaypointIndex;
+    const isUpcoming = waypointIndex > nextWaypointIndex;
+    marker.visible = !player.routeFinished
+      && waypointIndex >= nextWaypointIndex
+      && (isCurrent || distanceMeters <= ROUTE_VISUAL_CONFIG.futureWaypointRangeMeters);
+
+    if (!marker.visible) continue;
+    marker.scale.setScalar(isCurrent ? 1 : ROUTE_VISUAL_CONFIG.futureWaypointScale);
+    marker.userData.label.visible = isCurrent;
+    marker.userData.ring.material.opacity = isCurrent ? 0.72 : 0.24;
+    marker.userData.beacon.material.opacity = isCurrent ? 0.26 : 0.1;
+    // Futuros pontos continuam como referencias discretas, com o GOL em verde.
+    if (isUpcoming && waypointIndex === state.route.length - 1) {
+      marker.userData.ring.material.opacity = 0.32;
+    }
   }
 
   const line = state.routeLine;
@@ -213,12 +241,12 @@ function createRouteLine() {
   // Magenta contrasta bem tanto com o ceu quanto com o terreno verde/marrom.
   const material = new LineMaterial({
     color: 0xff2f8f,
-    linewidth: 5,
+    linewidth: ROUTE_VISUAL_CONFIG.routeLineWidth,
     transparent: true,
-    opacity: 0.95,
+    opacity: ROUTE_VISUAL_CONFIG.routeLineOpacity,
     depthWrite: false,
-    // Sempre visivel (mesmo com relevo no caminho): e uma guia, nao um objeto do mundo.
-    depthTest: false,
+    // O relevo pode ocultar trechos da linha, integrando a guia a cena 3D.
+    depthTest: true,
     worldUnits: false,
     dashed: false
   });
@@ -229,7 +257,7 @@ function createRouteLine() {
 
   const line = new Line2(geometry, material);
   line.name = 'RouteGuidanceLine';
-  line.renderOrder = 999;
+  line.renderOrder = 2;
   line.frustumCulled = false;
   line.visible = false;
   return line;
@@ -420,6 +448,7 @@ function createWaypointMarkers(route) {
     );
     ring.rotation.x = Math.PI / 2;
     marker.add(ring);
+    marker.userData.ring = ring;
 
     const beacon = new THREE.Mesh(
       new THREE.CylinderGeometry(5, 5, 130, 12, 1, true),
@@ -432,10 +461,12 @@ function createWaypointMarkers(route) {
     );
     beacon.position.y = 65;
     marker.add(beacon);
+    marker.userData.beacon = beacon;
 
     const label = createWaypointLabel(waypoint.name);
     label.position.set(0, 155, 0);
     marker.add(label);
+    marker.userData.label = label;
 
     marker.position.set(waypoint.x, 0, waypoint.z);
     group.add(marker);
@@ -468,7 +499,7 @@ function createWaypointLabel(text) {
     map: texture,
     transparent: true,
     depthWrite: false,
-    depthTest: false
+    depthTest: true
   }));
   sprite.scale.set(64, 27, 1);
   return sprite;

@@ -12,6 +12,8 @@ const THERMAL_CONFIG = {
   // Rotas longas podem ter dezenas de colunas autoritativas. A fisica e a
   // deriva continuam globais, mas visuais caros so atualizam perto do piloto.
   visualUpdateDistanceMeters: 12000,
+  fullDetailDistanceMeters: 2600,
+  regionalDetailDistanceMeters: 6500,
   particleCount: 26,
   particleRiseSpeed: 92,
   // Nucleo gaussiano: exp(-k * (d/R)^2). Com k=2.8 a borda do raio tem ~6%.
@@ -150,6 +152,8 @@ class ThermalField {
     const worldUnitsPerMeter = this.terrain.worldUnitsPerMeter ?? 1;
     const visualReferencePosition = referenceEntity?.position ?? DEFAULT_VISUAL_REFERENCE_POSITION;
     const visualUpdateDistance = THERMAL_CONFIG.visualUpdateDistanceMeters * worldUnitsPerMeter;
+    const fullDetailDistance = THERMAL_CONFIG.fullDetailDistanceMeters * worldUnitsPerMeter;
+    const regionalDetailDistance = THERMAL_CONFIG.regionalDetailDistanceMeters * worldUnitsPerMeter;
     const visualUpdateDistanceSquared = visualUpdateDistance * visualUpdateDistance;
     this.visibleThermalCount = 0;
 
@@ -197,17 +201,27 @@ class ThermalField {
 
       const visualDx = thermal.position.x - visualReferencePosition.x;
       const visualDz = thermal.position.z - visualReferencePosition.z;
-      if (visualDx * visualDx + visualDz * visualDz > visualUpdateDistanceSquared) {
+      const visualDistanceSquared = visualDx * visualDx + visualDz * visualDz;
+      if (visualDistanceSquared > visualUpdateDistanceSquared) {
         thermal.visual.visible = false;
         continue;
       }
 
+      thermal.visual.visible = true;
+      const visualTier = visualDistanceSquared <= fullDetailDistance * fullDetailDistance
+        ? 'near'
+        : visualDistanceSquared <= regionalDetailDistance * regionalDetailDistance
+          ? 'regional'
+          : 'horizon';
+      applyThermalVisualTier(thermal, visualTier);
       this.visibleThermalCount += 1;
       const groundHeight = this.terrain.getHeightAt(thermal.position.x, thermal.position.z);
       updateThermalVerticalLayout(thermal, groundHeight, wind, this.sunDirection, this.terrain);
       applyCycleOpacity(thermal);
 
-      animateParticles(thermal, delta);
+      if (visualTier === 'near' && thermal.assistVisualsVisible !== false) {
+        animateParticles(thermal, delta);
+      }
       animateBirds(thermal, delta);
     }
   }
@@ -947,11 +961,25 @@ function setFadedOpacity(material, baseOpacity, cycle) {
 }
 
 function applyAssistVisibility(thermal, visible) {
-  thermal.column.visible = visible;
-  thermal.ring.visible = visible;
-  thermal.label.visible = visible;
+  thermal.assistVisualsVisible = visible;
+  applyThermalVisualTier(thermal, thermal.visualTier ?? 'near');
+}
+
+function applyThermalVisualTier(thermal, tier) {
+  thermal.visualTier = tier;
+  const fullDetail = tier === 'near';
+  const regionalDetail = tier === 'regional';
+  const assistsVisible = thermal.assistVisualsVisible ?? true;
+
+  // Perto do piloto ficam as ajudas de leitura. A media distancia, a coluna
+  // quase transparente ainda situa a sustentacao; no horizonte restam nuvem e aves.
+  thermal.column.visible = (fullDetail && assistsVisible) || regionalDetail;
+  thermal.ring.visible = fullDetail && assistsVisible;
+  thermal.label.visible = fullDetail && assistsVisible;
+  if (thermal.cloudShadow) thermal.cloudShadow.visible = fullDetail;
+  if (thermal.birds) thermal.birds.visible = true;
   for (const particle of thermal.particles) {
-    particle.visible = visible;
+    particle.visible = fullDetail && assistsVisible;
   }
 }
 
