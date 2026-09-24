@@ -101,7 +101,8 @@ export function normalizeFlightLocation(location = {}) {
     hasSea: Boolean(location.hasSea),
     wind: location.wind ?? {},
     orographicLift: location.orographicLift ?? {},
-    building: location.building ?? null
+    building: location.building ?? null,
+    landingZone: location.landingZone ?? null
   };
 }
 

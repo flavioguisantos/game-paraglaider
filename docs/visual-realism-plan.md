@@ -52,3 +52,10 @@ Plano em 6 fases para elevar o realismo do jogo sem alterar gameplay ou fisica. 
 ## Fase 6 — Vegetacao e piloto [CONCLUIDA]
 - Novo modulo `src/vegetation.js`: copas de arvore low-poly via `InstancedMesh` (ate 2200 instancias) espalhadas deterministicamente por celula de grade num raio de 1500 m do jogador, plantadas apenas em cotas de floresta (< 1480 m) sobre chunks carregados, com variacao de escala/cor por instancia e sombras. O conjunto replanta quando o jogador se desloca 220 m ou enquanto os chunks iniciais carregam.
 - Piloto remodelado em `paragliderModel.js`: casulo (pod harness) deitado em voo, tronco reclinado emergindo do casulo, capacete, bracos erguidos em direcao aos tirantes e cinta de harness. Na pose de pouso o casulo e recolhido e o piloto fica em pe com bracos abaixados.
+
+## Hierarquia espacial da cena 3D [IMPLEMENTADA]
+- A camera de espera enquadra a rampa em escala mais proxima e, ao iniciar o voo, interpola camera e alvo por 2,8 s ate a perspectiva de acompanhamento em terceira pessoa. A primeira pessoa do drone continua imediata.
+- `scoring.js` destaca o waypoint atual em tamanho e contraste; os seguintes aparecem menores, sem rotulo e apenas dentro de 15 km. A linha de rota ficou mais fina e translucida, e o relevo pode ocultar os trechos atras das montanhas.
+- `thermal.js` usa tres faixas por distancia: ajudas completas ate 2,6 km, coluna sutil ate 6,5 km e apenas nuvem/aves ate 12 km. Fora desse alcance, o grupo visual e ocultado, sem alterar a fisica.
+- `vegetation.js` mantem a mata mais densa perto do piloto, reduz instancias gradualmente ate o limite de 2,4 km e reduz ainda mais a faixa distante em altitude. A densidade volta ao aproximar-se do solo; a clareira de 70 m no ponto de origem da rampa permanece livre de arvores.
+- `buildings.js` adiciona um anel e bandeiras de referencia na decolagem. Tambem desenha um marcador verde de pouso quando o catalogo de locais fornece `landingZone.latitude` e `landingZone.longitude`; coordenadas de pouso nao sao presumidas para os locais atuais.

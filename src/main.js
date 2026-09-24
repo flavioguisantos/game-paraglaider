@@ -4,17 +4,17 @@ import { createAdventureMusic, createScoreAudio, createVarioAudio, unlockGameAud
 import { createBots } from './bot.js?v=hot-b-4';
 import {
   applyFirstPersonLookDelta,
+  beginFlightCameraTransition,
   getCameraMode,
-  initializeThirdPersonCamera,
   resetFirstPersonLook,
   setFirstPersonLookNormalized,
   setCameraMode,
   toggleCameraMode,
   updateFlightCamera,
   updateStandbyCamera
-} from './camera.js?v=camera-modes-7';
+} from './camera.js?v=camera-modes-8';
 import { configureWind, createWindVector, detectParagliderCollisions, detectVegetationCollisions, updateEntangledParagliders, updateWind } from './physics.js?v=hot-b-1';
-import { createHud, createRoundState, updateHud, updateRoundState } from './hud.js?v=hud-instrument-5';
+import { createHud, createRoundState, updateHud, updateRoundState } from './hud.js?v=hud-instrument-6-route-arrow';
 import { findFlightLocation, getFlightLocations, setFlightLocations } from './flightLocations.js';
 import {
   ensureGuestPlayerIdentity,
@@ -40,7 +40,12 @@ import { createTerrain } from './terrain.js?v=terrain-realism-4';
 import { createThermalField } from './thermal.js?v=realism-1';
 import { createThermalAssistant, updateThermalAssistant } from './thermalAssistant.js?v=2';
 import { createVegetation } from './vegetation.js?v=tree-collision-1';
-import { createLocationBuilding, updateLocationBuilding } from './buildings.js?v=2';
+import {
+  createFlightSiteMarkers,
+  createLocationBuilding,
+  updateFlightSiteMarkers,
+  updateLocationBuilding
+} from './buildings.js?v=3';
 
 const canvas = document.querySelector('#game');
 const startButton = document.querySelector('#start-flight');
@@ -59,6 +64,7 @@ const touchRadioHint = document.querySelector('[data-touch-radio-hint]');
 const touchCameraShell = document.querySelector('.touch-camera-shell');
 const touchCameraRoot = document.querySelector('[data-touch-camera-joystick]');
 const touchCameraKnob = document.querySelector('[data-touch-camera-knob]');
+let presentFlightTutorial = () => {};
 const scene = new THREE.Scene();
 const SKY_BLUE = 0x77bdf0;
 scene.background = new THREE.Color(SKY_BLUE);
@@ -221,6 +227,8 @@ const vegetation = createVegetation({ terrain });
 scene.add(vegetation.group);
 const locationBuilding = createLocationBuilding();
 scene.add(locationBuilding);
+const flightSiteMarkers = createFlightSiteMarkers();
+scene.add(flightSiteMarkers);
 scene.add(createHorizonClouds());
 
 const wind = createWindVector();
@@ -328,6 +336,8 @@ window.addEventListener('offline', () => {
   endRadioTransmission('network_offline');
 });
 setupLayerPanel();
+setupMobileRankingToggle();
+setupFlightTutorial();
 setupCameraToggle();
 setupFirstPersonMouseLook();
 setupTouchCameraLook();
@@ -394,8 +404,10 @@ function renderLaunchOptions(locations) {
     label.className = 'location-option';
     label.innerHTML = `
       <input type="radio" name="flight-location" value="${location.id}">
+      <span class="launch-card-scene" data-coastal="${location.hasSea ? 'true' : 'false'}" aria-hidden="true"></span>
       <strong>${location.name}</strong>
       <span>${location.region}</span>
+      <span class="launch-card-profile">${location.liftMode === 'orographic' ? 'Vento de encosta' : 'Busca por termicas'}</span>
     `;
     const input = label.querySelector('input');
     input.checked = location.id === selectedId;
@@ -585,6 +597,13 @@ function setupVehicleSelection() {
 function setupLayerPanel() {
   const panel = document.querySelector('#layer-panel');
   if (!panel) return;
+  const toggle = document.querySelector('#layer-panel-toggle');
+
+  toggle?.addEventListener('click', () => {
+    const isOpen = panel.classList.toggle('is-open');
+    toggle.setAttribute('aria-expanded', String(isOpen));
+    toggle.setAttribute('aria-label', isOpen ? 'Fechar camadas e ajustes do mapa' : 'Abrir camadas e ajustes do mapa');
+  });
 
   const toggles = [
     { label: 'Rodovias', layers: ['roadbig_line'] },
@@ -622,6 +641,124 @@ function setupLayerPanel() {
   });
   realisticLabel.append(realisticInput, document.createTextNode('Modo realista (sem ajudas)'));
   panel.append(realisticLabel);
+}
+
+function setupMobileRankingToggle() {
+  const button = document.querySelector('#mobile-ranking-toggle');
+  const ranking = document.querySelector('.hud-ranking');
+  if (!button || !ranking) return;
+
+  button.addEventListener('click', () => {
+    const isOpen = ranking.classList.toggle('is-open');
+    button.setAttribute('aria-expanded', String(isOpen));
+    button.setAttribute('aria-label', isOpen ? 'Fechar ranking' : 'Abrir ranking');
+  });
+}
+
+function closeTransientInterfacePanels() {
+  const layerPanel = document.querySelector('#layer-panel');
+  const layerToggle = document.querySelector('#layer-panel-toggle');
+  const rankingPanel = document.querySelector('.hud-ranking');
+  const rankingToggle = document.querySelector('#mobile-ranking-toggle');
+  layerPanel?.classList.remove('is-open');
+  rankingPanel?.classList.remove('is-open');
+  layerToggle?.setAttribute('aria-expanded', 'false');
+  layerToggle?.setAttribute('aria-label', 'Abrir camadas e ajustes do mapa');
+  rankingToggle?.setAttribute('aria-expanded', 'false');
+  rankingToggle?.setAttribute('aria-label', 'Abrir ranking');
+}
+
+function setupFlightTutorial() {
+  const panel = document.querySelector('#flight-tutorial');
+  if (!panel) return;
+
+  const title = panel.querySelector('[data-tutorial-title]');
+  const copy = panel.querySelector('[data-tutorial-copy]');
+  const stepLabel = panel.querySelector('[data-tutorial-step]');
+  const nextButton = panel.querySelector('[data-tutorial-next]');
+  const skipButton = panel.querySelector('[data-tutorial-skip]');
+  let steps = [];
+  let currentStep = 0;
+  let activeVehicleType = 'paraglider';
+
+  const storageKey = () => `paraglider-flight-tutorial-v1-${activeVehicleType}`;
+  const wasCompleted = () => {
+    try {
+      return window.localStorage.getItem(storageKey()) === 'done';
+    } catch {
+      return false;
+    }
+  };
+
+  const closeTutorial = () => {
+    panel.hidden = true;
+    try {
+      window.localStorage.setItem(storageKey(), 'done');
+    } catch {
+      // A indisponibilidade de armazenamento nao deve bloquear o voo.
+    }
+  };
+
+  const renderStep = () => {
+    const step = steps[currentStep];
+    if (!step) return;
+    title.textContent = step.title;
+    copy.textContent = step.copy;
+    stepLabel.textContent = `${currentStep + 1} de ${steps.length}`;
+    nextButton.textContent = currentStep === steps.length - 1 ? 'Entendi' : 'Próxima';
+  };
+
+  nextButton.addEventListener('click', () => {
+    if (currentStep >= steps.length - 1) {
+      closeTutorial();
+      return;
+    }
+    currentStep += 1;
+    renderStep();
+  });
+  skipButton.addEventListener('click', closeTutorial);
+
+  presentFlightTutorial = (vehicleType) => {
+    activeVehicleType = vehicleType;
+    if (wasCompleted()) return;
+    const touch = isMobileViewport();
+    steps = vehicleType === 'drone'
+      ? [
+        {
+          title: 'Controle do drone',
+          copy: touch
+            ? 'Arraste o joystick: esquerda e direita giram; cima sobe e baixo desce. Use o botão SPD para acelerar.'
+            : 'Use A/D para girar, W/S para inclinar e as setas para subir ou descer. Segure Espaço para acelerar.',
+        },
+        {
+          title: 'Acompanhe a rota',
+          copy: 'A seta amarela indica o próximo ponto. Use a bússola no topo e o nome e a distância da rota no HUD.',
+        },
+        {
+          title: 'Mantenha altura',
+          copy: 'Confira a altura sobre o terreno e evite encostas, árvores e outros pilotos. Colisões encerram sua rodada.',
+        }
+      ]
+      : [
+        {
+          title: 'Controle do parapente',
+          copy: touch
+            ? 'Arraste o joystick: esquerda e direita fazem a curva; cima acelera e baixo freia.'
+            : 'Use A/D ou as setas para virar. W acelera e S freia; soltar os comandos retorna ao voo de cruzeiro.',
+        },
+        {
+          title: 'Encontre uma térmica',
+          copy: 'Procure a coluna de ar ascendente. O variômetro fica positivo quando você sobe; use a seta do assistente para centralizar o giro.',
+        },
+        {
+          title: 'Siga a prova',
+          copy: 'A seta amarela aponta para o próximo ponto da rota. Perto do solo, freie para fazer o flare e pousar com segurança.',
+        }
+      ];
+    currentStep = 0;
+    renderStep();
+    panel.hidden = false;
+  };
 }
 
 async function startFlight() {
@@ -685,7 +822,7 @@ async function startFlight() {
   // A guia de rota (linha ate o TP e marcadores) acompanha apenas o jogador.
   appState.player.isPlayer = true;
   scene.add(appState.player.group);
-  initializeThirdPersonCamera(camera, appState.player, { terrain });
+  beginFlightCameraTransition(camera);
 
   appState.bots = createBots({ terrain });
   for (const bot of appState.bots) {
@@ -718,6 +855,8 @@ async function startFlight() {
   });
   document.body.classList.add('is-flying');
   document.body.classList.remove('round-ended');
+  presentFlightTutorial(selectedVehicleType);
+  closeTransientInterfacePanels();
   adventureMusic.start();
   clock.start();
   appState.starting = false;
@@ -1612,6 +1751,7 @@ renderer.setAnimationLoop(() => {
   terrain.update(referencePosition, delta);
   vegetation.update(referencePosition);
   updateLocationBuilding(locationBuilding, appState.selectedLocation, terrain);
+  updateFlightSiteMarkers(flightSiteMarkers, appState.selectedLocation, terrain);
   updateSunLight(referencePosition);
   updateWind(wind, delta);
   updateWindMarkers(windMarkers, wind, referencePosition, terrain);

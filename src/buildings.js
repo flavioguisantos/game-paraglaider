@@ -79,6 +79,93 @@ export function updateLocationBuilding(building, location, terrain) {
   building.visible = true;
 }
 
+export function createFlightSiteMarkers() {
+  const group = new THREE.Group();
+  group.name = 'FlightSiteMarkers';
+
+  const launch = new THREE.Group();
+  launch.name = 'LaunchSiteMarker';
+  const launchRing = new THREE.Mesh(
+    new THREE.TorusGeometry(32, 1.8, 6, 48),
+    new THREE.MeshBasicMaterial({ color: 0xffd166, transparent: true, opacity: 0.72, depthWrite: false })
+  );
+  launchRing.rotation.x = Math.PI / 2;
+  launchRing.position.y = 1.5;
+  launch.add(launchRing);
+  addSiteFlag(launch, -24, 0xffd166);
+  addSiteFlag(launch, 24, 0x4ecdc4);
+  group.add(launch);
+
+  const landing = new THREE.Group();
+  landing.name = 'LandingZoneMarker';
+  landing.visible = false;
+  const landingRing = new THREE.Mesh(
+    new THREE.TorusGeometry(28, 2.2, 6, 48),
+    new THREE.MeshBasicMaterial({ color: 0x63e6a5, transparent: true, opacity: 0.82, depthWrite: false })
+  );
+  landingRing.rotation.x = Math.PI / 2;
+  landingRing.position.y = 1.5;
+  landing.add(landingRing);
+  addSiteFlag(landing, -20, 0x63e6a5);
+  addSiteFlag(landing, 20, 0x63e6a5);
+  group.add(landing);
+
+  return group;
+}
+
+export function updateFlightSiteMarkers(markers, location, terrain) {
+  if (!markers || !terrain) return;
+
+  const launchHeight = getSiteGroundHeight(terrain, 0, 0);
+  const launch = markers.getObjectByName('LaunchSiteMarker');
+  launch.visible = launchHeight !== null;
+  if (launchHeight !== null) {
+    launch.position.set(0, launchHeight, 0);
+    launch.rotation.y = location?.launchHeadingRadians ?? 0;
+  }
+
+  const landing = markers.getObjectByName('LandingZoneMarker');
+  const landingConfig = location?.landingZone;
+  if (!landingConfig || !Number.isFinite(Number(landingConfig.latitude))
+      || !Number.isFinite(Number(landingConfig.longitude))) {
+    landing.visible = false;
+    return;
+  }
+
+  const worldXZ = terrain.latLongToWorldXZ(landingConfig.latitude, landingConfig.longitude);
+  const groundHeight = worldXZ ? getSiteGroundHeight(terrain, worldXZ.x, worldXZ.z) : null;
+  if (!worldXZ || groundHeight === null) {
+    landing.visible = false;
+    return;
+  }
+
+  landing.position.set(worldXZ.x, groundHeight, worldXZ.z);
+  landing.visible = true;
+}
+
+function getSiteGroundHeight(terrain, x, z) {
+  const height = terrain.getRenderedHeightAt
+    ? terrain.getRenderedHeightAt(x, z)
+    : terrain.getHeightAt(x, z);
+  return height === terrain.config?.fallbackHeight || !Number.isFinite(height) ? null : height;
+}
+
+function addSiteFlag(group, x, color) {
+  const pole = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.45, 0.65, 14, 6),
+    new THREE.MeshStandardMaterial({ color: 0x3d4146, roughness: 0.85 })
+  );
+  pole.position.set(x, 7, 0);
+  group.add(pole);
+
+  const flag = new THREE.Mesh(
+    new THREE.BoxGeometry(7, 3.5, 0.35),
+    new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide })
+  );
+  flag.position.set(x + 3.8, 11.6, 0);
+  group.add(flag);
+}
+
 // Menor altura da malha renderizada sob o centro e os 4 cantos da base:
 // usa getRenderedHeightAt (relevo visivel, como as arvores em vegetation.js)
 // em vez de getHeightAt, que diverge metros da malha em encostas.

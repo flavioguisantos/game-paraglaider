@@ -14,6 +14,10 @@ const VEGETATION_CONFIG = {
   cellSize: 24,
   radius: 2400,
   rebuildDistance: 320,
+  altitudeRebuildDistance: 240,
+  launchClearingRadius: 70,
+  fullDensityRadius: 700,
+  outerDensityFloor: 0.34,
   presenceThreshold: 0.22,
   maxForestHeight: 1480,
   // addTerrainColor abre clareiras a partir de patchNoise 0.62; margem para a
@@ -81,11 +85,13 @@ class Vegetation {
     const needsRetry = this.treeMesh.count === 0 && now >= this.retryAt;
     const moved = !this.lastCenter
       || this.lastCenter.distanceTo(position) >= VEGETATION_CONFIG.rebuildDistance;
+    const altitudeChanged = this.lastCenter
+      && Math.abs(this.lastCenter.y - position.y) >= VEGETATION_CONFIG.altitudeRebuildDistance;
     // Vetores urbanos chegam depois do relevo; replanta para tirar arvores
     // que nasceram sobre ruas/casas antes da mascara existir.
     const vectorRevision = this.terrain.vectorRevision ?? 0;
     const vectorsChanged = vectorRevision !== this.lastVectorRevision;
-    if (!moved && !needsRetry && !vectorsChanged) return;
+    if (!moved && !altitudeChanged && !needsRetry && !vectorsChanged) return;
 
     this.retryAt = now + 2000;
     this.lastCenter = position.clone();
@@ -122,7 +128,8 @@ class Vegetation {
   rebuild(center) {
     const {
       cellSize, radius, presenceThreshold, maxForestHeight,
-      maxInstances, forestPatchLimit, patchNoiseScale
+      maxInstances, forestPatchLimit, patchNoiseScale,
+      launchClearingRadius, fullDensityRadius, outerDensityFloor
     } = VEGETATION_CONFIG;
     const fallbackHeight = this.terrain.config?.fallbackHeight;
     const minCellX = Math.floor((center.x - radius) / cellSize);
@@ -130,6 +137,9 @@ class Vegetation {
     const minCellZ = Math.floor((center.z - radius) / cellSize);
     const maxCellZ = Math.floor((center.z + radius) / cellSize);
     const radiusSq = radius * radius;
+    const groundAtCenter = this.terrain.getHeightAt(center.x, center.z);
+    const heightAboveGround = Math.max(0, center.y - groundAtCenter);
+    const altitudeFade = smoothstep(350, 2200, heightAboveGround);
     let count = 0;
     const collisionTrees = [];
 
@@ -142,7 +152,18 @@ class Vegetation {
         const z = (cellZ + 0.15 + hashCell(cellX, cellZ, 2) * 0.7) * cellSize;
         const dx = x - center.x;
         const dz = z - center.z;
-        if (dx * dx + dz * dz > radiusSq) continue;
+        const distanceFromCenter = Math.hypot(dx, dz);
+        if (distanceFromCenter * distanceFromCenter > radiusSq) continue;
+        // Mantem a rampa limpa para decolagem e para um retorno visual legivel.
+        if (Math.hypot(x, z) < launchClearingRadius) continue;
+
+        // A mata fica cheia junto ao piloto e abre gradualmente no horizonte.
+        // Em grande altura, a faixa distante fica ainda mais leve; o plantio e
+        // refeito em passos de altitude para restaurar a densidade na descida.
+        const radialFade = smoothstep(fullDensityRadius, radius, distanceFromCenter);
+        const radialDensity = THREE.MathUtils.lerp(1, outerDensityFloor, radialFade);
+        const altitudeDensity = 1 - 0.4 * altitudeFade * radialFade;
+        const density = radialDensity * altitudeDensity;
 
         // Mata apenas fora das clareiras pintadas no terreno.
         const patch = terrainValueNoise(x * patchNoiseScale, z * patchNoiseScale);
@@ -161,6 +182,17 @@ class Vegetation {
 
         const scale = 0.7 + hashCell(cellX, cellZ, 3) * 0.8;
         const heightScale = scale * (0.85 + hashCell(cellX, cellZ, 4) * 0.4);
+        collisionTrees.push({
+          x,
+          z,
+          groundHeight,
+          topHeight: groundHeight - 0.6 + 14 * heightScale,
+          radius: 5.25 * scale
+        });
+        // A distribuicao visual pode afinar ao longe; os volumes de colisao
+        // continuam completos e voltam a ser amostrados quando a zona se aproxima.
+        if (hashCell(cellX, cellZ, 8) > density) continue;
+
         this.dummy.position.set(x, groundHeight - 0.6, z);
         this.dummy.scale.set(scale, heightScale, scale);
         this.dummy.rotation.y = hashCell(cellX, cellZ, 5) * Math.PI * 2;
@@ -170,13 +202,6 @@ class Vegetation {
           count,
           treeColors[Math.floor(hashCell(cellX, cellZ, 6) * treeColors.length)]
         );
-        collisionTrees.push({
-          x,
-          z,
-          groundHeight,
-          topHeight: groundHeight - 0.6 + 14 * heightScale,
-          radius: 5.25 * scale
-        });
         count += 1;
       }
     }
@@ -306,4 +331,9 @@ function createSeededRandom(seed) {
 function hashCell(x, z, salt) {
   const value = Math.sin(x * 127.1 + z * 311.7 + salt * 74.7) * 43758.5453123;
   return value - Math.floor(value);
+}
+
+function smoothstep(min, max, value) {
+  const t = THREE.MathUtils.clamp((value - min) / (max - min), 0, 1);
+  return t * t * (3 - 2 * t);
 }
